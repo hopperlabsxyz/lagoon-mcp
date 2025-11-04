@@ -41,3 +41,4 @@ temp/
 
 # Claude local settings
 .claude/*
+.serena/*

@@ -1,10 +1,8 @@
-schema: 'http://localhost:3000/query'
-documents: './src/graphql/**/*.graphql'
+schema: 'http://localhost:3001/query'
 generates:
   ./src/types/generated.ts:
     plugins:
       - 'typescript'
-      - 'typescript-operations'
     config:
       skipTypename: false
       enumsAsTypes: true

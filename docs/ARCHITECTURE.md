@@ -75,7 +75,7 @@ import { GraphQLClient } from 'graphql-request';
 
 const GRAPHQL_ENDPOINT =
   process.env.LAGOON_GRAPHQL_URL ||
-  'http://localhost:3000/query';
+  'http://localhost:3001/query';
 
 export const graphqlClient = new GraphQLClient(GRAPHQL_ENDPOINT, {
   headers: {},
@@ -476,7 +476,7 @@ Centralized configuration management:
 ```typescript
 export const config = {
   graphql: {
-    endpoint: process.env.LAGOON_GRAPHQL_URL || 'http://localhost:3000/query',
+    endpoint: process.env.LAGOON_GRAPHQL_URL || 'http://localhost:3001/query',
     timeout: 30000,
   },
   cache: {

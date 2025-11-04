@@ -29,7 +29,6 @@ import { config } from '../config.js';
  */
 export const graphqlClient = new GraphQLClient(config.graphql.endpoint, {
   headers: {},
-  timeout: config.graphql.timeout,
 });
 
 /**

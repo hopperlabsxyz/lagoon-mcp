@@ -302,7 +302,7 @@ Use GraphQL Code Generator (@graphql-codegen) for automatic type generation.
 
 **Configuration**:
 ```yaml
-schema: 'http://localhost:3000/query'
+schema: 'http://localhost:3001/query'
 generates:
   ./src/types/generated.ts:
     plugins:

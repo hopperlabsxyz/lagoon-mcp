@@ -10,12 +10,12 @@ export const envSchema = z.object({
   /**
    * GraphQL API endpoint for Lagoon backend
    * Must be a valid URL
-   * @default 'http://localhost:3000/query'
+   * @default 'http://localhost:3001/query'
    */
   LAGOON_GRAPHQL_URL: z
     .string()
     .url('LAGOON_GRAPHQL_URL must be a valid URL')
-    .default('http://localhost:3000/query')
+    .default('http://localhost:3001/query')
     .describe('GraphQL API endpoint for Lagoon backend'),
 
   /**
