@@ -79,29 +79,33 @@ Restart Claude Desktop and start asking questions:
 
 ## Available Tools
 
-### 1. `query_graphql`
+### 1. `query_graphql` ✅
 Execute raw GraphQL queries for advanced use cases.
 
 ```
 "Run this GraphQL query: { vaults { items { symbol } } }"
 ```
 
-### 2. `get_vault_data`
+### 2. `get_vault_data` ✅
 Get comprehensive vault information by address and chain.
 
 ```
 "Get details for vault 0x1234... on Arbitrum"
 ```
 
-### 3. `get_user_portfolio`
-Aggregate user holdings across chains with USD values.
+**Note**: Returns all available vault fields. No field selection parameter - comprehensive data is always returned.
+
+### 3. `get_user_portfolio` ✅
+Aggregate user holdings across all supported chains with USD values.
 
 ```
 "Show my complete portfolio"
-"What are my positions on Base and Arbitrum?"
+"Analyze my DeFi positions"
 ```
 
-### 4. `search_vaults`
+**Note**: Automatically queries all 12+ supported chains. No chain selection parameter needed.
+
+### 4. `search_vaults` (Planned - Phase 3)
 Search and filter vaults with advanced criteria.
 
 ```
@@ -109,7 +113,7 @@ Search and filter vaults with advanced criteria.
 "Show me all visible vaults managed by curator X"
 ```
 
-### 5. `get_vault_performance`
+### 5. `get_vault_performance` (Planned - Phase 3)
 Historical metrics and performance analysis.
 
 ```
@@ -300,23 +304,33 @@ Type 'unknown' is not assignable to type 'Vault'
 
 ## Roadmap
 
-### Phase 1: MVP (Current)
-- ✅ 5 core tools
-- ✅ GraphQL type generation
-- ✅ Caching layer
+### Phase 1: Infrastructure ✅ COMPLETE
+- ✅ Project setup and configuration
+- ✅ GraphQL type generation system
+- ✅ Caching layer with TTL strategy
+- ✅ Validation framework (Zod schemas)
 - ✅ Comprehensive documentation
 
-### Phase 2: Enhancements
-- [ ] Additional analysis tools
-- [ ] Performance monitoring dashboard
-- [ ] Enhanced error messages
-- [ ] Query optimization hints
+### Phase 2: Core Tools ✅ COMPLETE
+- ✅ `query_graphql` - Raw GraphQL query execution
+- ✅ `get_vault_data` - Comprehensive vault information
+- ✅ `get_user_portfolio` - Cross-chain portfolio aggregation
+- ✅ Shared utilities (error handling, response formatting)
+- ✅ Comprehensive test coverage (48 tests)
+- ✅ Manual testing with Claude Desktop
 
-### Phase 3: Advanced Features
+### Phase 3: Additional Tools (NEXT)
+- [ ] `search_vaults` - Advanced vault search and filtering
+- [ ] `get_vault_performance` - Historical metrics and performance analysis
+- [ ] Enhanced GraphQL query optimization
+- [ ] Performance monitoring and metrics
+
+### Phase 4: Advanced Features (FUTURE)
 - [ ] Streaming responses for large datasets
 - [ ] Multi-vault comparison tool
 - [ ] Historical price data integration
 - [ ] Export capabilities (CSV, JSON)
+- [ ] Advanced analytics and reporting
 
 ## FAQ
 

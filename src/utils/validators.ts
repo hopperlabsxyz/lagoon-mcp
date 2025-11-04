@@ -50,25 +50,45 @@ export const queryGraphQLInputSchema = z.object({
 export const getVaultDataInputSchema = z.object({
   vaultAddress: ethereumAddressSchema,
   chainId: chainIdSchema,
-  fields: z.array(z.string()).optional(),
 });
 
 // get_user_portfolio input
 export const getUserPortfolioInputSchema = z.object({
   userAddress: ethereumAddressSchema,
-  chainIds: z.array(chainIdSchema).optional(),
 });
 
 // search_vaults input
 export const searchVaultsInputSchema = z.object({
   filters: z
     .object({
-      assetSymbol: z.string().optional(),
-      chainId: chainIdSchema.optional(),
-      minTvl: z.number().positive().optional(),
-      maxTvl: z.number().positive().optional(),
-      curatorIds: z.array(z.string()).optional(),
-      isVisible: z.boolean().optional(),
+      // Asset filters
+      assetSymbol_eq: z.string().optional(),
+      assetSymbol_in: z.array(z.string()).optional(),
+      assetId_eq: z.string().optional(),
+      assetId_in: z.array(z.string()).optional(),
+
+      // Chain filters
+      chainId_eq: chainIdSchema.optional(),
+      chainId_in: z.array(chainIdSchema).optional(),
+
+      // TVL filters (nested state filters)
+      state_totalAssetsUsd_gte: z.number().positive().optional(),
+      state_totalAssetsUsd_lte: z.number().positive().optional(),
+
+      // Curator filters
+      curatorIds_contains: z.array(z.string()).optional(),
+      curatorIds_contains_any: z.array(z.string()).optional(),
+
+      // Visibility
+      isVisible_eq: z.boolean().optional(),
+
+      // Additional filters
+      address_eq: ethereumAddressSchema.optional(),
+      address_in: z.array(ethereumAddressSchema).optional(),
+      symbol_eq: z.string().optional(),
+      symbol_in: z.array(z.string()).optional(),
+      integratorId_eq: z.string().optional(),
+      integratorId_in: z.array(z.string()).optional(),
     })
     .optional(),
   pagination: z

@@ -48,8 +48,7 @@ type SearchFilters = {
 export const cacheKeys = {
   vaultData: (address: string, chainId: number): string => `vault:${address}:${chainId}`,
 
-  userPortfolio: (address: string, chainIds: number[]): string =>
-    `portfolio:${address}:${chainIds.sort().join(',')}`,
+  userPortfolio: (address: string): string => `portfolio:${address}`,
 
   searchVaults: (filters: SearchFilters): string => `search:${hashObject(filters)}`,
 

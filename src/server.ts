@@ -44,10 +44,10 @@ export function createServer(): Server {
 
   // Register tool handlers
   server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: Object.values(tools),
+    tools,
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, (request) => handleToolCall(request));
+  server.setRequestHandler(CallToolRequestSchema, async (request) => handleToolCall(request));
 
   // Register resource handlers
   server.setRequestHandler(ListResourcesRequestSchema, () => ({
@@ -97,7 +97,7 @@ export async function runServer(): Promise<void> {
   await server.connect(transport);
 
   console.error('✓ Lagoon MCP Server is running');
-  console.error(`  Tools: ${Object.keys(tools).length}`);
+  console.error(`  Tools: ${tools.length}`);
   console.error(`  Resources: ${Object.keys(resources).length}`);
   console.error(`  Prompts: ${Object.keys(prompts).length}`);
 }
