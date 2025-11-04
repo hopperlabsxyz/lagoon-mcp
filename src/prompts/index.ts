@@ -6,6 +6,7 @@
  */
 
 import { GetPromptRequest, GetPromptResult } from '@modelcontextprotocol/sdk/types.js';
+import { getFinancialAnalysisPrompt } from './financial-analysis.js';
 
 export interface Prompt {
   name: string;
@@ -19,14 +20,18 @@ export interface Prompt {
 
 /**
  * Prompt Registry
- * Add prompts here as they are implemented
+ * Available prompts for MCP clients
  */
-export const prompts: Record<string, Prompt> = {
-  // Prompts will be added in later phases:
-  // - analyze-vault - Analyze a specific vault
-  // - compare-vaults - Compare multiple vaults
-  // - portfolio-summary - Summarize user portfolio
-};
+export const prompts: Prompt[] = [
+  {
+    name: 'financial-analysis',
+    description:
+      'Guidance for analyzing DeFi vault data and generating financial insights. ' +
+      'Includes analysis patterns for portfolio review, vault performance, and vault discovery. ' +
+      'Provides frameworks for risk assessment, metrics interpretation, and report structure.',
+    arguments: [],
+  },
+];
 
 /**
  * Handle prompt get requests
@@ -34,16 +39,31 @@ export const prompts: Record<string, Prompt> = {
 export function handlePromptGet(request: GetPromptRequest): GetPromptResult {
   const promptName = request.params.name;
 
-  // For now, return an error since no prompts are implemented yet
-  return {
-    messages: [
-      {
-        role: 'user',
-        content: {
-          type: 'text',
-          text: `Prompt "${promptName}" is not yet implemented. Prompts will be added in later phases.`,
-        },
-      },
-    ],
-  };
+  switch (promptName) {
+    case 'financial-analysis':
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: getFinancialAnalysisPrompt(),
+            },
+          },
+        ],
+      };
+
+    default:
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `Prompt "${promptName}" not found. Available prompts:\n${prompts.map((p) => `- ${p.name}: ${p.description}`).join('\n')}`,
+            },
+          },
+        ],
+      };
+  }
 }

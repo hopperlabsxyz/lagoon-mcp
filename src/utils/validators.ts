@@ -110,6 +110,37 @@ export const getVaultPerformanceInputSchema = z.object({
   }),
 });
 
+// get_transactions input
+export const getTransactionsInputSchema = z.object({
+  vaultAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
+  transactionTypes: z
+    .array(
+      z.enum([
+        'SettleDeposit',
+        'SettleRedeem',
+        'DepositRequest',
+        'RedeemRequest',
+        'NewTotalAssetsUpdated',
+        'TotalAssetsUpdated',
+        'PeriodSummary',
+        'DepositSync',
+        'DepositRequestCanceled',
+        'RatesUpdated',
+        'StateUpdated',
+      ])
+    )
+    .optional(),
+  pagination: z
+    .object({
+      first: paginationFirstSchema,
+      skip: paginationSkipSchema,
+    })
+    .optional(),
+  orderBy: z.enum(['blockNumber', 'timestamp', 'id', 'chainId']).default('blockNumber'),
+  orderDirection: z.enum(['asc', 'desc']).default('desc'),
+});
+
 /**
  * Type inference helpers
  */
@@ -119,3 +150,4 @@ export type GetVaultDataInput = z.infer<typeof getVaultDataInputSchema>;
 export type GetUserPortfolioInput = z.infer<typeof getUserPortfolioInputSchema>;
 export type SearchVaultsInput = z.infer<typeof searchVaultsInputSchema>;
 export type GetVaultPerformanceInput = z.infer<typeof getVaultPerformanceInputSchema>;
+export type GetTransactionsInput = z.infer<typeof getTransactionsInputSchema>;

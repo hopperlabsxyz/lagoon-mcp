@@ -25,6 +25,7 @@ export const cacheTTL = {
   userPortfolio: 300, // 5 minutes - user positions more dynamic
   searchResults: 600, // 10 minutes - search results balanced
   performance: 1800, // 30 minutes - historical data less time-sensitive
+  transactions: 900, // 15 minutes - transaction history relatively static
   schema: 86400, // 24 hours - schema rarely changes
 } as const;
 
@@ -32,12 +33,7 @@ export const cacheTTL = {
  * Search filters type for cache key generation
  */
 type SearchFilters = {
-  assetSymbol?: string;
-  chainId?: number;
-  minTvl?: number;
-  maxTvl?: number;
-  curatorIds?: string[];
-  isVisible?: boolean;
+  filterHash: string;
 };
 
 /**
@@ -50,20 +46,32 @@ export const cacheKeys = {
 
   userPortfolio: (address: string): string => `portfolio:${address}`,
 
-  searchVaults: (filters: SearchFilters): string => `search:${hashObject(filters)}`,
+  searchVaults: (filters: SearchFilters): string => `search:${filters.filterHash}`,
 
   vaultPerformance: (address: string, chainId: number, range: string): string =>
     `perf:${address}:${chainId}:${range}`,
 
+  transactions: ({
+    vaultAddress,
+    chainId,
+    filterHash,
+    first,
+    skip,
+    orderBy,
+    orderDirection,
+  }: {
+    vaultAddress: string;
+    chainId: number;
+    filterHash: string;
+    first: number;
+    skip: number;
+    orderBy: string;
+    orderDirection: string;
+  }): string =>
+    `transactions:${vaultAddress}:${chainId}:${filterHash}:${first}:${skip}:${orderBy}:${orderDirection}`,
+
   schema: (): string => 'schema:latest',
 };
-
-/**
- * Helper function to hash objects for cache keys
- */
-function hashObject(obj: Record<string, unknown>): string {
-  return JSON.stringify(obj);
-}
 
 /**
  * Cache statistics

@@ -12,6 +12,8 @@ Lagoon MCP enables natural language queries about DeFi vaults, user portfolios, 
 - 📈 **Performance Tracking** - Historical metrics and trend analysis
 - ⚡ **Smart Caching** - Optimized response times with intelligent caching
 - 🔒 **Type-Safe** - Full TypeScript type safety from GraphQL to Claude
+- 📚 **Rich Resources** - GraphQL schema introspection and DeFi terminology guide
+- 🎯 **Smart Prompts** - Financial analysis guidance with best practices
 
 ## Quick Start
 
@@ -105,21 +107,56 @@ Aggregate user holdings across all supported chains with USD values.
 
 **Note**: Automatically queries all 12+ supported chains. No chain selection parameter needed.
 
-### 4. `search_vaults` (Planned - Phase 3)
-Search and filter vaults with advanced criteria.
+### 4. `search_vaults` ✅
+Search and filter vaults with advanced criteria (20+ filter options).
 
 ```
 "Find WETH vaults on Ethereum with TVL > $5M"
 "Show me all visible vaults managed by curator X"
+"Search for vaults with APR > 10% on Arbitrum"
 ```
 
-### 5. `get_vault_performance` (Planned - Phase 3)
-Historical metrics and performance analysis.
+**Features**: Filter by asset, chain, TVL, capacity, curator, APR, visibility, and more.
+
+### 5. `get_vault_performance` ✅
+Historical metrics and performance analysis with time-series data.
 
 ```
 "Analyze vault 0x1234... performance over the last 90 days"
 "Show me TVL trends for the lgUSDC vault"
+"Compare performance across 7d, 30d, and 90d periods"
 ```
+
+**Supported time ranges**: 7d, 30d, 90d, 1y with summary statistics
+
+## Resources
+
+### 1. GraphQL Schema (`lagoon://graphql-schema`)
+Complete GraphQL schema in SDL format with introspection.
+
+- **Format**: Text/Plain (SDL format)
+- **Caching**: 24-hour TTL
+- **Use Cases**: Query validation, type discovery, schema exploration
+- **Content**: All types, queries, mutations with documentation
+
+### 2. DeFi Glossary (`lagoon://defi-glossary`)
+Comprehensive terminology guide for Lagoon DeFi Protocol.
+
+- **Format**: Markdown
+- **Content**: 500+ lines covering vault concepts, financial metrics, transactions, fees, roles, calculations
+- **Sections**: Core concepts, financial metrics, operations, transaction types, risk assessment, best practices
+- **Use Cases**: Understanding vault mechanics, interpreting metrics, learning DeFi terminology
+
+## Prompts
+
+### 1. Financial Analysis (`financial-analysis`)
+Structured guidance for analyzing vault performance and portfolios.
+
+- **Analysis Frameworks**: Portfolio analysis, performance evaluation, discovery patterns
+- **Metrics Interpretation**: APR analysis, TVL trends, capacity assessment, volume patterns
+- **Risk Assessment**: LOW/MEDIUM/HIGH risk categorization with specific criteria
+- **Report Structure**: Executive summary, detailed findings, recommendations, risk disclosure
+- **Best Practices**: Data quality, communication, calculations, risk disclosure
 
 ## Development
 
@@ -223,11 +260,21 @@ npm test
 
 ### Key Components
 
-- **MCP Server**: Handles tool/resource/prompt requests from Claude
+- **MCP Server**: Modern McpServer API with automatic capability management
 - **GraphQL Client**: Communicates with Lagoon backend (`graphql-request`)
 - **Type Generation**: Auto-generates TypeScript types (`graphql-codegen`)
 - **Caching Layer**: In-memory cache with TTL (`node-cache`)
 - **Validation**: Runtime input validation (`zod`)
+
+### Modern Implementation
+
+Uses **McpServer API** from `@modelcontextprotocol/sdk` v1.0.0+ for:
+- Automatic capability negotiation with Claude Desktop
+- Clean registration patterns (`registerTool`, `registerResource`, `registerPrompt`)
+- Direct Zod schema usage via `.shape` property
+- Future-proof architecture for dynamic tool registration
+
+See [`claudedocs/MCPSERVER_MIGRATION.md`](./claudedocs/MCPSERVER_MIGRATION.md) for implementation details.
 
 ### Caching Strategy
 
@@ -319,11 +366,13 @@ Type 'unknown' is not assignable to type 'Vault'
 - ✅ Comprehensive test coverage (48 tests)
 - ✅ Manual testing with Claude Desktop
 
-### Phase 3: Additional Tools (NEXT)
-- [ ] `search_vaults` - Advanced vault search and filtering
-- [ ] `get_vault_performance` - Historical metrics and performance analysis
-- [ ] Enhanced GraphQL query optimization
-- [ ] Performance monitoring and metrics
+### Phase 3: Resources & Prompts ✅ COMPLETE
+- ✅ `search_vaults` - Advanced vault search and filtering with 20+ filter options
+- ✅ `get_vault_performance` - Historical metrics and performance analysis
+- ✅ GraphQL schema resource - Introspection-based schema access with SDL format
+- ✅ DeFi glossary resource - Comprehensive terminology guide (500+ lines)
+- ✅ Financial analysis prompt - Analysis guidance with best practices
+- ✅ Comprehensive test coverage (91 tests)
 
 ### Phase 4: Advanced Features (FUTURE)
 - [ ] Streaming responses for large datasets
