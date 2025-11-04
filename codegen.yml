@@ -1,0 +1,17 @@
+schema: 'http://localhost:3000/query'
+documents: './src/graphql/**/*.graphql'
+generates:
+  ./src/types/generated.ts:
+    plugins:
+      - 'typescript'
+      - 'typescript-operations'
+    config:
+      skipTypename: false
+      enumsAsTypes: true
+      scalars:
+        BigInt: 'string'
+        Address: 'string'
+        Hex: 'string'
+      namingConvention:
+        typeNames: 'pascal-case#pascalCase'
+        enumValues: 'upper-case#upperCase'
