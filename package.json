@@ -51,6 +51,8 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@lagoon-protocol/v0-computation": "^0.12.0",
+    "@lagoon-protocol/v0-core": "^0.9.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "graphql": "^16.8.1",
     "graphql-request": "^6.1.0",
