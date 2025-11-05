@@ -100,19 +100,24 @@ Maximum assets the vault can accept. Some vaults have capacity limits due to str
 Vaults transition through different operational states:
 
 **State Values:**
-- **ACTIVE**: Normal operation, accepting deposits/withdrawals
-- **PAUSED**: Temporarily halted, no new operations
-- **EMERGENCY**: Emergency mode, withdrawals only
+- **OPEN**: Normal operation, accepting deposits/withdrawals
+- **CLOSING**: Last call for deposits, preparing to close
+- **CLOSED**: No new deposits, only withdrawals allowed
 
 ### Settlement Process
-Lagoon uses an asynchronous settlement system for deposits and withdrawals:
+Lagoon uses an asynchronous and synchronous settlement system for deposits and withdrawals:
 
-**Deposit Flow:**
+**Synchronous Deposit Flow:**
+1. User requests deposit
+2. Vault processes deposit immediately
+3. Shares minted and distributed to users
+
+**Asynchronous Deposit Flow:**
 1. User requests deposit → assets locked in pending state
 2. Vault processes batch during settlement window
 3. Shares minted and distributed to users
 
-**Withdrawal Flow:**
+**Asynchronous Withdrawal Flow:**
 1. User requests redemption → shares locked in pending state
 2. Vault liquidates positions during settlement
 3. Assets returned to users
@@ -183,7 +188,7 @@ Vault processes pending withdrawals and returns assets.
 - assetsWithdrawn: Assets returned to users
 
 ### StateUpdated
-Vault state transition (ACTIVE ↔ PAUSED ↔ EMERGENCY).
+Vault state transition (OPEN ↔ CLOSING ↔ CLOSED).
 
 **Data Fields:**
 - oldState: Previous state

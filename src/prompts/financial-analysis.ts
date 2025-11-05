@@ -24,7 +24,7 @@ When analyzing a user's portfolio:
    - Identify over-concentration (>30% in single asset/vault)
 
 2. **Performance Summary**
-   - Compare returns across vaults using PPS growth
+   - Compare returns across vaults using PPS growth (SDK calculates protocol-accurate price per share with BigInt precision)
    - Calculate weighted average return: Σ(vaultReturn * vaultWeight)
    - Identify best and worst performers
 
@@ -80,6 +80,8 @@ When analyzing individual vault performance:
    - Compare APR across similar vaults (same asset)
    - Evaluate vs. baseline (e.g., Aave supply rate)
    - Assess relative performance: top quartile, median, bottom quartile
+   - SDK provides period summary utilities for historical analysis
+   - Use APR service for protocol-accurate 30-day and inception calculations
 
 4. **Volume Analysis**
    - Calculate net flow: deposits - withdrawals
@@ -178,9 +180,57 @@ Recommendation: Start with option 1 or 2 based on risk tolerance
 
 ---
 
+### Vault Simulation Pattern
+
+When modeling deposit/withdrawal scenarios:
+
+1. **Fee-Aware Modeling**
+   - Use simulate_vault tool for protocol-accurate simulations
+   - Accounts for management fees and performance fees
+   - Handles pending settlements and silo balances
+
+2. **Impact Analysis**
+   - Predict share price changes from deposits/withdrawals
+   - Calculate fee accrual based on high water mark
+   - Model APR impact from vault state changes
+
+3. **Settlement Requirements**
+   - Understand pending deposit/withdrawal mechanics
+   - Model settlement scenarios vs. no-settlement
+   - Assess capacity constraints
+
+**Example Output:**
+\`\`\`
+Simulation Results: +$5,000 Deposit
+- Current State: 1000 USDC, 950 shares, PPS: 1.0526 USDC
+- After Deposit: 6000 USDC, 5711 shares, PPS: 1.0506 USDC
+- Fees Accrued: 12.5 USDC (management) + 0 USDC (performance)
+- New Shares Issued: 4,761 shares
+- APR Impact: -0.2% (dilution from deposit)
+- Settlement Required: Yes (pending deposits: 1,500 USDC)
+\`\`\`
+
+---
+
 ## Financial Metrics Interpretation
 
 ### APR Analysis
+
+The SDK provides two APR calculation approaches:
+
+- **30-Day APR**: Based on price per share growth over last 30 days
+  - Uses getLastPeriodSummaryInDuration() to find historical data point
+  - Protocol-accurate with BigInt precision
+  - Gracefully handles vaults with <30 days history
+
+- **Inception APR**: Annualized return since vault creation
+  - Uses oldest period summary for calculation
+  - Accounts for full vault lifecycle
+  - Best indicator for established vaults
+
+**Data Source**: All APR calculations use SDK's transformPeriodSummariesToAPRData() for consistency with frontend-dapp-v2 production patterns.
+
+**APR Ranges:**
 - **<5%**: Low yield, comparable to traditional savings
 - **5-10%**: Moderate yield, typical for lending protocols
 - **10-20%**: High yield, active strategies or incentives
@@ -286,6 +336,8 @@ Use this structure for comprehensive analysis reports:
 ## Best Practices
 
 ### Data Quality
+- ✅ SDK calculations use BigInt precision (no floating-point errors)
+- ✅ Protocol-accurate fee calculations (production-validated patterns)
 - ✅ Always cite data sources and timestamps
 - ✅ Use multiple time periods for trend confirmation
 - ✅ Cross-reference APR across different time windows
