@@ -141,6 +141,80 @@ export const getTransactionsInputSchema = z.object({
   orderDirection: z.enum(['asc', 'desc']).default('desc'),
 });
 
+// compare_vaults input
+export const compareVaultsInputSchema = z.object({
+  vaultAddresses: z
+    .array(ethereumAddressSchema)
+    .min(2, 'At least 2 vault addresses are required for comparison')
+    .max(10, 'Maximum 10 vaults can be compared at once'),
+  chainId: chainIdSchema,
+});
+
+// get_price_history input
+export const priceHistoryInputSchema = z.object({
+  vaultAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
+  timeRange: z.enum(['7d', '30d', '90d', '1y', 'all'], {
+    errorMap: () => ({ message: 'Time range must be one of: 7d, 30d, 90d, 1y, all' }),
+  }),
+});
+
+// export_data input
+export const exportDataInputSchema = z.object({
+  vaultAddresses: z.array(ethereumAddressSchema).min(1, 'At least 1 vault address is required'),
+  chainId: chainIdSchema,
+  dataType: z.enum(['vaults', 'transactions', 'price_history', 'performance'], {
+    errorMap: () => ({
+      message: 'Data type must be one of: vaults, transactions, price_history, performance',
+    }),
+  }),
+  format: z.enum(['csv', 'json'], {
+    errorMap: () => ({ message: 'Format must be either csv or json' }),
+  }),
+});
+
+// analyze_risk input
+export const analyzeRiskInputSchema = z.object({
+  vaultAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
+});
+
+// predict_yield input
+export const predictYieldInputSchema = z.object({
+  vaultAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
+  timeRange: z.enum(['7d', '30d', '90d'], {
+    errorMap: () => ({ message: 'Time range must be one of: 7d, 30d, 90d' }),
+  }),
+});
+
+// optimize_portfolio input
+export const optimizePortfolioInputSchema = z.object({
+  vaultAddresses: z
+    .array(ethereumAddressSchema)
+    .min(2, 'At least 2 vault addresses are required for portfolio optimization')
+    .max(20, 'Maximum 20 vaults can be included in portfolio'),
+  chainId: chainIdSchema,
+  currentPositions: z.array(
+    z.object({
+      vaultAddress: ethereumAddressSchema,
+      valueUsd: z.number().positive('Position value must be positive'),
+    })
+  ),
+  strategy: z
+    .enum(['equal_weight', 'risk_parity', 'max_sharpe', 'min_variance'], {
+      errorMap: () => ({
+        message: 'Strategy must be one of: equal_weight, risk_parity, max_sharpe, min_variance',
+      }),
+    })
+    .default('max_sharpe'),
+  rebalanceThreshold: z
+    .number()
+    .positive('Rebalance threshold must be positive')
+    .max(50, 'Rebalance threshold cannot exceed 50%')
+    .default(5.0),
+});
+
 /**
  * Type inference helpers
  */
@@ -151,3 +225,9 @@ export type GetUserPortfolioInput = z.infer<typeof getUserPortfolioInputSchema>;
 export type SearchVaultsInput = z.infer<typeof searchVaultsInputSchema>;
 export type GetVaultPerformanceInput = z.infer<typeof getVaultPerformanceInputSchema>;
 export type GetTransactionsInput = z.infer<typeof getTransactionsInputSchema>;
+export type CompareVaultsInput = z.infer<typeof compareVaultsInputSchema>;
+export type PriceHistoryInput = z.infer<typeof priceHistoryInputSchema>;
+export type ExportDataInput = z.infer<typeof exportDataInputSchema>;
+export type AnalyzeRiskInput = z.infer<typeof analyzeRiskInputSchema>;
+export type PredictYieldInput = z.infer<typeof predictYieldInputSchema>;
+export type OptimizePortfolioInput = z.infer<typeof optimizePortfolioInputSchema>;

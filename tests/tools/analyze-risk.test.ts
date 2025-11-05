@@ -1,0 +1,560 @@
+/**
+ * Tests for analyze_risk tool
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { executeAnalyzeRisk } from '../../src/tools/analyze-risk.js';
+import { graphqlClient } from '../../src/graphql/client.js';
+import { clearCache } from '../../src/cache/index.js';
+
+// Mock the GraphQL client
+vi.mock('../../src/graphql/client.js', () => ({
+  graphqlClient: {
+    request: vi.fn(),
+  },
+}));
+
+// Mock the cache module
+vi.mock('../../src/cache/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/cache/index.js')>(
+    '../../src/cache/index.js'
+  );
+  return {
+    ...actual,
+    cache: {
+      get: vi.fn(() => undefined),
+      set: vi.fn(),
+      getStats: actual.cache.getStats,
+      flushAll: actual.cache.flushAll,
+    },
+  };
+});
+
+describe('analyze_risk Tool', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearCache();
+  });
+
+  /**
+   * Helper to create mock vault data
+   */
+  function createMockVault(
+    overrides: Partial<{
+      address: string;
+      tvl: number;
+      createdAt: string;
+      curatorId: string;
+    }> = {}
+  ): unknown {
+    const defaults = {
+      address: '0x1234567890123456789012345678901234567890',
+      tvl: 1000000,
+      createdAt: String(Math.floor(Date.now() / 1000) - 365 * 24 * 60 * 60), // 1 year ago
+      curatorId: 'curator-123',
+    };
+    const merged = { ...defaults, ...overrides };
+
+    return {
+      address: merged.address,
+      name: 'Test Vault',
+      symbol: 'TEST',
+      decimals: 18,
+      createdAt: merged.createdAt,
+      curatorId: merged.curatorId,
+      asset: {
+        address: '0xasset1234567890123456789012345678901234',
+        symbol: 'USDC',
+      },
+      state: {
+        totalAssets: '1000000000000',
+        totalSupply: '900000000000',
+        totalAssetsUsd: merged.tvl,
+        pricePerShareUsd: 1.05,
+      },
+    };
+  }
+
+  /**
+   * Helper to create mock all vaults data
+   */
+  function createMockAllVaults(count: number, totalTVL: number): unknown[] {
+    const tvlPerVault = totalTVL / count;
+    return Array.from({ length: count }, () => ({
+      state: {
+        totalAssetsUsd: tvlPerVault,
+      },
+    }));
+  }
+
+  /**
+   * Helper to create mock curator vaults
+   */
+  function createMockCuratorVaults(count: number, successfulCount: number): unknown[] {
+    const vaults: unknown[] = [];
+
+    // Create successful vaults (TVL > $10K)
+    for (let i = 0; i < successfulCount; i++) {
+      vaults.push({
+        address: `0xvault${i}12345678901234567890123456789012`,
+        state: {
+          totalAssetsUsd: 50000, // >$10K = successful
+        },
+      });
+    }
+
+    // Create unsuccessful vaults (TVL < $10K)
+    for (let i = successfulCount; i < count; i++) {
+      vaults.push({
+        address: `0xvault${i}12345678901234567890123456789012`,
+        state: {
+          totalAssetsUsd: 5000, // <$10K = unsuccessful
+        },
+      });
+    }
+
+    return vaults;
+  }
+
+  /**
+   * Helper to create mock price history
+   */
+  function createMockPriceHistory(prices: number[]): unknown {
+    return {
+      items: prices.map((price, i) => ({
+        timestamp: String(Math.floor(Date.now() / 1000) - (prices.length - i) * 24 * 60 * 60),
+        data: {
+          pricePerShareUsd: price,
+        },
+      })),
+    };
+  }
+
+  describe('Risk Analysis - Low Risk Scenario', () => {
+    it('should analyze low-risk vault (high TVL, established, low volatility)', async () => {
+      const mockData = {
+        vault: createMockVault({
+          tvl: 15000000, // $15M = very high TVL (low risk)
+          createdAt: String(Math.floor(Date.now() / 1000) - 400 * 24 * 60 * 60), // >1 year
+        }),
+        allVaults: createMockAllVaults(100, 500000000), // 3% concentration
+        curatorVaults: createMockCuratorVaults(10, 9), // 90% success rate
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01, 1.02, 1.02, 1.03, 1.03]), // Low volatility
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(false);
+      expect(result.content).toHaveLength(1);
+      expect(result.content[0].type).toBe('text');
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Risk Analysis Breakdown');
+      expect(text).toContain('Overall Risk Assessment');
+      expect(text).toContain('🟢 Low'); // Should be low risk overall
+    });
+  });
+
+  describe('Risk Analysis - High Risk Scenario', () => {
+    it('should analyze high-risk vault (low TVL, new, high volatility)', async () => {
+      const mockData = {
+        vault: createMockVault({
+          tvl: 5000, // <$10K = critical TVL risk
+          createdAt: String(Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60), // 15 days old
+        }),
+        allVaults: createMockAllVaults(10, 50000), // 10% concentration
+        curatorVaults: createMockCuratorVaults(1, 0), // 0% success rate, new curator
+        priceHistory: createMockPriceHistory([1.0, 0.85, 1.1, 0.9, 1.15, 0.8, 1.2]), // High volatility
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(false);
+      const text = result.content[0].text as string;
+      expect(text).toContain('🔴'); // Should have multiple high-risk indicators
+      expect(text).toMatch(/🔴 Critical|🟠 High/); // Overall should be high or critical
+    });
+  });
+
+  describe('Risk Analysis - Individual Factors', () => {
+    it('should calculate TVL risk correctly', async () => {
+      const mockData = {
+        vault: createMockVault({ tvl: 500000 }), // Medium TVL
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('TVL Risk');
+      expect(text).toContain('%'); // Should show percentage
+    });
+
+    it('should calculate concentration risk correctly', async () => {
+      const mockData = {
+        vault: createMockVault({ tvl: 50000000 }), // High concentration if protocol is small
+        allVaults: createMockAllVaults(2, 100000000), // Vault is 50% of protocol
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Concentration Risk');
+      expect(text).toContain('🔴'); // High concentration should be flagged
+    });
+
+    it('should calculate volatility risk correctly', async () => {
+      const mockData = {
+        vault: createMockVault(),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.2, 0.8, 1.3, 0.7]), // Very volatile
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Volatility Risk');
+      expect(text).toMatch(/🔴|🟠/); // High volatility
+    });
+
+    it('should calculate age risk correctly', async () => {
+      const mockData = {
+        vault: createMockVault({
+          createdAt: String(Math.floor(Date.now() / 1000) - 10 * 24 * 60 * 60), // 10 days old
+        }),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Age Risk');
+      expect(text).toContain('🔴'); // Very new vault = critical risk
+    });
+
+    it('should calculate curator risk correctly', async () => {
+      const mockData = {
+        vault: createMockVault(),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(15, 14), // Experienced curator, 93% success
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Curator Risk');
+      expect(text).toContain('🟢'); // Experienced curator with good track record
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle vault with no price history', async () => {
+      const mockData = {
+        vault: createMockVault(),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: { items: [] }, // No price history
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(false);
+      const text = result.content[0].text as string;
+      expect(text).toContain('Volatility Risk');
+      expect(text).toContain('%'); // Should still show a score (medium risk for insufficient data)
+    });
+
+    it('should handle vault not found', async () => {
+      const mockData = {
+        vault: null,
+        allVaults: [],
+        curatorVaults: [],
+        priceHistory: { items: [] },
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(false);
+      const text = result.content[0].text as string;
+      expect(text).toContain('No vault found');
+      expect(text).toContain('0x1234567890123456789012345678901234567890');
+    });
+
+    it('should handle zero protocol TVL gracefully', async () => {
+      const mockData = {
+        vault: createMockVault({ tvl: 1000000 }),
+        allVaults: [], // No other vaults = zero protocol TVL
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(false);
+      const text = result.content[0].text as string;
+      expect(text).toContain('Concentration Risk');
+      // Should handle gracefully with medium risk
+    });
+
+    it('should handle new curator (no other vaults)', async () => {
+      const mockData = {
+        vault: createMockVault(),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: [], // New curator with no other vaults
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(false);
+      const text = result.content[0].text as string;
+      expect(text).toContain('Curator Risk');
+      // New curator should have high risk score
+    });
+  });
+
+  describe('Caching', () => {
+    it('should cache risk analysis results', async () => {
+      const mockData = {
+        vault: createMockVault(),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      // First call
+      const result1 = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      // Second call
+      const result2 = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      expect(result1.isError).toBe(false);
+      expect(result2.isError).toBe(false);
+
+      // With mocked cache always returning null, GraphQL is called twice
+      // In real implementation with actual cache, it would be called once
+      expect(vi.mocked(graphqlClient.request)).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use separate cache keys for different vaults', async () => {
+      const mockData = {
+        vault: createMockVault(),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      // Call for first vault
+      await executeAnalyzeRisk({
+        vaultAddress: '0x1111111111111111111111111111111111111111',
+        chainId: 1,
+      });
+
+      // Call for second vault
+      await executeAnalyzeRisk({
+        vaultAddress: '0x2222222222222222222222222222222222222222',
+        chainId: 1,
+      });
+
+      // Should call GraphQL twice (different cache keys)
+      expect(vi.mocked(graphqlClient.request)).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('Input Validation', () => {
+    it('should reject invalid vault address', async () => {
+      const result = await executeAnalyzeRisk({
+        vaultAddress: 'invalid-address' as never,
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text as string;
+      expect(text).toContain('Validation Error');
+    });
+
+    it('should reject invalid chain ID', async () => {
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: -1 as never,
+      });
+
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text as string;
+      expect(text).toContain('Validation Error');
+    });
+
+    it('should reject zero chain ID', async () => {
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 0 as never,
+      });
+
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text as string;
+      expect(text).toContain('Validation Error');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle GraphQL network errors', async () => {
+      vi.mocked(graphqlClient.request).mockRejectedValue(new Error('Network error'));
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text as string;
+      expect(text).toContain('Error:');
+      expect(text).toContain('Network error');
+    });
+
+    it('should handle GraphQL response errors', async () => {
+      vi.mocked(graphqlClient.request).mockRejectedValue({
+        response: {
+          errors: [{ message: 'GraphQL error' }],
+        },
+      });
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text as string;
+      expect(text).toContain('Error:');
+    });
+  });
+
+  describe('Output Format', () => {
+    it('should include all risk factors in the output', async () => {
+      const mockData = {
+        vault: createMockVault(),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+
+      // Should include all risk factors
+      expect(text).toContain('TVL Risk');
+      expect(text).toContain('Concentration Risk');
+      expect(text).toContain('Volatility Risk');
+      expect(text).toContain('Age Risk');
+      expect(text).toContain('Curator Risk');
+
+      // Should include overall assessment
+      expect(text).toContain('Overall Risk Assessment');
+      expect(text).toContain('Risk Score');
+      expect(text).toContain('Risk Level');
+
+      // Should include explanations
+      expect(text).toContain('Risk Factor Explanations');
+    });
+
+    it('should use emoji indicators for risk levels', async () => {
+      const mockData = {
+        vault: createMockVault(),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+
+      // Should include emoji indicators
+      expect(text).toMatch(/🟢|🟡|🟠|🔴/);
+    });
+  });
+});

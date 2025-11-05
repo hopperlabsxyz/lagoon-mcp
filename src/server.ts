@@ -20,6 +20,12 @@ import { executeGetUserPortfolio } from './tools/user-portfolio.js';
 import { executeSearchVaults } from './tools/search-vaults.js';
 import { executeGetVaultPerformance } from './tools/vault-performance.js';
 import { executeGetTransactions } from './tools/get-transactions.js';
+import { executeCompareVaults } from './tools/compare-vaults.js';
+import { executeGetPriceHistory } from './tools/get-price-history.js';
+import { executeExportData } from './tools/export-data.js';
+import { executeAnalyzeRisk } from './tools/analyze-risk.js';
+import { executePredictYield } from './tools/predict-yield.js';
+import { executeOptimizePortfolio } from './tools/optimize-portfolio.js';
 import {
   queryGraphQLInputSchema,
   getVaultDataInputSchema,
@@ -27,7 +33,14 @@ import {
   searchVaultsInputSchema,
   getVaultPerformanceInputSchema,
   getTransactionsInputSchema,
+  compareVaultsInputSchema,
+  priceHistoryInputSchema,
+  exportDataInputSchema,
+  analyzeRiskInputSchema,
+  predictYieldInputSchema,
+  optimizePortfolioInputSchema,
 } from './utils/validators.js';
+import { createToolHandler } from './utils/tool-handler.js';
 
 // Resource imports
 import { getGraphQLSchema } from './resources/schema.js';
@@ -52,6 +65,32 @@ export function createServer(): McpServer {
   // Tool Registration
   // ==========================================
 
+  // Create type-safe tool handlers
+  const queryGraphQLHandler = createToolHandler(executeQueryGraphQL, queryGraphQLInputSchema);
+  const getVaultDataHandler = createToolHandler(executeGetVaultData, getVaultDataInputSchema);
+  const getUserPortfolioHandler = createToolHandler(
+    executeGetUserPortfolio,
+    getUserPortfolioInputSchema
+  );
+  const searchVaultsHandler = createToolHandler(executeSearchVaults, searchVaultsInputSchema);
+  const getVaultPerformanceHandler = createToolHandler(
+    executeGetVaultPerformance,
+    getVaultPerformanceInputSchema
+  );
+  const getTransactionsHandler = createToolHandler(
+    executeGetTransactions,
+    getTransactionsInputSchema
+  );
+  const compareVaultsHandler = createToolHandler(executeCompareVaults, compareVaultsInputSchema);
+  const getPriceHistoryHandler = createToolHandler(executeGetPriceHistory, priceHistoryInputSchema);
+  const exportDataHandler = createToolHandler(executeExportData, exportDataInputSchema);
+  const analyzeRiskHandler = createToolHandler(executeAnalyzeRisk, analyzeRiskInputSchema);
+  const predictYieldHandler = createToolHandler(executePredictYield, predictYieldInputSchema);
+  const optimizePortfolioHandler = createToolHandler(
+    executeOptimizePortfolio,
+    optimizePortfolioInputSchema
+  );
+
   server.registerTool(
     'query_graphql',
     {
@@ -65,9 +104,7 @@ export function createServer(): McpServer {
         variables: queryGraphQLInputSchema.shape.variables,
       },
     },
-    async (args) => {
-      return await executeQueryGraphQL(args as never);
-    }
+    queryGraphQLHandler
   );
 
   server.registerTool(
@@ -84,9 +121,7 @@ export function createServer(): McpServer {
         chainId: getVaultDataInputSchema.shape.chainId,
       },
     },
-    async (args) => {
-      return await executeGetVaultData(args as never);
-    }
+    getVaultDataHandler
   );
 
   server.registerTool(
@@ -102,9 +137,7 @@ export function createServer(): McpServer {
         userAddress: getUserPortfolioInputSchema.shape.userAddress,
       },
     },
-    async (args) => {
-      return await executeGetUserPortfolio(args as never);
-    }
+    getUserPortfolioHandler
   );
 
   server.registerTool(
@@ -124,9 +157,7 @@ export function createServer(): McpServer {
         orderDirection: searchVaultsInputSchema.shape.orderDirection,
       },
     },
-    async (args) => {
-      return await executeSearchVaults(args as never);
-    }
+    searchVaultsHandler
   );
 
   server.registerTool(
@@ -144,9 +175,7 @@ export function createServer(): McpServer {
         timeRange: getVaultPerformanceInputSchema.shape.timeRange,
       },
     },
-    async (args) => {
-      return await executeGetVaultPerformance(args as never);
-    }
+    getVaultPerformanceHandler
   );
 
   server.registerTool(
@@ -171,9 +200,134 @@ export function createServer(): McpServer {
         orderDirection: getTransactionsInputSchema.shape.orderDirection,
       },
     },
-    async (args) => {
-      return await executeGetTransactions(args as never);
-    }
+    getTransactionsHandler
+  );
+
+  server.registerTool(
+    'compare_vaults',
+    {
+      description:
+        'Compare multiple vaults side-by-side with normalized metrics and rankings (2-10 vaults). ' +
+        'Provides comprehensive comparison including TVL, APY, overall performance scores, and percentile rankings. ' +
+        'Calculates deltas from averages and identifies best/worst performers automatically. ' +
+        'Returns formatted comparison table with summary statistics and individual vault rankings. ' +
+        'Best for: evaluating investment opportunities, identifying top performers, risk-adjusted return analysis, portfolio construction. ' +
+        'Performance: ~300 tokens per vault. ' +
+        'Features 15-minute caching based on vault address combinations.',
+      inputSchema: {
+        vaultAddresses: compareVaultsInputSchema.shape.vaultAddresses,
+        chainId: compareVaultsInputSchema.shape.chainId,
+      },
+    },
+    compareVaultsHandler
+  );
+
+  server.registerTool(
+    'get_price_history',
+    {
+      description:
+        'Fetch historical price data for vault shares with OHLCV (Open, High, Low, Close, Volume) time-series analysis. ' +
+        'Aggregates price data by day for cleaner visualization and provides comprehensive price statistics. ' +
+        'Calculates volatility (standard deviation), percent changes, and identifies price trends over time. ' +
+        'Returns formatted price history table with daily OHLCV data and statistical summary. ' +
+        'Best for: price trend analysis, volatility assessment, historical price point identification, entry/exit decision support. ' +
+        'Performance: ~300-500 tokens per vault per time range. ' +
+        'Features 30-minute caching for historical data. ' +
+        'Time ranges: 7d (7 days), 30d (30 days), 90d (90 days), 1y (1 year), all (complete history).',
+      inputSchema: {
+        vaultAddress: priceHistoryInputSchema.shape.vaultAddress,
+        chainId: priceHistoryInputSchema.shape.chainId,
+        timeRange: priceHistoryInputSchema.shape.timeRange,
+      },
+    },
+    getPriceHistoryHandler
+  );
+
+  server.registerTool(
+    'export_data',
+    {
+      description:
+        'Export vault data, transactions, price history, or performance metrics in CSV or JSON format for external analysis. ' +
+        'Supports multiple data types: vaults (vault info with TVL/APY), transactions (deposit/redeem history), ' +
+        'price_history (OHLCV time-series), performance (TVL metrics over time). ' +
+        'Formats: CSV (RFC 4180 compliant with proper escaping) or JSON (structured objects). ' +
+        'Returns formatted data ready for import into spreadsheets, databases, or analytics tools. ' +
+        'Best for: spreadsheet analysis, reporting, custom analytics, data integration with external tools, accounting records. ' +
+        'Performance: ~200-400 tokens per export depending on data size. ' +
+        'No caching (exports generated on-demand with latest data). ' +
+        'Up to 1000 records per export.',
+      inputSchema: {
+        vaultAddresses: exportDataInputSchema.shape.vaultAddresses,
+        chainId: exportDataInputSchema.shape.chainId,
+        dataType: exportDataInputSchema.shape.dataType,
+        format: exportDataInputSchema.shape.format,
+      },
+    },
+    exportDataHandler
+  );
+
+  server.registerTool(
+    'analyze_risk',
+    {
+      description:
+        'Analyze vault risk with multi-factor scoring across TVL, concentration, volatility, age, and curator reputation. ' +
+        'Provides comprehensive risk assessment with individual factor breakdowns and overall risk level (Low/Medium/High/Critical). ' +
+        'Evaluates: TVL risk (liquidity and market validation), concentration risk (protocol-wide exposure), ' +
+        'volatility risk (price stability), age risk (operational track record), curator risk (reputation and experience). ' +
+        'Returns detailed risk analysis with scores (0-1 scale), risk levels with emoji indicators, and factor explanations. ' +
+        'Best for: investment decision-making, due diligence, portfolio risk monitoring, comparative vault analysis. ' +
+        'Performance: ~400-600 tokens per analysis. ' +
+        'Features 15-minute caching for risk stability.',
+      inputSchema: {
+        vaultAddress: analyzeRiskInputSchema.shape.vaultAddress,
+        chainId: analyzeRiskInputSchema.shape.chainId,
+      },
+    },
+    analyzeRiskHandler
+  );
+
+  server.registerTool(
+    'predict_yield',
+    {
+      description:
+        'Predict vault yield with ML-based forecasting using trend analysis and historical performance. ' +
+        'Analyzes APY trends using linear regression, exponential moving averages, and volatility analysis. ' +
+        'Provides projected returns for multiple timeframes (7d, 30d, 90d, 1y) with confidence intervals. ' +
+        'Returns current APY, predicted APY, trend direction, confidence score, and detailed insights. ' +
+        'Best for: investment planning, yield farming optimization, return projections, performance trend analysis. ' +
+        'Performance: ~400-600 tokens per prediction. ' +
+        'Features 60-minute caching for prediction stability.',
+      inputSchema: {
+        vaultAddress: predictYieldInputSchema.shape.vaultAddress,
+        chainId: predictYieldInputSchema.shape.chainId,
+        timeRange: predictYieldInputSchema.shape.timeRange,
+      },
+    },
+    predictYieldHandler
+  );
+
+  server.registerTool(
+    'optimize_portfolio',
+    {
+      description:
+        'Optimize portfolio allocation with rebalancing recommendations using multiple strategies. ' +
+        'Analyzes current holdings and provides optimal allocation based on selected strategy: ' +
+        'equal_weight (maximum diversification), risk_parity (balanced risk contribution), ' +
+        'max_sharpe (risk-adjusted returns), min_variance (minimized volatility). ' +
+        'Returns target allocations, rebalancing actions, portfolio metrics (expected return, risk, Sharpe ratio, diversification). ' +
+        'Calculates exact buy/sell amounts and identifies positions requiring adjustment. ' +
+        'Best for: portfolio rebalancing, risk-adjusted allocation, diversification improvement, performance optimization. ' +
+        'Performance: ~600-800 tokens per optimization. ' +
+        'Features 30-minute caching for optimization stability.',
+      inputSchema: {
+        vaultAddresses: optimizePortfolioInputSchema.shape.vaultAddresses,
+        chainId: optimizePortfolioInputSchema.shape.chainId,
+        currentPositions: optimizePortfolioInputSchema.shape.currentPositions,
+        strategy: optimizePortfolioInputSchema.shape.strategy,
+        rebalanceThreshold: optimizePortfolioInputSchema.shape.rebalanceThreshold,
+      },
+    },
+    optimizePortfolioHandler
   );
 
   // ==========================================

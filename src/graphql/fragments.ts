@@ -70,6 +70,7 @@ export interface VaultData {
 
   // Chain information
   chain: {
+    id: number;
     name: string;
     nativeToken: string;
     factory: string;
@@ -251,6 +252,7 @@ export const VAULT_FRAGMENT = `
       isVisible
     }
     chain {
+      id
       name
       nativeToken
       logoUrl

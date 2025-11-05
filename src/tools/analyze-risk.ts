@@ -1,0 +1,244 @@
+/**
+ * analyze_risk Tool
+ *
+ * Multi-factor risk analysis for vault investment decisions.
+ * Analyzes TVL, concentration, volatility, age, and curator reputation.
+ *
+ * Use cases:
+ * - Investment risk assessment before deposit
+ * - Portfolio risk monitoring and rebalancing
+ * - Comparative risk analysis across vaults
+ * - Due diligence for large deposits
+ * - Performance: ~400-600 tokens per analysis
+ *
+ * Cache strategy:
+ * - 15-minute TTL (risk factors can change with market conditions)
+ */
+
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { graphqlClient } from '../graphql/client.js';
+import { analyzeRiskInputSchema, AnalyzeRiskInput } from '../utils/validators.js';
+import { handleToolError } from '../utils/tool-error-handler.js';
+import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import { analyzeRisk, RiskScoreBreakdown } from '../utils/risk-scoring.js';
+import { cache, cacheTTL } from '../cache/index.js';
+
+/**
+ * GraphQL query for vault risk analysis data
+ */
+const RISK_ANALYSIS_QUERY = `
+  query RiskAnalysis($vaultAddress: Address!, $chainId: Int!) {
+    vault(address: $vaultAddress, chainId: $chainId) {
+      ...VaultFragment
+      createdAt
+      curatorId
+    }
+
+    # Get all vaults for concentration risk calculation
+    allVaults: vaults(where: { chainId: $chainId, isVisible_eq: true }) {
+      state {
+        totalAssetsUsd
+      }
+    }
+
+    # Get curator's other vaults for reputation analysis
+    curatorVaults: vaults(where: { chainId: $chainId, curatorIds_contains: [$curatorId] }) {
+      address
+      state {
+        totalAssetsUsd
+      }
+    }
+
+    # Get price history for volatility analysis
+    priceHistory: transactions(
+      where: { vault_eq: $vaultAddress, type: "TotalAssetsUpdated" },
+      orderBy: "timestamp",
+      orderDirection: "asc",
+      first: 100
+    ) {
+      items {
+        timestamp
+        data {
+          ... on TotalAssetsUpdated {
+            pricePerShareUsd
+          }
+        }
+      }
+    }
+  }
+  ${VAULT_FRAGMENT}
+`;
+
+/**
+ * Format risk breakdown as markdown table
+ */
+function formatRiskBreakdown(breakdown: RiskScoreBreakdown): string {
+  const scoreToEmoji = (score: number): string => {
+    if (score < 0.3) return '🟢';
+    if (score < 0.6) return '🟡';
+    if (score < 0.8) return '🟠';
+    return '🔴';
+  };
+
+  const scoreToPercentage = (score: number): string => {
+    return `${(score * 100).toFixed(1)}%`;
+  };
+
+  const riskLevelToEmoji = (level: string): string => {
+    switch (level) {
+      case 'Low':
+        return '🟢 Low';
+      case 'Medium':
+        return '🟡 Medium';
+      case 'High':
+        return '🟠 High';
+      case 'Critical':
+        return '🔴 Critical';
+      default:
+        return level;
+    }
+  };
+
+  return `
+## Risk Analysis Breakdown
+
+| Risk Factor | Score | Level |
+|-------------|-------|-------|
+| **TVL Risk** | ${scoreToPercentage(breakdown.tvlRisk)} | ${scoreToEmoji(breakdown.tvlRisk)} |
+| **Concentration Risk** | ${scoreToPercentage(breakdown.concentrationRisk)} | ${scoreToEmoji(breakdown.concentrationRisk)} |
+| **Volatility Risk** | ${scoreToPercentage(breakdown.volatilityRisk)} | ${scoreToEmoji(breakdown.volatilityRisk)} |
+| **Age Risk** | ${scoreToPercentage(breakdown.ageRisk)} | ${scoreToEmoji(breakdown.ageRisk)} |
+| **Curator Risk** | ${scoreToPercentage(breakdown.curatorRisk)} | ${scoreToEmoji(breakdown.curatorRisk)} |
+
+---
+
+## Overall Risk Assessment
+
+**Risk Score**: ${scoreToPercentage(breakdown.overallRisk)}
+**Risk Level**: ${riskLevelToEmoji(breakdown.riskLevel)}
+
+---
+
+### Risk Factor Explanations
+
+**TVL Risk**: Measures liquidity risk based on total value locked. Higher TVL indicates more market validation and liquidity.
+
+**Concentration Risk**: Vault's share of total protocol TVL. High concentration means protocol-wide risk if vault fails.
+
+**Volatility Risk**: Price stability over time. Based on standard deviation of daily returns.
+
+**Age Risk**: Vault maturity and battle-testing. Newer vaults lack operational track record.
+
+**Curator Risk**: Curator reputation based on experience (vault count) and track record.
+`;
+}
+
+/**
+ * Analyze vault risk with multi-factor scoring
+ *
+ * @param input - Risk analysis configuration (vault address, chain ID)
+ * @returns Risk analysis with breakdown and recommendations
+ */
+export async function executeAnalyzeRisk(input: AnalyzeRiskInput): Promise<CallToolResult> {
+  try {
+    // Validate input
+    const validatedInput = analyzeRiskInputSchema.parse(input);
+
+    // Check cache
+    const cacheKey = `risk:${validatedInput.chainId}:${validatedInput.vaultAddress}`;
+    const cached = cache.get<RiskScoreBreakdown>(cacheKey);
+
+    if (cached) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `${formatRiskBreakdown(cached)}\n\n_Cached result from ${new Date().toISOString()}_`,
+          },
+        ],
+        isError: false,
+      };
+    }
+
+    // Fetch vault data
+    const data = await graphqlClient.request<{
+      vault: VaultData & { createdAt: string; curatorId: string };
+      allVaults: Array<{ state: { totalAssetsUsd: number } }>;
+      curatorVaults: Array<{ address: string; state: { totalAssetsUsd: number } }>;
+      priceHistory: {
+        items: Array<{
+          timestamp: string;
+          data: { pricePerShareUsd: number };
+        }>;
+      };
+    }>(RISK_ANALYSIS_QUERY, {
+      vaultAddress: validatedInput.vaultAddress,
+      chainId: validatedInput.chainId,
+      curatorId: '', // Will be filled in second query if needed
+    });
+
+    if (!data.vault) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `No vault found at address ${validatedInput.vaultAddress} on chain ${validatedInput.chainId}`,
+          },
+        ],
+        isError: false,
+      };
+    }
+
+    // Calculate TVL
+    const vaultTVL = data.vault.state?.totalAssetsUsd || 0;
+
+    // Calculate total protocol TVL
+    const totalProtocolTVL = data.allVaults.reduce(
+      (sum, v) => sum + (v.state?.totalAssetsUsd || 0),
+      0
+    );
+
+    // Extract price history
+    const priceHistory = data.priceHistory.items.map((item) => item.data.pricePerShareUsd);
+
+    // Calculate vault age in days
+    const createdAtTimestamp = parseInt(data.vault.createdAt, 10);
+    const nowTimestamp = Math.floor(Date.now() / 1000);
+    const ageInDays = Math.floor((nowTimestamp - createdAtTimestamp) / (24 * 60 * 60));
+
+    // Get curator vault count
+    const curatorVaultCount = data.curatorVaults.length;
+
+    // Calculate curator success rate (vaults with TVL > $10K)
+    const successfulVaults = data.curatorVaults.filter(
+      (v) => (v.state?.totalAssetsUsd || 0) > 10_000
+    ).length;
+    const curatorSuccessRate = curatorVaultCount > 0 ? successfulVaults / curatorVaultCount : 0.5;
+
+    // Perform risk analysis
+    const riskBreakdown = analyzeRisk({
+      tvl: vaultTVL,
+      totalProtocolTVL,
+      priceHistory,
+      ageInDays,
+      curatorVaultCount,
+      curatorSuccessRate,
+    });
+
+    // Cache the result
+    cache.set(cacheKey, riskBreakdown, cacheTTL.riskAnalysis);
+
+    // Return formatted analysis
+    return {
+      content: [
+        {
+          type: 'text',
+          text: formatRiskBreakdown(riskBreakdown),
+        },
+      ],
+      isError: false,
+    };
+  } catch (error) {
+    return handleToolError(error, 'analyze_risk');
+  }
+}

@@ -81,93 +81,86 @@ Restart Claude Desktop and start asking questions:
 
 ## Available Tools
 
-### 1. `query_graphql` ✅
-Execute raw GraphQL queries for advanced use cases.
+Complete tool documentation available in [docs/tools/](./docs/tools/).
 
+| Tool | Description | Documentation |
+|------|-------------|---------------|
+| **query_graphql** | Execute raw GraphQL queries for advanced use cases | [→ Details](./docs/tools/query-graphql.md) |
+| **get_vault_data** | Get comprehensive vault information by address and chain | [→ Details](./docs/tools/get-vault-data.md) |
+| **get_user_portfolio** | Aggregate user holdings across all supported chains | [→ Details](./docs/tools/user-portfolio.md) |
+| **search_vaults** | Search and filter vaults with 20+ advanced criteria | [→ Details](./docs/tools/search-vaults.md) |
+| **get_vault_performance** | Historical metrics and performance analysis | [→ Details](./docs/tools/vault-performance.md) |
+| **get_transactions** | Query vault transaction history with flexible filtering | [→ Details](./docs/tools/get-transactions.md) |
+| **compare_vaults** | Side-by-side vault comparison with rankings | [→ Details](./docs/tools/compare-vaults.md) |
+| **get_price_history** | Historical share price data with OHLCV time-series | [→ Details](./docs/tools/price-history.md) |
+| **export_data** | Export vault data in CSV/JSON format | [→ Details](./docs/tools/export-data.md) |
+| **analyze_risk** | Multi-factor risk analysis with comprehensive scoring | [→ Details](./docs/tools/analyze-risk.md) |
+| **predict_yield** | ML-based yield forecasting with confidence intervals | [→ Details](./docs/tools/predict-yield.md) |
+
+**See also**: [Tool Selection Guide](./docs/tools/README.md#tool-selection-guide) | [Common Workflows](./docs/tools/README.md#common-workflows)
+
+## Quick Examples
+
+### Basic Vault Analysis
 ```
-"Run this GraphQL query: { vaults { items { symbol } } }"
-```
+"Show me vault details for 0x1234... on Arbitrum"
+→ Returns comprehensive vault data with current metrics
 
-### 2. `get_vault_data` ✅
-Get comprehensive vault information by address and chain.
-
-```
-"Get details for vault 0x1234... on Arbitrum"
-```
-
-**Note**: Returns all available vault fields. No field selection parameter - comprehensive data is always returned.
-
-### 3. `get_user_portfolio` ✅
-Aggregate user holdings across all supported chains with USD values.
-
-```
-"Show my complete portfolio"
-"Analyze my DeFi positions"
-```
-
-**Note**: Automatically queries all 12+ supported chains. No chain selection parameter needed.
-
-### 4. `search_vaults` ✅
-Search and filter vaults with advanced criteria (20+ filter options).
-
-```
-"Find WETH vaults on Ethereum with TVL > $5M"
-"Show me all visible vaults managed by curator X"
-"Search for vaults with APR > 10% on Arbitrum"
+"How has this vault performed over the last 30 days?"
+→ Returns TVL history, growth metrics, and trend analysis
 ```
 
-**Features**: Filter by asset, chain, TVL, capacity, curator, APR, visibility, and more.
-
-### 5. `get_vault_performance` ✅
-Historical metrics and performance analysis with time-series data.
-
+### Portfolio Management
 ```
-"Analyze vault 0x1234... performance over the last 90 days"
-"Show me TVL trends for the lgUSDC vault"
-"Compare performance across 7d, 30d, and 90d periods"
+"Analyze my portfolio at 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+→ Returns cross-chain positions sorted by USD value
+
+"What's my total exposure to USDC vaults?"
+→ Aggregates all USDC positions across chains
 ```
 
-**Supported time ranges**: 7d, 30d, 90d, 1y with summary statistics
+### Advanced Analytics
+```
+"Compare these 3 vaults and tell me which has the best risk-adjusted returns"
+→ Returns comparison table with rankings and metrics
 
-## Resources
+"Analyze the risk profile for vault 0x1234..."
+→ Returns multi-factor risk breakdown with insights
 
-### 1. GraphQL Schema (`lagoon://graphql-schema`)
-Complete GraphQL schema in SDL format with introspection.
+"Predict future yields for lgUSDC based on 90-day history"
+→ Returns ML-based forecast with confidence intervals
+```
 
-- **Format**: Text/Plain (SDL format)
-- **Caching**: 24-hour TTL
-- **Use Cases**: Query validation, type discovery, schema exploration
-- **Content**: All types, queries, mutations with documentation
+### Data Export & Reporting
+```
+"Export the top 10 vaults by TVL as CSV"
+→ Returns formatted CSV data for spreadsheet analysis
 
-### 2. DeFi Glossary (`lagoon://defi-glossary`)
-Comprehensive terminology guide for Lagoon DeFi Protocol.
+"Get transaction history for vault 0x1234... and export as JSON"
+→ Returns structured transaction data for external tools
+```
 
-- **Format**: Markdown
-- **Content**: 500+ lines covering vault concepts, financial metrics, transactions, fees, roles, calculations
-- **Sections**: Core concepts, financial metrics, operations, transaction types, risk assessment, best practices
-- **Use Cases**: Understanding vault mechanics, interpreting metrics, learning DeFi terminology
+## Resources & Prompts
 
-## Prompts
+### Resources
 
-### 1. Financial Analysis (`financial-analysis`)
-Structured guidance for analyzing vault performance and portfolios.
+- **GraphQL Schema** (`lagoon://graphql-schema`) - Complete GraphQL schema in SDL format with 24-hour caching
+- **DeFi Glossary** (`lagoon://defi-glossary`) - Comprehensive terminology guide for Lagoon DeFi Protocol (500+ lines)
 
-- **Analysis Frameworks**: Portfolio analysis, performance evaluation, discovery patterns
-- **Metrics Interpretation**: APR analysis, TVL trends, capacity assessment, volume patterns
-- **Risk Assessment**: LOW/MEDIUM/HIGH risk categorization with specific criteria
-- **Report Structure**: Executive summary, detailed findings, recommendations, risk disclosure
-- **Best Practices**: Data quality, communication, calculations, risk disclosure
+### Prompts
+
+- **Financial Analysis** (`financial-analysis`) - Structured guidance for analyzing vault performance and portfolios with risk assessment frameworks
 
 ## Development
 
-### Setup
+For development setup, testing, and contributing guidelines, see [DEVELOPMENT.md](./docs/DEVELOPMENT.md).
+
+### Quick Start
 
 ```bash
-# Clone repository
+# Clone and setup
 git clone https://github.com/yourorg/lagoon-mcp.git
 cd lagoon-mcp
-
-# Install dependencies
 npm install
 
 # Generate types from GraphQL schema
@@ -175,70 +168,27 @@ npm run codegen
 
 # Run in development mode
 npm run dev
+
+# Run tests
+npm test
 ```
 
 ### Project Structure
 
 ```
 lagoon-mcp/
-├── .claude/                    # Project documentation
-│   ├── PROJECT.md              # Overview and goals
-│   ├── DEVELOPMENT_PLAN.md     # Implementation roadmap
-│   └── BACKEND_CONTEXT.md      # GraphQL API reference
-├── docs/                       # Technical documentation
-│   ├── ARCHITECTURE.md         # System architecture
-│   ├── TOOLS_SPECIFICATION.md  # Tool specifications
-│   ├── DECISIONS.md            # Technical decisions
-│   └── SETUP.md                # Development setup
-├── src/                        # Source code
-│   ├── index.ts                # Entry point
-│   ├── server.ts               # MCP server setup
+├── docs/
+│   ├── DEVELOPMENT.md          # Development guide
+│   └── tools/                  # Individual tool documentation
+├── src/
 │   ├── tools/                  # Tool implementations
 │   ├── resources/              # MCP resources
 │   ├── prompts/                # MCP prompts
-│   ├── graphql/                # GraphQL client
+│   ├── graphql/                # GraphQL client and fragments
 │   ├── cache/                  # Caching layer
 │   └── utils/                  # Utilities
 ├── tests/                      # Test suite
 └── package.json
-```
-
-### Scripts
-
-```bash
-npm run dev          # Development mode with watch
-npm run build        # Compile TypeScript
-npm run test         # Run test suite
-npm run codegen      # Generate types from GraphQL schema
-npm run lint         # Lint code
-```
-
-### Testing
-
-```bash
-# Run all tests
-npm test
-
-# Run with coverage
-npm run test:coverage
-
-# Run specific test file
-npm test -- tests/tools/vault-data.test.ts
-```
-
-### Type Generation
-
-When the backend GraphQL schema changes:
-
-```bash
-# Regenerate TypeScript types
-npm run codegen
-
-# Verify types compile
-npm run build
-
-# Update tests if needed
-npm test
 ```
 
 ## Architecture
@@ -246,10 +196,10 @@ npm test
 ### System Flow
 
 ```
-┌─────────────┐         ┌──────────────┐         ┌─────────────┐
-│   Claude    │ ◄─MCP──►│  Lagoon MCP  │◄─GraphQL─►│  Backend   │
-│    Code     │         │    Server    │         │     API     │
-└─────────────┘         └──────────────┘         └─────────────┘
+┌─────────────┐         ┌──────────────┐           ┌─────────────┐
+│   Claude    │ ◄─MCP──►│  Lagoon MCP  │◄─GraphQL─►│   Backend   │
+│             │         │    Server    │           │     API     │
+└─────────────┘         └──────────────┘           └─────────────┘
                               │
                               │ Cache
                               ▼
@@ -266,16 +216,6 @@ npm test
 - **Caching Layer**: In-memory cache with TTL (`node-cache`)
 - **Validation**: Runtime input validation (`zod`)
 
-### Modern Implementation
-
-Uses **McpServer API** from `@modelcontextprotocol/sdk` v1.0.0+ for:
-- Automatic capability negotiation with Claude Desktop
-- Clean registration patterns (`registerTool`, `registerResource`, `registerPrompt`)
-- Direct Zod schema usage via `.shape` property
-- Future-proof architecture for dynamic tool registration
-
-See [`claudedocs/MCPSERVER_MIGRATION.md`](./claudedocs/MCPSERVER_MIGRATION.md) for implementation details.
-
 ### Caching Strategy
 
 | Data Type | TTL | Rationale |
@@ -284,36 +224,9 @@ See [`claudedocs/MCPSERVER_MIGRATION.md`](./claudedocs/MCPSERVER_MIGRATION.md) f
 | User portfolios | 5 min | More dynamic |
 | Search results | 10 min | Balance between freshness and performance |
 | Performance data | 30 min | Historical, less time-sensitive |
+| Risk analysis | 15 min | Multi-factor metrics with moderate volatility |
+| Yield predictions | 60 min | ML-based forecasts valid for longer periods |
 | Schema | 24 hours | Rarely changes |
-
-## Documentation
-
-- **[PROJECT.md](./.claude/PROJECT.md)** - Project overview and goals
-- **[DEVELOPMENT_PLAN.md](./.claude/DEVELOPMENT_PLAN.md)** - Phase-by-phase implementation roadmap
-- **[BACKEND_CONTEXT.md](./.claude/BACKEND_CONTEXT.md)** - GraphQL API reference and schema details
-- **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - System architecture and design patterns
-- **[TOOLS_SPECIFICATION.md](./docs/TOOLS_SPECIFICATION.md)** - Detailed tool specifications
-- **[DECISIONS.md](./docs/DECISIONS.md)** - Architecture Decision Records (ADRs)
-
-## Contributing
-
-### Development Workflow
-
-1. Create feature branch: `git checkout -b feature/your-feature`
-2. Make changes and add tests
-3. Run tests: `npm test`
-4. Type check: `npm run build`
-5. Commit with conventional commits: `feat: add new tool`
-6. Push and create PR
-
-### Commit Convention
-
-- `feat:` New feature
-- `fix:` Bug fix
-- `docs:` Documentation changes
-- `test:` Test changes
-- `refactor:` Code refactoring
-- `chore:` Build/tooling changes
 
 ## Troubleshooting
 
@@ -349,38 +262,6 @@ Type 'unknown' is not assignable to type 'Vault'
 
 **Solution**: Run `npm run codegen` to regenerate types from updated schema.
 
-## Roadmap
-
-### Phase 1: Infrastructure ✅ COMPLETE
-- ✅ Project setup and configuration
-- ✅ GraphQL type generation system
-- ✅ Caching layer with TTL strategy
-- ✅ Validation framework (Zod schemas)
-- ✅ Comprehensive documentation
-
-### Phase 2: Core Tools ✅ COMPLETE
-- ✅ `query_graphql` - Raw GraphQL query execution
-- ✅ `get_vault_data` - Comprehensive vault information
-- ✅ `get_user_portfolio` - Cross-chain portfolio aggregation
-- ✅ Shared utilities (error handling, response formatting)
-- ✅ Comprehensive test coverage (48 tests)
-- ✅ Manual testing with Claude Desktop
-
-### Phase 3: Resources & Prompts ✅ COMPLETE
-- ✅ `search_vaults` - Advanced vault search and filtering with 20+ filter options
-- ✅ `get_vault_performance` - Historical metrics and performance analysis
-- ✅ GraphQL schema resource - Introspection-based schema access with SDL format
-- ✅ DeFi glossary resource - Comprehensive terminology guide (500+ lines)
-- ✅ Financial analysis prompt - Analysis guidance with best practices
-- ✅ Comprehensive test coverage (91 tests)
-
-### Phase 4: Advanced Features (FUTURE)
-- [ ] Streaming responses for large datasets
-- [ ] Multi-vault comparison tool
-- [ ] Historical price data integration
-- [ ] Export capabilities (CSV, JSON)
-- [ ] Advanced analytics and reporting
-
 ## FAQ
 
 **Q: Can I use this with other Claude clients?**
@@ -406,7 +287,7 @@ MIT License - see [LICENSE](./LICENSE) for details
 
 - **Issues**: [GitHub Issues](https://github.com/yourorg/lagoon-mcp/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/yourorg/lagoon-mcp/discussions)
-- **Documentation**: [Project Docs](./.claude/)
+- **Documentation**: [Tool Docs](./docs/tools/) | [Development Guide](./docs/DEVELOPMENT.md)
 
 ## Acknowledgments
 
