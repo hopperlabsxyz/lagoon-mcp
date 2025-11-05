@@ -14,6 +14,8 @@ export interface RiskScoreBreakdown {
   volatilityRisk: number;
   ageRisk: number;
   curatorRisk: number;
+  feeRisk: number;
+  liquidityRisk: number;
   overallRisk: number;
   riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
 }
@@ -193,6 +195,68 @@ export function calculateCuratorRisk(
 }
 
 /**
+ * Calculate fee risk score
+ * Based on management fees and performance fee impact
+ *
+ * @param managementFee - Annual management fee percentage (e.g., 2 for 2%)
+ * @param performanceFee - Performance fee percentage (e.g., 20 for 20%)
+ * @param performanceFeeActive - Whether performance fee is currently active (above HWM)
+ * @returns Risk score 0-1 (0 = lowest risk, 1 = highest risk)
+ */
+export function calculateFeeRisk(
+  managementFee: number,
+  performanceFee: number,
+  performanceFeeActive: boolean
+): number {
+  // Calculate total fee drag (worst case scenario)
+  const annualFeeDrag = managementFee + (performanceFeeActive ? performanceFee * 0.1 : 0);
+
+  // Score based on total fee impact
+  if (annualFeeDrag < 1) {
+    return 0.1; // Very low fees = low risk
+  } else if (annualFeeDrag < 2) {
+    return 0.3; // Low fees
+  } else if (annualFeeDrag < 3) {
+    return 0.5; // Moderate fees
+  } else if (annualFeeDrag < 5) {
+    return 0.7; // High fees
+  } else {
+    return 1.0; // Very high fees = critical risk
+  }
+}
+
+/**
+ * Calculate liquidity risk score
+ * Based on safe assets vs pending redemptions coverage
+ *
+ * @param safeAssets - Assets available for immediate redemptions (USD)
+ * @param pendingRedemptions - Outstanding redemption requests (USD)
+ * @returns Risk score 0-1 (0 = lowest risk, 1 = highest risk)
+ */
+export function calculateLiquidityRisk(safeAssets: number, pendingRedemptions: number): number {
+  // If no pending redemptions, liquidity risk is low
+  if (pendingRedemptions === 0) {
+    return 0.1; // No redemption pressure = low risk
+  }
+
+  // Calculate coverage ratio
+  const coverageRatio = safeAssets / pendingRedemptions;
+
+  // Score based on coverage
+  if (coverageRatio >= 2.0) {
+    return 0.1; // 200%+ coverage = very low risk
+  } else if (coverageRatio >= 1.5) {
+    return 0.3; // 150%+ coverage = low risk
+  } else if (coverageRatio >= 1.0) {
+    return 0.5; // 100%+ coverage = medium risk
+  } else if (coverageRatio >= 0.5) {
+    return 0.7; // 50%+ coverage = high risk
+  } else {
+    return 1.0; // <50% coverage = critical risk
+  }
+}
+
+/**
  * Calculate overall risk score with weighted factors
  *
  * @param breakdown - Individual risk factor scores
@@ -204,13 +268,15 @@ export function calculateOverallRisk(
   overallRisk: number;
   riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
 } {
-  // Weighted average of risk factors
+  // Weighted average of 7 risk factors (14.3% weight each)
   const weights = {
-    tvl: 0.25,
-    concentration: 0.15,
-    volatility: 0.3,
-    age: 0.2,
-    curator: 0.1,
+    tvl: 0.143,
+    concentration: 0.143,
+    volatility: 0.143,
+    age: 0.143,
+    curator: 0.143,
+    fee: 0.143,
+    liquidity: 0.142, // 0.142 to ensure total = 1.0
   };
 
   const overallRisk =
@@ -218,7 +284,9 @@ export function calculateOverallRisk(
     breakdown.concentrationRisk * weights.concentration +
     breakdown.volatilityRisk * weights.volatility +
     breakdown.ageRisk * weights.age +
-    breakdown.curatorRisk * weights.curator;
+    breakdown.curatorRisk * weights.curator +
+    breakdown.feeRisk * weights.fee +
+    breakdown.liquidityRisk * weights.liquidity;
 
   // Determine risk level
   let riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
@@ -248,12 +316,23 @@ export function analyzeRisk(params: {
   ageInDays: number;
   curatorVaultCount: number;
   curatorSuccessRate?: number;
+  managementFee: number;
+  performanceFee: number;
+  performanceFeeActive: boolean;
+  safeAssets: number;
+  pendingRedemptions: number;
 }): RiskScoreBreakdown {
   const tvlRisk = calculateTVLRisk(params.tvl);
   const concentrationRisk = calculateConcentrationRisk(params.tvl, params.totalProtocolTVL);
   const volatilityRisk = calculateVolatilityRisk(params.priceHistory);
   const ageRisk = calculateAgeRisk(params.ageInDays);
   const curatorRisk = calculateCuratorRisk(params.curatorVaultCount, params.curatorSuccessRate);
+  const feeRisk = calculateFeeRisk(
+    params.managementFee,
+    params.performanceFee,
+    params.performanceFeeActive
+  );
+  const liquidityRisk = calculateLiquidityRisk(params.safeAssets, params.pendingRedemptions);
 
   const { overallRisk, riskLevel } = calculateOverallRisk({
     tvlRisk,
@@ -261,6 +340,8 @@ export function analyzeRisk(params: {
     volatilityRisk,
     ageRisk,
     curatorRisk,
+    feeRisk,
+    liquidityRisk,
   });
 
   return {
@@ -269,6 +350,8 @@ export function analyzeRisk(params: {
     volatilityRisk,
     ageRisk,
     curatorRisk,
+    feeRisk,
+    liquidityRisk,
     overallRisk,
     riskLevel,
   };

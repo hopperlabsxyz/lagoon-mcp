@@ -394,11 +394,12 @@ describe('get_vault_performance Tool', () => {
       ]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
-      // Act - First call (cache miss)
+      // Act - First call (cache miss) - disable SDK calculations to isolate cache test
       await executeGetVaultPerformance({
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Act - Second call (cache hit)
@@ -406,6 +407,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -426,16 +428,18 @@ describe('get_vault_performance Tool', () => {
         .mockResolvedValueOnce(mockResponse7d)
         .mockResolvedValueOnce(mockResponse30d);
 
-      // Act
+      // Act - disable SDK calculations to isolate cache test
       await executeGetVaultPerformance({
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
       await executeGetVaultPerformance({
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '30d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -590,6 +594,131 @@ describe('get_vault_performance Tool', () => {
       expect(result.isError).toBeUndefined();
       const data = JSON.parse(result.content[0].text as string);
       expect(data.hasMoreData).toBe(true);
+    });
+  });
+
+  describe('SDK APR Calculations', () => {
+    it('should include SDK APR data by default', async () => {
+      // Arrange
+      const now = Math.floor(Date.now() / 1000);
+      const mockPerformanceResponse = createMockPerformanceResponse([
+        createMockTotalAssetsUpdated(now - 3600, 1000000),
+      ]);
+
+      const mockPeriodSummariesResponse = {
+        periodSummaries: [
+          {
+            timestamp: (now - 30 * 24 * 60 * 60).toString(),
+            totalAssetsAtStart: '1000000000000',
+            totalSupplyAtStart: '1000000000000',
+          },
+        ],
+      };
+
+      const mockVaultResponse = {
+        vaultByAddress: {
+          address: mockVaultAddress,
+          decimals: 18,
+          asset: {
+            decimals: 6,
+          },
+          state: {
+            pricePerShare: '1025000',
+          },
+        },
+      };
+
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request')
+        .mockResolvedValueOnce(mockPerformanceResponse)
+        .mockResolvedValueOnce(mockPeriodSummariesResponse)
+        .mockResolvedValueOnce(mockVaultResponse);
+
+      // Act
+      const result = await executeGetVaultPerformance({
+        vaultAddress: mockVaultAddress,
+        chainId: mockChainId,
+        timeRange: '7d',
+      });
+
+      // Assert
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0].text as string);
+      expect(data).toHaveProperty('sdkCalculatedAPR');
+    });
+
+    it('should exclude SDK APR data when includeSDKCalculations is false', async () => {
+      // Arrange
+      const now = Math.floor(Date.now() / 1000);
+      const mockResponse = createMockPerformanceResponse([
+        createMockTotalAssetsUpdated(now - 3600, 1000000),
+      ]);
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
+
+      // Act
+      const result = await executeGetVaultPerformance({
+        vaultAddress: mockVaultAddress,
+        chainId: mockChainId,
+        timeRange: '7d',
+        includeSDKCalculations: false,
+      });
+
+      // Assert
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0].text as string);
+      expect(data).not.toHaveProperty('sdkCalculatedAPR');
+    });
+
+    it('should handle missing period summaries gracefully', async () => {
+      // Arrange
+      const now = Math.floor(Date.now() / 1000);
+      const mockPerformanceResponse = createMockPerformanceResponse([
+        createMockTotalAssetsUpdated(now - 3600, 1000000),
+      ]);
+
+      const mockPeriodSummariesResponse = {
+        periodSummaries: [],
+      };
+
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request')
+        .mockResolvedValueOnce(mockPerformanceResponse)
+        .mockResolvedValueOnce(mockPeriodSummariesResponse);
+
+      // Act
+      const result = await executeGetVaultPerformance({
+        vaultAddress: mockVaultAddress,
+        chainId: mockChainId,
+        timeRange: '7d',
+      });
+
+      // Assert
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0].text as string);
+      expect(data).not.toHaveProperty('sdkCalculatedAPR');
+    });
+
+    it('should handle SDK APR calculation errors gracefully', async () => {
+      // Arrange
+      const now = Math.floor(Date.now() / 1000);
+      const mockPerformanceResponse = createMockPerformanceResponse([
+        createMockTotalAssetsUpdated(now - 3600, 1000000),
+      ]);
+
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request')
+        .mockResolvedValueOnce(mockPerformanceResponse)
+        .mockRejectedValueOnce(new Error('Period summaries fetch failed'));
+
+      // Act
+      const result = await executeGetVaultPerformance({
+        vaultAddress: mockVaultAddress,
+        chainId: mockChainId,
+        timeRange: '7d',
+      });
+
+      // Assert - Main response should still succeed
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.content[0].text as string);
+      expect(data).toHaveProperty('metrics');
+      expect(data).not.toHaveProperty('sdkCalculatedAPR');
     });
   });
 });

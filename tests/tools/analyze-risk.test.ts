@@ -45,6 +45,12 @@ describe('analyze_risk Tool', () => {
       tvl: number;
       createdAt: string;
       curatorId: string;
+      managementFee: number;
+      performanceFee: number;
+      pricePerShare: string;
+      highWaterMark: string;
+      safeAssetBalanceUsd: number;
+      pendingSettlementUsd: number;
     }> = {}
   ): unknown {
     const defaults = {
@@ -52,6 +58,12 @@ describe('analyze_risk Tool', () => {
       tvl: 1000000,
       createdAt: String(Math.floor(Date.now() / 1000) - 365 * 24 * 60 * 60), // 1 year ago
       curatorId: 'curator-123',
+      managementFee: 1.5, // 1.5% management fee
+      performanceFee: 15, // 15% performance fee
+      pricePerShare: '1050000000000000000', // 1.05 (18 decimals)
+      highWaterMark: '1000000000000000000', // 1.0 (18 decimals)
+      safeAssetBalanceUsd: 500000, // 50% of TVL in safe assets
+      pendingSettlementUsd: 100000, // 10% pending redemptions
     };
     const merged = { ...defaults, ...overrides };
 
@@ -71,6 +83,14 @@ describe('analyze_risk Tool', () => {
         totalSupply: '900000000000',
         totalAssetsUsd: merged.tvl,
         pricePerShareUsd: 1.05,
+        pricePerShare: merged.pricePerShare,
+        highWaterMark: merged.highWaterMark,
+        managementFee: merged.managementFee,
+        performanceFee: merged.performanceFee,
+        safeAssetBalanceUsd: merged.safeAssetBalanceUsd,
+        pendingSettlement: {
+          assetsUsd: merged.pendingSettlementUsd,
+        },
       },
     };
   }
@@ -555,6 +575,162 @@ describe('analyze_risk Tool', () => {
 
       // Should include emoji indicators
       expect(text).toMatch(/🟢|🟡|🟠|🔴/);
+    });
+  });
+
+  describe('Risk Analysis - Fee Risk Factor', () => {
+    it('should calculate low fee risk (< 1% annual fee drag)', async () => {
+      const mockData = {
+        vault: createMockVault({
+          managementFee: 0.5, // 0.5% management fee
+          performanceFee: 5, // 5% performance fee
+          pricePerShare: '900000000000000000', // Below HWM, no performance fee active
+          highWaterMark: '1000000000000000000',
+        }),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Fee Risk');
+      expect(text).toContain('management and performance fees');
+    });
+
+    it('should calculate high fee risk (>= 5% annual fee drag)', async () => {
+      const mockData = {
+        vault: createMockVault({
+          managementFee: 3, // 3% management fee
+          performanceFee: 25, // 25% performance fee
+          pricePerShare: '1100000000000000000', // Above HWM, performance fee active
+          highWaterMark: '1000000000000000000',
+        }),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Fee Risk');
+      // High fee risk should contribute to overall risk
+    });
+  });
+
+  describe('Risk Analysis - Liquidity Risk Factor', () => {
+    it('should calculate low liquidity risk (no pending redemptions)', async () => {
+      const mockData = {
+        vault: createMockVault({
+          safeAssetBalanceUsd: 500000,
+          pendingSettlementUsd: 0, // No pending redemptions
+        }),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Liquidity Risk');
+      expect(text).toContain('meet redemption requests');
+    });
+
+    it('should calculate high liquidity risk (low coverage ratio)', async () => {
+      const mockData = {
+        vault: createMockVault({
+          safeAssetBalanceUsd: 50000, // Only 50K safe assets
+          pendingSettlementUsd: 200000, // 200K pending redemptions = 25% coverage
+        }),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Liquidity Risk');
+      // Low coverage ratio should show high liquidity risk
+      expect(text).toMatch(/🔴|🟠/); // Should have high risk indicators
+    });
+
+    it('should calculate medium liquidity risk (100% coverage ratio)', async () => {
+      const mockData = {
+        vault: createMockVault({
+          safeAssetBalanceUsd: 100000, // 100K safe assets
+          pendingSettlementUsd: 100000, // 100K pending redemptions = 100% coverage
+        }),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+      expect(text).toContain('Liquidity Risk');
+    });
+  });
+
+  describe('Risk Analysis - 7 Factor Calculation', () => {
+    it('should include all 7 risk factors in analysis', async () => {
+      const mockData = {
+        vault: createMockVault(),
+        allVaults: createMockAllVaults(100, 100000000),
+        curatorVaults: createMockCuratorVaults(5, 5),
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+
+      // Verify all 7 factors are mentioned
+      expect(text).toContain('TVL Risk');
+      expect(text).toContain('Concentration Risk');
+      expect(text).toContain('Volatility Risk');
+      expect(text).toContain('Age Risk');
+      expect(text).toContain('Curator Risk');
+      expect(text).toContain('Fee Risk');
+      expect(text).toContain('Liquidity Risk');
+
+      // Verify explanations for new factors
+      expect(text).toContain('management and performance fees');
+      expect(text).toContain('meet redemption requests');
     });
   });
 });

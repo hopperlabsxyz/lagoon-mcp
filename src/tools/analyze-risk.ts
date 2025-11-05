@@ -109,6 +109,8 @@ function formatRiskBreakdown(breakdown: RiskScoreBreakdown): string {
 | **Volatility Risk** | ${scoreToPercentage(breakdown.volatilityRisk)} | ${scoreToEmoji(breakdown.volatilityRisk)} |
 | **Age Risk** | ${scoreToPercentage(breakdown.ageRisk)} | ${scoreToEmoji(breakdown.ageRisk)} |
 | **Curator Risk** | ${scoreToPercentage(breakdown.curatorRisk)} | ${scoreToEmoji(breakdown.curatorRisk)} |
+| **Fee Risk** | ${scoreToPercentage(breakdown.feeRisk)} | ${scoreToEmoji(breakdown.feeRisk)} |
+| **Liquidity Risk** | ${scoreToPercentage(breakdown.liquidityRisk)} | ${scoreToEmoji(breakdown.liquidityRisk)} |
 
 ---
 
@@ -130,6 +132,10 @@ function formatRiskBreakdown(breakdown: RiskScoreBreakdown): string {
 **Age Risk**: Vault maturity and battle-testing. Newer vaults lack operational track record.
 
 **Curator Risk**: Curator reputation based on experience (vault count) and track record.
+
+**Fee Risk**: Impact of management and performance fees on returns. Higher fees reduce net investor returns.
+
+**Liquidity Risk**: Ability to meet redemption requests. Based on safe asset coverage of pending redemptions.
 `;
 }
 
@@ -215,6 +221,17 @@ export async function executeAnalyzeRisk(input: AnalyzeRiskInput): Promise<CallT
     ).length;
     const curatorSuccessRate = curatorVaultCount > 0 ? successfulVaults / curatorVaultCount : 0.5;
 
+    // Extract fee data
+    const managementFee = data.vault.state?.managementFee || 0;
+    const performanceFee = data.vault.state?.performanceFee || 0;
+    const pricePerShare = BigInt(data.vault.state?.pricePerShare || '0');
+    const highWaterMark = BigInt(data.vault.state?.highWaterMark || '0');
+    const performanceFeeActive = pricePerShare > highWaterMark;
+
+    // Extract liquidity data
+    const safeAssets = data.vault.state?.safeAssetBalanceUsd || 0;
+    const pendingRedemptions = data.vault.state?.pendingSettlement?.assetsUsd || 0;
+
     // Perform risk analysis
     const riskBreakdown = analyzeRisk({
       tvl: vaultTVL,
@@ -223,6 +240,11 @@ export async function executeAnalyzeRisk(input: AnalyzeRiskInput): Promise<CallT
       ageInDays,
       curatorVaultCount,
       curatorSuccessRate,
+      managementFee,
+      performanceFee,
+      performanceFeeActive,
+      safeAssets,
+      pendingRedemptions,
     });
 
     // Cache the result

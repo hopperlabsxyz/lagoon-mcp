@@ -32,57 +32,68 @@ Historical metrics and performance analysis with time-series data for TVL, depos
   - `"90d"` = Last 90 days
   - `"1y"` = Last 1 year
 
+- `includeSDKCalculations` (boolean): Include SDK-calculated APR data (default: true)
+  - When enabled, includes protocol-accurate APR calculations using Lagoon SDK
+  - Fetches period summaries and calculates 30-day and inception APR
+  - Gracefully degrades if data unavailable (new vaults)
+
 ## Return Format
 
-Returns time-series data with summary statistics:
+Returns time-series metrics with summary statistics and optional SDK-calculated APR:
 
 ```json
 {
-  "vault": {
-    "address": "0x1234...",
-    "chainId": 42161,
-    "symbol": "lgUSDC"
-  },
+  "vaultAddress": "0x1234567890123456789012345678901234567890",
+  "chainId": 42161,
   "timeRange": "30d",
-  "metrics": {
-    "tvl": [
-      {
-        "timestamp": "2025-01-01T00:00:00Z",
-        "value": 1234567.89,
-        "change24h": 2.34
-      }
-    ],
-    "deposits": [
-      {
-        "timestamp": "2025-01-01T00:00:00Z",
-        "count": 15,
-        "volumeUsd": 45678.90
-      }
-    ],
-    "withdrawals": [
-      {
-        "timestamp": "2025-01-01T00:00:00Z",
-        "count": 8,
-        "volumeUsd": 23456.78
-      }
-    ],
-    "sharePrice": [
-      {
-        "timestamp": "2025-01-01T00:00:00Z",
-        "price": "1.045678"
-      }
-    ]
-  },
+  "metrics": [
+    {
+      "timestamp": 1704067200,
+      "totalAssetsUsd": 1234567.89,
+      "blockNumber": "12345678"
+    }
+  ],
   "summary": {
-    "startTvl": 1000000.00,
-    "endTvl": 1234567.89,
-    "tvlGrowth": 23.46,
-    "avgDailyDeposits": 15234.56,
-    "avgDailyWithdrawals": 7890.12,
-    "sharePriceGrowth": 4.57
+    "startValue": 1000000.00,
+    "endValue": 1234567.89,
+    "percentChange": 23.46,
+    "volumeUsd": 567890.12,
+    "transactionCount": 342
+  },
+  "hasMoreData": false,
+  "sdkCalculatedAPR": {
+    "method": "Lagoon SDK v0.10.1",
+    "dataSource": "Lagoon GraphQL period summaries",
+    "thirtyDay": {
+      "timestamp": 1701475200,
+      "pricePerShare": "1025000",
+      "pricePerShareDecimal": "1.025000",
+      "apr": 30.42
+    },
+    "inception": {
+      "timestamp": 1696118400,
+      "pricePerShare": "1000000",
+      "pricePerShareDecimal": "1.000000",
+      "apr": 12.75
+    }
   }
 }
 ```
+
+### SDK-Calculated APR Fields
+
+When `includeSDKCalculations` is true (default), the response includes:
+
+- `sdkCalculatedAPR.method`: SDK version used for calculations
+- `sdkCalculatedAPR.dataSource`: Source of historical data
+- `sdkCalculatedAPR.thirtyDay`: 30-day APR calculation (if available)
+  - `timestamp`: Unix timestamp of historical price point
+  - `pricePerShare`: Raw price per share (wei format)
+  - `pricePerShareDecimal`: Human-readable price per share
+  - `apr`: Annualized percentage return (e.g., 30.42 = 30.42%)
+- `sdkCalculatedAPR.inception`: Inception APR from vault creation (if available)
+
+**Note**: SDK APR calculations are gracefully degraded for new vaults with insufficient history.
 
 ## Examples
 
@@ -135,15 +146,30 @@ Uses 7d time range to show recent deposit/withdrawal activity.
 
 ## Implementation Notes
 
+### SDK APR Methodology
+
+The SDK-calculated APR uses Lagoon protocol's official calculation logic:
+
+1. **Data Collection**: Fetches historical period summaries from GraphQL
+2. **Price Per Share Calculation**: Uses `VaultUtils.convertToAssets()` for protocol-accurate pricing
+3. **APR Calculation**: Annualizes price per share changes over time
+4. **Graceful Degradation**: Returns undefined for new vaults with <30 days history
+
+**Advantages over GraphQL APR**:
+- Matches smart contract logic exactly
+- Uses same SDK as frontend application
+- Production-validated patterns from frontend-dapp-v2
+- Handles edge cases (zero supply, decimal offsets)
+
 ### Time-Series Granularity
 
 Data points returned based on time range:
-- **7d**: Hourly or 4-hour intervals
-- **30d**: Daily intervals
-- **90d**: Daily intervals
-- **1y**: Weekly intervals
+- **7d**: All available TotalAssetsUpdated and PeriodSummary transactions
+- **30d**: All available TotalAssetsUpdated and PeriodSummary transactions
+- **90d**: All available TotalAssetsUpdated and PeriodSummary transactions
+- **1y**: All available TotalAssetsUpdated and PeriodSummary transactions
 
-Backend determines optimal granularity for readability and performance.
+Data granularity determined by transaction frequency (not sampled).
 
 ### Summary Statistics
 

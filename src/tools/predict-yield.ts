@@ -104,29 +104,77 @@ function formatYieldPrediction(
   const confidenceEmoji =
     prediction.confidence > 0.7 ? '🟢' : prediction.confidence > 0.4 ? '🟡' : '🔴';
 
-  return `
+  const hasFeeData = prediction.feeAdjustedAPY !== undefined && prediction.feeImpact;
+
+  let output = `
 ## Yield Prediction: ${vaultName}
 
 ### Current Performance
 - **Current APY**: ${prediction.currentAPY.toFixed(2)}%
-- **Predicted APY**: ${prediction.predictedAPY.toFixed(2)}%
+- **Predicted APY**: ${prediction.predictedAPY.toFixed(2)}%${hasFeeData ? ` (Gross)` : ''}
+${hasFeeData ? `- **Predicted Net APY**: ${prediction.feeAdjustedAPY!.toFixed(2)}% (After Fees)` : ''}
 - **Trend**: ${trendEmoji} ${prediction.trend.charAt(0).toUpperCase() + prediction.trend.slice(1)}
 - **Confidence**: ${confidenceEmoji} ${(prediction.confidence * 100).toFixed(0)}%
 
 ---
+`;
 
+  if (hasFeeData) {
+    output += `
+### Fee Impact
+
+- **Management Fee**: ${prediction.feeImpact!.managementFee.toFixed(2)}% annually
+- **Performance Fee**: ${prediction.feeImpact!.performanceFee.toFixed(2)}%${prediction.feeImpact!.performanceFeeActive ? ' (Currently Active - Above High Water Mark)' : ' (Inactive - Below High Water Mark)'}
+- **Total Annual Fee Drag**: ${prediction.feeImpact!.totalAnnualFeeDrag.toFixed(2)}%
+- **Net Impact**: Reduces predicted returns from ${prediction.predictedAPY.toFixed(2)}% to ${prediction.feeAdjustedAPY!.toFixed(2)}%
+
+---
+`;
+  }
+
+  output += `
 ### Projected Returns
 
 Based on ${timeRange} historical data:
 
+`;
+
+  if (hasFeeData) {
+    output += `#### Gross Returns (Before Fees)
+
 | Timeframe | Expected Return | Range (Min-Max) |
 |-----------|----------------|-----------------|
 ${prediction.projectedReturns
-  .map((p) => {
-    return `| **${p.timeframe}** | ${p.expectedReturn.toFixed(2)}% | ${p.minReturn.toFixed(2)}% - ${p.maxReturn.toFixed(2)}% |`;
-  })
+  .map(
+    (p) =>
+      `| **${p.timeframe}** | ${p.expectedReturn.toFixed(2)}% | ${p.minReturn.toFixed(2)}% - ${p.maxReturn.toFixed(2)}% |`
+  )
   .join('\n')}
 
+#### Net Returns (After Fees)
+
+| Timeframe | Expected Return | Range (Min-Max) |
+|-----------|----------------|-----------------|
+${prediction
+  .feeAdjustedReturns!.map(
+    (p) =>
+      `| **${p.timeframe}** | ${p.expectedReturn.toFixed(2)}% | ${p.minReturn.toFixed(2)}% - ${p.maxReturn.toFixed(2)}% |`
+  )
+  .join('\n')}
+`;
+  } else {
+    output += `| Timeframe | Expected Return | Range (Min-Max) |
+|-----------|----------------|-----------------|
+${prediction.projectedReturns
+  .map(
+    (p) =>
+      `| **${p.timeframe}** | ${p.expectedReturn.toFixed(2)}% | ${p.minReturn.toFixed(2)}% - ${p.maxReturn.toFixed(2)}% |`
+  )
+  .join('\n')}
+`;
+  }
+
+  output += `
 ---
 
 ### Key Insights
@@ -145,6 +193,8 @@ This prediction uses:
 
 **Note**: Predictions are estimates based on historical performance. Actual returns may vary due to market conditions, protocol changes, and external factors.
 `;
+
+  return output;
 }
 
 /**
@@ -229,8 +279,27 @@ export async function executePredictYield(input: PredictYieldInput): Promise<Cal
     // If no PeriodSummary data available, prediction will have low confidence
     // Historical APY data is required for meaningful predictions
 
-    // Perform yield prediction
-    const prediction = predictYield(historicalData);
+    // Extract fee data for fee-adjusted predictions
+    const managementFee = data.vault.state?.managementFee || 0;
+    const performanceFee = data.vault.state?.performanceFee || 0;
+    const pricePerShare = BigInt(data.vault.state?.pricePerShare || '0');
+    const highWaterMark = BigInt(data.vault.state?.highWaterMark || '0');
+    const performanceFeeActive = pricePerShare > highWaterMark;
+
+    // Only pass fee parameters if vault has meaningful fees
+    const hasFees = managementFee > 0 || performanceFee > 0;
+
+    // Perform yield prediction with optional fee parameters
+    const prediction = predictYield(
+      historicalData,
+      hasFees
+        ? {
+            managementFee,
+            performanceFee,
+            performanceFeeActive,
+          }
+        : undefined
+    );
 
     // Cache the result
     const cacheValue = {

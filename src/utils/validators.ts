@@ -108,6 +108,7 @@ export const getVaultPerformanceInputSchema = z.object({
   timeRange: z.enum(['7d', '30d', '90d', '1y'], {
     errorMap: () => ({ message: 'Time range must be one of: 7d, 30d, 90d, 1y' }),
   }),
+  includeSDKCalculations: z.boolean().optional().default(true),
 });
 
 // get_transactions input

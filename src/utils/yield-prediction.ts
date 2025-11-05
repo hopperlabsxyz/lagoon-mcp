@@ -11,6 +11,7 @@
 export interface YieldPrediction {
   currentAPY: number;
   predictedAPY: number;
+  feeAdjustedAPY?: number; // Predicted APY after fees (net return to investor)
   confidence: number; // 0-1 scale
   trend: 'increasing' | 'decreasing' | 'stable';
   projectedReturns: {
@@ -19,6 +20,18 @@ export interface YieldPrediction {
     minReturn: number; // Confidence interval lower bound
     maxReturn: number; // Confidence interval upper bound
   }[];
+  feeAdjustedReturns?: {
+    timeframe: '7d' | '30d' | '90d' | '1y';
+    expectedReturn: number; // Percentage after fees
+    minReturn: number; // Confidence interval lower bound
+    maxReturn: number; // Confidence interval upper bound
+  }[];
+  feeImpact?: {
+    managementFee: number;
+    performanceFee: number;
+    totalAnnualFeeDrag: number;
+    performanceFeeActive: boolean;
+  };
   insights: string[];
 }
 
@@ -136,11 +149,20 @@ function calculateVolatility(values: number[]): number {
  * 1. Linear regression for trend analysis
  * 2. Exponential moving average for short-term prediction
  * 3. Volatility analysis for confidence intervals
+ * 4. Fee-adjusted predictions (optional) - net returns after management and performance fees
  *
  * @param historicalData - Historical APY and TVL data points
+ * @param feeParams - Optional fee parameters for calculating net returns
  * @returns Yield prediction with confidence intervals and insights
  */
-export function predictYield(historicalData: YieldDataPoint[]): YieldPrediction {
+export function predictYield(
+  historicalData: YieldDataPoint[],
+  feeParams?: {
+    managementFee: number;
+    performanceFee: number;
+    performanceFeeActive: boolean;
+  }
+): YieldPrediction {
   if (historicalData.length === 0) {
     return {
       currentAPY: 0,
@@ -205,6 +227,65 @@ export function predictYield(historicalData: YieldDataPoint[]): YieldPrediction 
     };
   });
 
+  // Calculate fee-adjusted predictions if fee parameters provided
+  let feeAdjustedAPY: number | undefined;
+  let feeAdjustedReturns:
+    | {
+        timeframe: '7d' | '30d' | '90d' | '1y';
+        expectedReturn: number;
+        minReturn: number;
+        maxReturn: number;
+      }[]
+    | undefined;
+  let feeImpact:
+    | {
+        managementFee: number;
+        performanceFee: number;
+        totalAnnualFeeDrag: number;
+        performanceFeeActive: boolean;
+      }
+    | undefined;
+
+  if (feeParams) {
+    // Calculate total annual fee drag
+    const performanceFeeDrag = feeParams.performanceFeeActive
+      ? feeParams.performanceFee * 0.1 // Assume 10% average profit for performance fee impact
+      : 0;
+    const totalAnnualFeeDrag = feeParams.managementFee + performanceFeeDrag;
+
+    // Calculate fee-adjusted APY (gross APY - fees)
+    feeAdjustedAPY = Math.max(0, predictedAPY - totalAnnualFeeDrag);
+
+    // Calculate fee-adjusted projected returns
+    feeAdjustedReturns = projectedReturns.map((p) => {
+      const feeAdjustment =
+        (((totalAnnualFeeDrag / 100) *
+          (p.timeframe === '7d'
+            ? 7
+            : p.timeframe === '30d'
+              ? 30
+              : p.timeframe === '90d'
+                ? 90
+                : 365)) /
+          365) *
+        100;
+
+      return {
+        timeframe: p.timeframe,
+        expectedReturn: Math.max(0, p.expectedReturn - feeAdjustment),
+        minReturn: Math.max(0, p.minReturn - feeAdjustment),
+        maxReturn: Math.max(0, p.maxReturn - feeAdjustment),
+      };
+    });
+
+    feeImpact = {
+      managementFee: feeParams.managementFee,
+      performanceFee: feeParams.performanceFee,
+      totalAnnualFeeDrag,
+      performanceFeeActive: feeParams.performanceFeeActive,
+    };
+  }
+
   // Generate insights
   const insights = generateInsights({
     currentAPY,
@@ -214,14 +295,19 @@ export function predictYield(historicalData: YieldDataPoint[]): YieldPrediction 
     volatility,
     dataPoints: sortedData.length,
     regression,
+    feeAdjustedAPY,
+    feeImpact,
   });
 
   return {
     currentAPY,
     predictedAPY: Math.max(0, predictedAPY),
+    feeAdjustedAPY,
     confidence,
     trend,
     projectedReturns,
+    feeAdjustedReturns,
+    feeImpact,
     insights,
   };
 }
@@ -237,6 +323,13 @@ function generateInsights(params: {
   volatility: number;
   dataPoints: number;
   regression: { slope: number; r2: number };
+  feeAdjustedAPY?: number;
+  feeImpact?: {
+    managementFee: number;
+    performanceFee: number;
+    totalAnnualFeeDrag: number;
+    performanceFeeActive: boolean;
+  };
 }): string[] {
   const insights: string[] = [];
 
@@ -288,6 +381,33 @@ function generateInsights(params: {
     insights.push('Strong historical trend pattern detected');
   } else if (params.regression.r2 < 0.3) {
     insights.push('Weak trend pattern - returns may be influenced by external factors');
+  }
+
+  // Fee impact insights
+  if (params.feeAdjustedAPY !== undefined && params.feeImpact) {
+    const grossAPY = params.predictedAPY;
+    const netAPY = params.feeAdjustedAPY;
+    const feeDrag = params.feeImpact.totalAnnualFeeDrag;
+
+    if (feeDrag > 3) {
+      insights.push(
+        `High fees (${feeDrag.toFixed(2)}%) significantly reduce net returns from ${grossAPY.toFixed(2)}% to ${netAPY.toFixed(2)}%`
+      );
+    } else if (feeDrag > 1.5) {
+      insights.push(
+        `Moderate fees (${feeDrag.toFixed(2)}%) impact net returns: ${grossAPY.toFixed(2)}% gross → ${netAPY.toFixed(2)}% net`
+      );
+    } else {
+      insights.push(
+        `Low fees (${feeDrag.toFixed(2)}%) - minimal impact on net returns (${netAPY.toFixed(2)}%)`
+      );
+    }
+
+    if (params.feeImpact.performanceFeeActive) {
+      insights.push(
+        `Performance fee active (${params.feeImpact.performanceFee.toFixed(2)}%) - vault above high water mark`
+      );
+    }
   }
 
   return insights;

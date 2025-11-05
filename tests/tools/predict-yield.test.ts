@@ -39,8 +39,8 @@ describe('predict_yield Tool', () => {
   /**
    * Helper to create mock vault data
    */
-  function createMockVault(name = 'Test Vault'): unknown {
-    return {
+  function createMockVault(name = 'Test Vault', includeFees = false): unknown {
+    const baseVault = {
       address: '0x1234567890123456789012345678901234567890',
       name,
       symbol: 'TEST',
@@ -53,6 +53,18 @@ describe('predict_yield Tool', () => {
         pricePerShareUsd: 1.05,
       },
     };
+
+    if (includeFees) {
+      baseVault.state = {
+        ...baseVault.state,
+        managementFee: 2.0, // 2% management fee
+        performanceFee: 20.0, // 20% performance fee
+        pricePerShare: '1100000000000000000', // 1.1 (above HWM)
+        highWaterMark: '1000000000000000000', // 1.0
+      };
+    }
+
+    return baseVault;
   }
 
   /**
@@ -524,6 +536,234 @@ describe('predict_yield Tool', () => {
       expect(text).toContain('Exponential Moving Averages');
       expect(text).toContain('Volatility Analysis');
       expect(text).toContain('Historical Data');
+    });
+  });
+
+  // ==========================================
+  // Fee-Adjusted Predictions (SDK Integration)
+  // ==========================================
+
+  describe('Fee-Adjusted Predictions', () => {
+    it('should calculate fee-adjusted APY when vault has fees', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const dayInSeconds = 24 * 60 * 60;
+
+      // Create stable APY around 10%
+      const performanceData = [];
+      for (let i = 0; i < 30; i++) {
+        performanceData.push({
+          timestamp: now - (29 - i) * dayInSeconds,
+          apy: 10,
+          tvl: 1000000,
+        });
+      }
+
+      const mockData = {
+        vault: createMockVault('Fee Test Vault', true),
+        performanceHistory: createMockPerformanceHistory(performanceData),
+        tvlHistory: { items: [] },
+      };
+
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+
+      // Should show both gross and net APY
+      expect(text).toMatch(/Predicted APY.*\(Gross\)/);
+      expect(text).toMatch(/Predicted Net APY.*\(After Fees\)/);
+
+      // Should show fee impact section
+      expect(text).toContain('### Fee Impact');
+      expect(text).toContain('Management Fee');
+      expect(text).toContain('Performance Fee');
+      expect(text).toContain('Total Annual Fee Drag');
+
+      // Should show performance fee is active
+      expect(text).toContain('Currently Active - Above High Water Mark');
+
+      // Should show gross and net returns tables
+      expect(text).toContain('Gross Returns (Before Fees)');
+      expect(text).toContain('Net Returns (After Fees)');
+    });
+
+    it('should handle inactive performance fee (below high water mark)', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const dayInSeconds = 24 * 60 * 60;
+
+      const performanceData = [];
+      for (let i = 0; i < 30; i++) {
+        performanceData.push({
+          timestamp: now - (29 - i) * dayInSeconds,
+          apy: 8,
+          tvl: 1000000,
+        });
+      }
+
+      const mockVault = createMockVault('Inactive Fee Vault', true);
+      // Set price below high water mark
+      mockVault.state.pricePerShare = '950000000000000000'; // 0.95 (below HWM of 1.0)
+
+      const mockData = {
+        vault: mockVault,
+        performanceHistory: createMockPerformanceHistory(performanceData),
+        tvlHistory: { items: [] },
+      };
+
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+
+      // Should show performance fee is inactive
+      expect(text).toContain('Inactive - Below High Water Mark');
+
+      // Fee impact should be lower (only management fee)
+      expect(text).toMatch(/Total Annual Fee Drag.*2\./); // Should be close to 2%
+    });
+
+    it('should show fee impact insights', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const dayInSeconds = 24 * 60 * 60;
+
+      const performanceData = [];
+      for (let i = 0; i < 30; i++) {
+        performanceData.push({
+          timestamp: now - (29 - i) * dayInSeconds,
+          apy: 12,
+          tvl: 1000000,
+        });
+      }
+
+      const mockData = {
+        vault: createMockVault('High Fee Vault', true),
+        performanceHistory: createMockPerformanceHistory(performanceData),
+        tvlHistory: { items: [] },
+      };
+
+      // Set high fees
+      mockData.vault.state.managementFee = 3.5; // 3.5% management fee
+      mockData.vault.state.performanceFee = 25.0; // 25% performance fee
+
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+
+      // Should have high fees insight
+      expect(text).toMatch(/High fees.*significantly reduce net returns/);
+
+      // Should show performance fee active
+      expect(text).toMatch(/Performance fee active/);
+    });
+
+    it('should calculate time-scaled fee adjustments correctly', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const dayInSeconds = 24 * 60 * 60;
+
+      const performanceData = [];
+      for (let i = 0; i < 30; i++) {
+        performanceData.push({
+          timestamp: now - (29 - i) * dayInSeconds,
+          apy: 10,
+          tvl: 1000000,
+        });
+      }
+
+      const mockData = {
+        vault: createMockVault('Time Scaled Fee Vault', true),
+        performanceHistory: createMockPerformanceHistory(performanceData),
+        tvlHistory: { items: [] },
+      };
+
+      // Set known fees: 2% management + 20% performance (active)
+      // Total fee drag = 2 + (20 * 0.1) = 4% annually
+
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+
+      // Gross returns should be higher than net returns
+      // For 7d: fee adjustment ~= 4% * (7/365) ~= 0.077%
+      // For 30d: fee adjustment ~= 4% * (30/365) ~= 0.33%
+      // For 90d: fee adjustment ~= 4% * (90/365) ~= 0.99%
+      // For 1y: fee adjustment = 4%
+
+      // Verify both gross and net returns sections exist
+      const grossSection = text.split('Gross Returns')[1]?.split('Net Returns')[0];
+      const netSection = text.split('Net Returns')[1]?.split('---')[0];
+
+      expect(grossSection).toBeTruthy();
+      expect(netSection).toBeTruthy();
+
+      // Net returns should be consistently lower than gross
+      expect(text).toContain('Net Returns (After Fees)');
+    });
+
+    it('should not show fee sections when vault has no fees', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const dayInSeconds = 24 * 60 * 60;
+
+      const performanceData = [];
+      for (let i = 0; i < 30; i++) {
+        performanceData.push({
+          timestamp: now - (29 - i) * dayInSeconds,
+          apy: 10,
+          tvl: 1000000,
+        });
+      }
+
+      const mockData = {
+        vault: createMockVault('No Fee Vault', false), // No fees
+        performanceHistory: createMockPerformanceHistory(performanceData),
+        tvlHistory: { items: [] },
+      };
+
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+
+      // Should NOT show fee-related sections
+      expect(text).not.toContain('### Fee Impact');
+      expect(text).not.toContain('Gross Returns (Before Fees)');
+      expect(text).not.toContain('Net Returns (After Fees)');
+      expect(text).not.toContain('(Gross)');
+      expect(text).not.toContain('(After Fees)');
+
+      // Should have standard returns table
+      expect(text).toContain('| Timeframe | Expected Return | Range (Min-Max) |');
     });
   });
 });

@@ -23,6 +23,13 @@ import { getVaultPerformanceInputSchema, GetVaultPerformanceInput } from '../uti
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
+import { GET_PERIOD_SUMMARIES_QUERY } from '../graphql/queries/period-summaries.js';
+import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import {
+  transformPeriodSummariesToAPRData,
+  calculateCurrentAPR,
+  type PeriodSummary,
+} from '../sdk/apr-service.js';
 
 /**
  * Time range constants (in seconds)
@@ -77,6 +84,18 @@ const GET_VAULT_PERFORMANCE_QUERY = `
       }
     }
   }
+`;
+
+/**
+ * Query to fetch vault data for APR calculation
+ */
+const GET_VAULT_FOR_APR_QUERY = `
+  query GetVaultForAPR($address: Address!, $chainId: Int!) {
+    vaultByAddress(address: $address, chainId: $chainId) {
+      ...VaultFragment
+    }
+  }
+  ${VAULT_FRAGMENT}
 `;
 
 /**
@@ -137,6 +156,26 @@ interface PerformanceSummary {
 }
 
 /**
+ * SDK-calculated APR data point
+ */
+interface SDKAPRDataPoint {
+  timestamp: number;
+  pricePerShare: string;
+  pricePerShareDecimal: string;
+  apr: number;
+}
+
+/**
+ * SDK-calculated APR section
+ */
+interface SDKCalculatedAPR {
+  method: string;
+  dataSource: string;
+  thirtyDay?: SDKAPRDataPoint;
+  inception?: SDKAPRDataPoint;
+}
+
+/**
  * Complete performance output
  */
 interface VaultPerformanceOutput {
@@ -146,6 +185,7 @@ interface VaultPerformanceOutput {
   metrics: MetricPoint[];
   summary: PerformanceSummary;
   hasMoreData: boolean;
+  sdkCalculatedAPR?: SDKCalculatedAPR;
 }
 
 /**
@@ -235,6 +275,101 @@ function calculateSummary(metrics: MetricPoint[], transactions: Transaction[]): 
 }
 
 /**
+ * Calculate SDK APR data for vault
+ *
+ * Fetches period summaries and vault data to calculate protocol-accurate APR
+ * using Lagoon SDK functions.
+ *
+ * @param vaultAddress - Vault address
+ * @param chainId - Chain ID
+ * @returns SDK-calculated APR data or undefined if unavailable
+ */
+async function calculateSDKAPR(
+  vaultAddress: string,
+  chainId: number
+): Promise<SDKCalculatedAPR | undefined> {
+  try {
+    // Fetch period summaries for historical APR data
+    const periodSummariesData = await graphqlClient.request<{
+      periodSummaries: PeriodSummary[];
+    }>(GET_PERIOD_SUMMARIES_QUERY, {
+      vaultAddress,
+      chainId,
+    });
+
+    // Fetch vault data for current price per share
+    const vaultData = await graphqlClient.request<{ vaultByAddress: VaultData | null }>(
+      GET_VAULT_FOR_APR_QUERY,
+      {
+        address: vaultAddress,
+        chainId,
+      }
+    );
+
+    // Graceful degradation if no data available
+    if (!periodSummariesData.periodSummaries?.length || !vaultData.vaultByAddress) {
+      return undefined;
+    }
+
+    const vault = vaultData.vaultByAddress;
+
+    // Transform period summaries to APR historical data
+    const aprData = transformPeriodSummariesToAPRData(periodSummariesData.periodSummaries, vault);
+
+    // Check if we have any APR data
+    if (!aprData.thirtyDay && !aprData.inception) {
+      return undefined;
+    }
+
+    // Get current price per share
+    const currentPricePerShare = BigInt(vault.state.pricePerShare);
+
+    // Calculate current APR values
+    const aprs = calculateCurrentAPR(aprData, currentPricePerShare);
+
+    // Build SDK APR response
+    const result: SDKCalculatedAPR = {
+      method: 'Lagoon SDK v0.10.1',
+      dataSource: 'Lagoon GraphQL period summaries',
+    };
+
+    // Add 30-day APR if available
+    if (aprData.thirtyDay && aprs.thirtyDay !== undefined) {
+      const assetDecimals = vault.asset.decimals;
+      result.thirtyDay = {
+        timestamp: aprData.thirtyDay.timestamp,
+        pricePerShare: aprData.thirtyDay.pricePerShare.toString(),
+        pricePerShareDecimal: (
+          Number(aprData.thirtyDay.pricePerShare) /
+          10 ** assetDecimals
+        ).toFixed(assetDecimals),
+        apr: aprs.thirtyDay,
+      };
+    }
+
+    // Add inception APR if available
+    if (aprData.inception && aprs.inception !== undefined) {
+      const assetDecimals = vault.asset.decimals;
+      result.inception = {
+        timestamp: aprData.inception.timestamp,
+        pricePerShare: aprData.inception.pricePerShare.toString(),
+        pricePerShareDecimal: (
+          Number(aprData.inception.pricePerShare) /
+          10 ** assetDecimals
+        ).toFixed(assetDecimals),
+        apr: aprs.inception,
+      };
+    }
+
+    return result;
+  } catch (error) {
+    // Log error but don't fail the entire request
+    console.error('Failed to calculate SDK APR:', error);
+    return undefined;
+  }
+}
+
+/**
  * Fetch vault performance data with historical metrics
  *
  * @param input - Vault address, chain ID, and time range
@@ -303,6 +438,14 @@ export async function executeGetVaultPerformance(
       summary,
       hasMoreData: data.transactions.pageInfo.hasNextPage,
     };
+
+    // Add SDK-calculated APR if requested (default: true)
+    if (validatedInput.includeSDKCalculations) {
+      const sdkAPR = await calculateSDKAPR(validatedInput.vaultAddress, validatedInput.chainId);
+      if (sdkAPR) {
+        output.sdkCalculatedAPR = sdkAPR;
+      }
+    }
 
     // Store in cache with 30-minute TTL
     cache.set(cacheKey, output, cacheTTL.performance);

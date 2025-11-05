@@ -2,7 +2,7 @@
 
 ## Overview
 
-Multi-factor risk analysis with comprehensive scoring across 5 key risk dimensions: TVL risk, concentration risk, volatility risk, age risk, and curator risk. Provides weighted composite risk score with actionable insights and risk level classification.
+Multi-factor risk analysis with comprehensive scoring across 7 key risk dimensions: TVL risk, concentration risk, volatility risk, age risk, curator risk, fee risk, and liquidity risk. Provides weighted composite risk score with actionable insights and risk level classification.
 
 ## Use Cases
 
@@ -116,7 +116,7 @@ Returns comprehensive risk assessment:
 "Analyze the risk profile for vault 0x1234... on Arbitrum"
 ```
 
-Returns comprehensive 5-factor risk analysis with overall score and recommendations.
+Returns comprehensive 7-factor risk analysis with overall score and recommendations.
 
 ### Risk Level Query
 
@@ -132,7 +132,7 @@ Provides risk level (LOW/MEDIUM/HIGH/CRITICAL) with explanation.
 "Show me the detailed risk breakdown for vault 0x1234..."
 ```
 
-Returns all 5 risk factors with individual scores, weights, and insights.
+Returns all 7 risk factors with individual scores, weights, and insights.
 
 ### Comparative Risk
 
@@ -149,7 +149,7 @@ Analyze risk for both vaults (two queries) and compare results.
   - Risk factors change moderately
   - Balances freshness with computational cost
 - **Token Cost**: ~400-600 tokens per analysis
-  - Includes all 5 factors
+  - Includes all 7 factors
   - Detailed insights and recommendations
 - **Response Time**:
   - Cached: <100ms
@@ -166,52 +166,76 @@ Analyze risk for both vaults (two queries) and compare results.
 - **51-75**: HIGH risk
 - **76-100**: CRITICAL risk
 
-### Five Risk Factors
+### Seven Risk Factors
 
-#### 1. TVL Risk (Weight: 30%)
+#### 1. TVL Risk (Weight: 14.3%)
 Assesses vault size and liquidity:
-- **LOW (0-25)**: TVL > $10M - Highly liquid, established
-- **MEDIUM (26-50)**: TVL $1M-$10M - Adequate liquidity
-- **HIGH (51-75)**: TVL $100K-$1M - Limited liquidity
-- **CRITICAL (76-100)**: TVL < $100K - Very low liquidity
+- **Score 0.1**: TVL ≥ $10M - Very low risk (highly liquid, established)
+- **Score 0.2**: TVL ≥ $1M - Low risk (adequate liquidity)
+- **Score 0.5**: TVL ≥ $100K - Medium risk (limited liquidity)
+- **Score 0.8**: TVL ≥ $10K - High risk (very low liquidity)
+- **Score 1.0**: TVL < $10K - Critical risk (extremely low liquidity)
 
-#### 2. Concentration Risk (Weight: 25%)
-Evaluates holder distribution:
-- **LOW**: Top 10 holders < 30% - Well distributed
-- **MEDIUM**: Top 10 holders 30-50% - Moderate concentration
-- **HIGH**: Top 10 holders 50-70% - Concentrated
-- **CRITICAL**: Top 10 holders > 70% - High concentration risk
+#### 2. Concentration Risk (Weight: 14.3%)
+Evaluates vault's share of total protocol TVL:
+- **Score 0.1**: < 10% of protocol TVL - Low concentration
+- **Score 0.4**: < 25% of protocol TVL - Medium concentration
+- **Score 0.7**: < 50% of protocol TVL - High concentration
+- **Score 1.0**: ≥ 50% of protocol TVL - Critical concentration risk
 
-#### 3. Volatility Risk (Weight: 20%)
-Measures price stability (30-day):
-- **LOW**: Volatility < 5% - Very stable
-- **MEDIUM**: Volatility 5-15% - Normal volatility
-- **HIGH**: Volatility 15-30% - Elevated volatility
-- **CRITICAL**: Volatility > 30% - High volatility
+#### 3. Volatility Risk (Weight: 14.3%)
+Measures price stability based on standard deviation of daily returns:
+- **Score 0.1**: StdDev < 2% - Low volatility
+- **Score 0.4**: StdDev < 5% - Medium volatility
+- **Score 0.7**: StdDev < 10% - High volatility
+- **Score 1.0**: StdDev ≥ 10% - Critical volatility
 
-#### 4. Age Risk (Weight: 15%)
-Considers vault maturity:
-- **LOW**: Age > 180 days - Established vault
-- **MEDIUM**: Age 90-180 days - Maturing vault
-- **HIGH**: Age 30-90 days - Young vault
-- **CRITICAL**: Age < 30 days - Very new, unproven
+#### 4. Age Risk (Weight: 14.3%)
+Considers vault maturity and battle-testing:
+- **Score 0.1**: Age ≥ 365 days - Mature vault (low risk)
+- **Score 0.4**: Age ≥ 90 days - Established vault (medium-low risk)
+- **Score 0.7**: Age ≥ 30 days - New vault (high risk)
+- **Score 1.0**: Age < 30 days - Very new vault (critical risk)
 
-#### 5. Curator Risk (Weight: 10%)
-Assesses curator quality:
-- **LOW**: Top-tier curator, proven track record
-- **MEDIUM**: Established curator, good reputation
-- **HIGH**: New curator or limited track record
-- **CRITICAL**: Unknown curator or negative history
+#### 5. Curator Risk (Weight: 14.3%)
+Assesses curator reputation based on experience and track record:
+- **Score 0.1**: ≥10 vaults managed - Highly experienced
+- **Score 0.3**: ≥5 vaults managed - Moderately experienced
+- **Score 0.6**: ≥2 vaults managed - Limited experience
+- **Score 0.9**: <2 vaults managed - New curator
+- Adjusted by success rate (vaults with TVL >$10K)
+
+#### 6. Fee Risk (Weight: 14.3%)
+Impact of management and performance fees on returns:
+- **Score 0.1**: Annual fee drag < 1% - Very low fees
+- **Score 0.3**: Annual fee drag < 2% - Low fees
+- **Score 0.5**: Annual fee drag < 3% - Moderate fees
+- **Score 0.7**: Annual fee drag < 5% - High fees
+- **Score 1.0**: Annual fee drag ≥ 5% - Very high fees
+- Fee drag = management fee + (performance fee × 0.1 if above HWM)
+
+#### 7. Liquidity Risk (Weight: 14.2%)
+Ability to meet redemption requests based on coverage ratio:
+- **Score 0.1**: No pending redemptions OR coverage ≥ 200%
+- **Score 0.3**: Coverage ≥ 150% - Low risk
+- **Score 0.5**: Coverage ≥ 100% - Medium risk
+- **Score 0.7**: Coverage ≥ 50% - High risk
+- **Score 1.0**: Coverage < 50% - Critical risk
+- Coverage = safe assets / pending redemptions
 
 ### Weighted Composite Score
 
 Overall risk score calculated as:
 ```
-Overall = (TVL × 0.30) + (Concentration × 0.25) + (Volatility × 0.20) +
-          (Age × 0.15) + (Curator × 0.10)
+Overall = (TVL × 0.143) + (Concentration × 0.143) + (Volatility × 0.143) +
+          (Age × 0.143) + (Curator × 0.143) + (Fee × 0.143) + (Liquidity × 0.142)
 ```
 
-Weights reflect relative importance of each factor.
+All factors weighted equally (~14.3% each) for balanced risk assessment. Risk scores are normalized to 0-1 range (0 = lowest risk, 1 = highest risk), then mapped to risk levels:
+- **0.0-0.3**: Low risk
+- **0.3-0.6**: Medium risk
+- **0.6-0.8**: High risk
+- **0.8-1.0**: Critical risk
 
 ### Actionable Insights
 
