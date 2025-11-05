@@ -272,7 +272,7 @@ describe('get_vault_data Tool', () => {
       const result = await executeGetVaultData(input);
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(result.content).toHaveLength(1);
       expect(result.content[0].text).toContain('TEST-VAULT');
       expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalledOnce();
@@ -318,7 +318,7 @@ describe('get_vault_data Tool', () => {
       const result = await executeGetVaultData(input);
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(result.content[0].text).toContain('CACHED-VAULT');
       expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
     });
@@ -392,88 +392,8 @@ describe('get_vault_data Tool', () => {
     });
   });
 
-  describe('Input Validation', () => {
-    it('should reject invalid Ethereum address format', async () => {
-      // Arrange
-      const input = {
-        vaultAddress: 'invalid-address',
-        chainId: mockChainId,
-      };
-
-      // Act
-      const result = await executeGetVaultData(input);
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Validation Error');
-      expect(result.content[0].text).toContain('Invalid Ethereum address format');
-      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
-    });
-
-    it('should reject addresses without 0x prefix', async () => {
-      // Arrange
-      const input = {
-        vaultAddress: '1234567890123456789012345678901234567890',
-        chainId: mockChainId,
-      };
-
-      // Act
-      const result = await executeGetVaultData(input);
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Validation Error');
-      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
-    });
-
-    it('should reject invalid chain ID (negative)', async () => {
-      // Arrange
-      const input = {
-        vaultAddress: mockVaultAddress,
-        chainId: -1,
-      };
-
-      // Act
-      const result = await executeGetVaultData(input);
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Validation Error');
-      expect(result.content[0].text).toContain('Chain ID must be a positive integer');
-    });
-
-    it('should reject invalid chain ID (zero)', async () => {
-      // Arrange
-      const input = {
-        vaultAddress: mockVaultAddress,
-        chainId: 0,
-      };
-
-      // Act
-      const result = await executeGetVaultData(input);
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Validation Error');
-    });
-
-    it('should accept valid EIP-155 chain IDs', async () => {
-      // Arrange
-      const mockResponse = createMockVaultResponse();
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
-
-      const validChainIds = [1, 10, 42161, 8453]; // Ethereum, Optimism, Arbitrum, Base
-
-      // Act & Assert
-      for (const chainId of validChainIds) {
-        const result = await executeGetVaultData({
-          vaultAddress: mockVaultAddress,
-          chainId,
-        });
-        expect(result.isError).toBeUndefined();
-      }
-    });
-  });
+  // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
+  // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
   describe('GraphQL Error Handling', () => {
     it('should handle GraphQL errors gracefully', async () => {

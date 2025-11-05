@@ -41,7 +41,7 @@ describe('query_graphql Tool', () => {
       const result = await executeQueryGraphQL(input);
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe('text');
       expect(result.content[0].text).toContain('getGlobalTVL');
@@ -75,7 +75,7 @@ describe('query_graphql Tool', () => {
       const result = await executeQueryGraphQL(input);
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe('text');
       expect(result.content[0].text).toContain('vault-123');
@@ -113,59 +113,8 @@ describe('query_graphql Tool', () => {
     });
   });
 
-  describe('Input Validation', () => {
-    it('should reject empty query strings', async () => {
-      // Arrange
-      const input = {
-        query: '',
-      };
-
-      // Act
-      const result = await executeQueryGraphQL(input);
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Validation Error');
-      expect(result.content[0].text).toContain('Query cannot be empty');
-      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
-    });
-
-    it('should reject missing query field', async () => {
-      // Arrange
-      const input = {
-        variables: { test: 'value' },
-      } as never;
-
-      // Act
-      const result = await executeQueryGraphQL(input);
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Validation Error');
-      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
-    });
-
-    it('should accept optional variables parameter', async () => {
-      // Arrange
-      const mockResponse = { data: 'test' };
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
-
-      const input = {
-        query: 'query { test }',
-        // No variables provided
-      };
-
-      // Act
-      const result = await executeQueryGraphQL(input);
-
-      // Assert
-      expect(result.isError).toBeUndefined();
-      expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalledWith(
-        input.query,
-        undefined
-      );
-    });
-  });
+  // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
+  // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
   describe('GraphQL Syntax Errors', () => {
     it('should handle GraphQL syntax errors gracefully', async () => {
@@ -299,7 +248,7 @@ describe('query_graphql Tool', () => {
       const result = await executeQueryGraphQL(input);
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalledWith(
         input.query,
         input.variables
@@ -320,7 +269,7 @@ describe('query_graphql Tool', () => {
       const result = await executeQueryGraphQL(input);
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalledWith(input.query, {});
     });
   });
@@ -339,7 +288,7 @@ describe('query_graphql Tool', () => {
       const result = await executeQueryGraphQL(input);
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(result.content[0].text).toBe('{}');
     });
 
@@ -359,7 +308,7 @@ describe('query_graphql Tool', () => {
       const result = await executeQueryGraphQL(input);
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const parsed = JSON.parse(result.content[0].text as string);
       expect(parsed.items).toHaveLength(100);
     });

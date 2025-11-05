@@ -235,28 +235,15 @@ describe('get_user_portfolio Tool', () => {
       const result = await executeGetUserPortfolio(input);
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data.positions[0].vaultSymbol).toBe('CACHED');
       expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
     });
   });
 
-  describe('Input Validation', () => {
-    it('should reject invalid Ethereum address format', async () => {
-      // Arrange
-      const input = {
-        userAddress: 'invalid-address',
-      };
-
-      // Act
-      const result = await executeGetUserPortfolio(input);
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Input validation failed');
-    });
-  });
+  // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
+  // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
   describe('Sort Order Validation', () => {
     it('should sort positions by USD value in descending order', async () => {

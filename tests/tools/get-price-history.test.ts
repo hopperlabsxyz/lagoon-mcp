@@ -489,55 +489,8 @@ describe('get_price_history Tool', () => {
     });
   });
 
-  describe('Input Validation', () => {
-    it('should reject invalid Ethereum address', async () => {
-      const result = await executeGetPriceHistory({
-        vaultAddress: 'invalid-address',
-        chainId: 1,
-        timeRange: '7d',
-      });
-
-      expect(result.isError).toBe(true);
-      const text = result.content[0].text as string;
-      expect(text).toContain('Invalid Ethereum address');
-    });
-
-    it('should reject invalid chain ID (negative)', async () => {
-      const result = await executeGetPriceHistory({
-        vaultAddress: '0x1111111111111111111111111111111111111111',
-        chainId: -1,
-        timeRange: '7d',
-      });
-
-      expect(result.isError).toBe(true);
-      const text = result.content[0].text as string;
-      expect(text).toContain('Chain ID must be a positive integer');
-    });
-
-    it('should reject invalid chain ID (zero)', async () => {
-      const result = await executeGetPriceHistory({
-        vaultAddress: '0x1111111111111111111111111111111111111111',
-        chainId: 0,
-        timeRange: '7d',
-      });
-
-      expect(result.isError).toBe(true);
-      const text = result.content[0].text as string;
-      expect(text).toContain('Chain ID must be a positive integer');
-    });
-
-    it('should reject invalid time range', async () => {
-      const result = await executeGetPriceHistory({
-        vaultAddress: '0x1111111111111111111111111111111111111111',
-        chainId: 1,
-        timeRange: '14d' as never,
-      });
-
-      expect(result.isError).toBe(true);
-      const text = result.content[0].text as string;
-      expect(text).toContain('Time range must be one of: 7d, 30d, 90d, 1y, all');
-    });
-  });
+  // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
+  // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
   describe('Error Handling', () => {
     it('should handle GraphQL network errors', async () => {

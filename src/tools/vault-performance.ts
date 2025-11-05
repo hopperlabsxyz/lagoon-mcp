@@ -19,12 +19,16 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { getVaultPerformanceInputSchema, GetVaultPerformanceInput } from '../utils/validators.js';
+import { GetVaultPerformanceInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
-import { GET_PERIOD_SUMMARIES_QUERY } from '../graphql/queries/period-summaries.js';
-import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import {
+  GET_VAULT_FOR_APR_QUERY,
+  GET_VAULT_PERFORMANCE_QUERY,
+  GET_PERIOD_SUMMARIES_QUERY,
+} from '../graphql/queries/index.js';
+import { VaultData } from '../graphql/fragments/index.js';
 import {
   transformPeriodSummariesToAPRData,
   calculateCurrentAPR,
@@ -41,62 +45,7 @@ const TIME_RANGES = {
   '1y': 365 * 24 * 60 * 60,
 } as const;
 
-/**
- * Vault performance GraphQL query
- * Fetches transactions with TotalAssetsUpdated and PeriodSummary data
- */
-const GET_VAULT_PERFORMANCE_QUERY = `
-  query GetVaultPerformance(
-    $vault_in: [Address!]!,
-    $timestamp_gte: BigInt!,
-    $first: Int!
-  ) {
-    transactions(
-      where: {
-        vault_in: $vault_in,
-        timestamp_gte: $timestamp_gte,
-        type_in: ["TotalAssetsUpdated", "PeriodSummary"]
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: $first
-    ) {
-      items {
-        id
-        type
-        timestamp
-        blockNumber
-        data {
-          ... on TotalAssetsUpdated {
-            totalAssetsUsd
-            totalAssets
-          }
-          ... on PeriodSummary {
-            tvl
-            deposits
-            withdrawals
-          }
-        }
-      }
-      pageInfo {
-        hasNextPage
-        hasPreviousPage
-      }
-    }
-  }
-`;
-
-/**
- * Query to fetch vault data for APR calculation
- */
-const GET_VAULT_FOR_APR_QUERY = `
-  query GetVaultForAPR($address: Address!, $chainId: Int!) {
-    vaultByAddress(address: $address, chainId: $chainId) {
-      ...VaultFragment
-    }
-  }
-  ${VAULT_FRAGMENT}
-`;
+// Queries now imported from ../graphql/queries/index.js
 
 /**
  * Transaction data types
@@ -380,14 +329,10 @@ export async function executeGetVaultPerformance(
 ): Promise<CallToolResult> {
   try {
     // Validate input
-    const validatedInput = getVaultPerformanceInputSchema.parse(input);
+    // Input already validated by createToolHandler
 
     // Generate cache key
-    const cacheKey = cacheKeys.vaultPerformance(
-      validatedInput.vaultAddress,
-      validatedInput.chainId,
-      validatedInput.timeRange
-    );
+    const cacheKey = cacheKeys.vaultPerformance(input.vaultAddress, input.chainId, input.timeRange);
 
     // Check cache first
     const cachedData = cache.get<VaultPerformanceOutput>(cacheKey);
@@ -397,14 +342,14 @@ export async function executeGetVaultPerformance(
 
     // Calculate timestamp threshold
     const now = Math.floor(Date.now() / 1000);
-    const timeRangeSeconds = TIME_RANGES[validatedInput.timeRange];
+    const timeRangeSeconds = TIME_RANGES[input.timeRange];
     const timestampGte = now - timeRangeSeconds;
 
     // Execute GraphQL query
     const data = await graphqlClient.request<VaultPerformanceResponse>(
       GET_VAULT_PERFORMANCE_QUERY,
       {
-        vault_in: [validatedInput.vaultAddress],
+        vault_in: [input.vaultAddress],
         timestamp_gte: timestampGte.toString(),
         first: 1000, // Maximum transactions to fetch
       }
@@ -416,7 +361,7 @@ export async function executeGetVaultPerformance(
         content: [
           {
             type: 'text',
-            text: `No transaction data found for vault ${validatedInput.vaultAddress} on chain ${validatedInput.chainId} in the ${validatedInput.timeRange} time range.`,
+            text: `No transaction data found for vault ${input.vaultAddress} on chain ${input.chainId} in the ${input.timeRange} time range.`,
           },
         ],
         isError: false,
@@ -431,17 +376,17 @@ export async function executeGetVaultPerformance(
 
     // Build output
     const output: VaultPerformanceOutput = {
-      vaultAddress: validatedInput.vaultAddress,
-      chainId: validatedInput.chainId,
-      timeRange: validatedInput.timeRange,
+      vaultAddress: input.vaultAddress,
+      chainId: input.chainId,
+      timeRange: input.timeRange,
       metrics,
       summary,
       hasMoreData: data.transactions.pageInfo.hasNextPage,
     };
 
     // Add SDK-calculated APR if requested (default: true)
-    if (validatedInput.includeSDKCalculations) {
-      const sdkAPR = await calculateSDKAPR(validatedInput.vaultAddress, validatedInput.chainId);
+    if (input.includeSDKCalculations) {
+      const sdkAPR = await calculateSDKAPR(input.vaultAddress, input.chainId);
       if (sdkAPR) {
         output.sdkCalculatedAPR = sdkAPR;
       }

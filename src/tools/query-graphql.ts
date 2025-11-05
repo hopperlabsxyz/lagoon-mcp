@@ -13,23 +13,20 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { queryGraphQLInputSchema, QueryGraphQLInput } from '../utils/validators.js';
+import { QueryGraphQLInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 
 /**
  * Execute a raw GraphQL query against the Lagoon backend
  *
- * @param input - Query and optional variables
+ * @param input - Query and optional variables (pre-validated by createToolHandler)
  * @returns GraphQL response data or error
  */
 export async function executeQueryGraphQL(input: QueryGraphQLInput): Promise<CallToolResult> {
   try {
-    // Validate input
-    const validatedInput = queryGraphQLInputSchema.parse(input);
-
-    // Execute GraphQL query
-    const data = await graphqlClient.request(validatedInput.query, validatedInput.variables);
+    // Execute GraphQL query (input already validated by createToolHandler)
+    const data = await graphqlClient.request(input.query, input.variables);
 
     // Return successful response
     return createSuccessResponse(data);

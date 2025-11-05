@@ -11,7 +11,12 @@
  * - Generate accurate query suggestions
  */
 
-import { getIntrospectionQuery, buildClientSchema, printSchema } from 'graphql';
+import {
+  getIntrospectionQuery,
+  buildClientSchema,
+  printSchema,
+  type IntrospectionQuery,
+} from 'graphql';
 import { graphqlClient } from '../graphql/client.js';
 import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
 
@@ -34,10 +39,10 @@ export async function getGraphQLSchema(): Promise<string> {
   try {
     // Execute introspection query
     const introspectionQuery = getIntrospectionQuery();
-    const result = await graphqlClient.request<{ __schema: unknown }>(introspectionQuery);
+    const result = await graphqlClient.request<IntrospectionQuery>(introspectionQuery);
 
     // Build client schema from introspection result
-    const schema = buildClientSchema(result as never);
+    const schema = buildClientSchema(result);
 
     // Convert to SDL format (human-readable)
     const sdl = printSchema(schema);

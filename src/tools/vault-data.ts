@@ -18,24 +18,12 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { getVaultDataInputSchema, GetVaultDataInput } from '../utils/validators.js';
+import { GetVaultDataInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
-import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
-/**
- * Complete vault data GraphQL query
- * Includes ALL available fields for comprehensive vault analysis
- * Schema verified against working API query on 2025-01-04
- */
-const GET_VAULT_DATA_QUERY = `
-  query GetVaultData($address: Address!, $chainId: Int!) {
-    vaultByAddress(address: $address, chainId: $chainId) {
-      ...VaultFragment
-    }
-  }
-  ${VAULT_FRAGMENT}
-`;
+import { VaultData } from '../graphql/fragments/index.js';
+import { GET_VAULT_DATA_QUERY } from '../graphql/queries/index.js';
 
 // APRBreakdown type imported from fragments.ts
 
@@ -49,16 +37,13 @@ interface VaultDataResponse {
 /**
  * Fetch complete vault data with caching
  *
- * @param input - Vault address and chain ID
+ * @param input - Vault address and chain ID (pre-validated by createToolHandler)
  * @returns Vault data or error
  */
 export async function executeGetVaultData(input: GetVaultDataInput): Promise<CallToolResult> {
   try {
-    // Validate input
-    const validatedInput = getVaultDataInputSchema.parse(input);
-
-    // Generate cache key
-    const cacheKey = cacheKeys.vaultData(validatedInput.vaultAddress, validatedInput.chainId);
+    // Generate cache key (input already validated by createToolHandler)
+    const cacheKey = cacheKeys.vaultData(input.vaultAddress, input.chainId);
 
     // Check cache first
     const cachedData = cache.get<VaultDataResponse>(cacheKey);
@@ -68,8 +53,8 @@ export async function executeGetVaultData(input: GetVaultDataInput): Promise<Cal
 
     // Execute GraphQL query
     const data = await graphqlClient.request<VaultDataResponse>(GET_VAULT_DATA_QUERY, {
-      address: validatedInput.vaultAddress,
-      chainId: validatedInput.chainId,
+      address: input.vaultAddress,
+      chainId: input.chainId,
     });
 
     // Handle vault not found
@@ -78,7 +63,7 @@ export async function executeGetVaultData(input: GetVaultDataInput): Promise<Cal
         content: [
           {
             type: 'text',
-            text: `Vault not found: ${validatedInput.vaultAddress} on chain ${validatedInput.chainId}`,
+            text: `Vault not found: ${input.vaultAddress} on chain ${input.chainId}`,
           },
         ],
         isError: false, // Not an error, just no data

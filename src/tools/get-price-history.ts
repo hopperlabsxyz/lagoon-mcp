@@ -18,9 +18,10 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { priceHistoryInputSchema, PriceHistoryInput } from '../utils/validators.js';
+import { PriceHistoryInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
+import { PRICE_HISTORY_QUERY } from '../graphql/queries/index.js';
 
 /**
  * Time range constants (in seconds)
@@ -33,46 +34,7 @@ const TIME_RANGES = {
   all: 0, // No time limit
 } as const;
 
-/**
- * GraphQL query for historical price data
- * Fetches TotalAssetsUpdated transactions to build price history
- */
-const PRICE_HISTORY_QUERY = `
-  query GetPriceHistory(
-    $vault_in: [Address!]!,
-    $timestamp_gte: BigInt,
-    $first: Int!
-  ) {
-    transactions(
-      where: {
-        vault_in: $vault_in,
-        timestamp_gte: $timestamp_gte,
-        type: "TotalAssetsUpdated"
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: $first
-    ) {
-      items {
-        id
-        timestamp
-        blockNumber
-        data {
-          ... on TotalAssetsUpdated {
-            totalAssets
-            totalAssetsUsd
-            pricePerShare
-            pricePerShareUsd
-          }
-        }
-      }
-      pageInfo {
-        hasNextPage
-        hasPreviousPage
-      }
-    }
-  }
-`;
+// Query now imported from ../graphql/queries/index.js
 
 /**
  * TotalAssetsUpdated transaction data
@@ -258,14 +220,10 @@ function calculateStatistics(ohlcvData: OHLCVDataPoint[]): PriceStatistics {
 export async function executeGetPriceHistory(input: PriceHistoryInput): Promise<CallToolResult> {
   try {
     // Validate input
-    const validatedInput = priceHistoryInputSchema.parse(input);
+    // Input already validated by createToolHandler
 
     // Generate cache key
-    const cacheKey = cacheKeys.priceHistory(
-      validatedInput.vaultAddress,
-      validatedInput.chainId,
-      validatedInput.timeRange
-    );
+    const cacheKey = cacheKeys.priceHistory(input.vaultAddress, input.chainId, input.timeRange);
 
     // Check cache first
     const cachedData = cache.get<string>(cacheKey);
@@ -278,7 +236,7 @@ export async function executeGetPriceHistory(input: PriceHistoryInput): Promise<
 
     // Calculate timestamp threshold (null for 'all')
     const now = Math.floor(Date.now() / 1000);
-    const timeRangeSeconds = TIME_RANGES[validatedInput.timeRange];
+    const timeRangeSeconds = TIME_RANGES[input.timeRange];
     const timestampGte = timeRangeSeconds > 0 ? now - timeRangeSeconds : 0;
 
     // Build query variables
@@ -287,7 +245,7 @@ export async function executeGetPriceHistory(input: PriceHistoryInput): Promise<
       first: number;
       timestamp_gte?: string;
     } = {
-      vault_in: [validatedInput.vaultAddress],
+      vault_in: [input.vaultAddress],
       first: 2000, // Maximum data points
     };
 
@@ -305,7 +263,7 @@ export async function executeGetPriceHistory(input: PriceHistoryInput): Promise<
         content: [
           {
             type: 'text',
-            text: `No price history data found for vault ${validatedInput.vaultAddress} on chain ${validatedInput.chainId} in the ${validatedInput.timeRange} time range.`,
+            text: `No price history data found for vault ${input.vaultAddress} on chain ${input.chainId} in the ${input.timeRange} time range.`,
           },
         ],
         isError: false,
@@ -320,9 +278,9 @@ export async function executeGetPriceHistory(input: PriceHistoryInput): Promise<
 
     // Format output as markdown
     const output =
-      `# Price History: ${validatedInput.vaultAddress}\n\n` +
-      `**Chain ID**: ${validatedInput.chainId}\n` +
-      `**Time Range**: ${validatedInput.timeRange}\n` +
+      `# Price History: ${input.vaultAddress}\n\n` +
+      `**Chain ID**: ${input.chainId}\n` +
+      `**Time Range**: ${input.timeRange}\n` +
       `**Data Points**: ${statistics.dataPoints}\n\n` +
       `## Price Statistics\n\n` +
       `- **Current Price**: $${statistics.currentPrice.toFixed(6)}\n` +

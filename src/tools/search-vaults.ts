@@ -21,42 +21,14 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createHash } from 'crypto';
 import { graphqlClient } from '../graphql/client.js';
-import { searchVaultsInputSchema, SearchVaultsInput } from '../utils/validators.js';
+import { SearchVaultsInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
-import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import { VaultData } from '../graphql/fragments/index.js';
+import { SEARCH_VAULTS_QUERY } from '../graphql/queries/index.js';
 
-/**
- * Search vaults GraphQL query
- * Supports advanced filtering, pagination, and sorting
- */
-const SEARCH_VAULTS_QUERY = `
-  query SearchVaults(
-    $first: Int!,
-    $skip: Int!,
-    $orderBy: VaultOrderBy!,
-    $orderDirection: OrderDirection!,
-    $where: VaultFilterInput
-  ) {
-    vaults(
-      first: $first,
-      skip: $skip,
-      orderBy: $orderBy,
-      orderDirection: $orderDirection,
-      where: $where
-    ) {
-      items {
-        ...VaultFragment
-      }
-      pageInfo {
-        hasNextPage
-        hasPreviousPage
-      }
-    }
-  }
-  ${VAULT_FRAGMENT}
-`;
+// Query now imported from ../graphql/queries/index.js
 
 /**
  * Page info structure
@@ -134,19 +106,20 @@ function hashFilters(filters: SearchVaultsInput['filters']): string {
   }
 
   // Sort keys to ensure consistent hashing
+  // Create a properly typed sorted filters object
+  type FilterKey = keyof NonNullable<SearchVaultsInput['filters']>;
+
   const sortedFilters = Object.keys(filters)
     .sort()
-    .reduce(
-      (acc, key) => {
-        const typedKey = key as keyof NonNullable<SearchVaultsInput['filters']>;
-        const value = filters[typedKey];
-        if (value !== undefined) {
-          acc[typedKey] = value as never;
-        }
-        return acc;
-      },
-      {} as NonNullable<SearchVaultsInput['filters']>
-    );
+    .reduce<Partial<NonNullable<SearchVaultsInput['filters']>>>((acc, key) => {
+      const typedKey = key as FilterKey;
+      const value = filters[typedKey];
+      if (value !== undefined) {
+        // Safe assignment: we know the key exists in filters and we're assigning its value
+        (acc as Record<FilterKey, unknown>)[typedKey] = value;
+      }
+      return acc;
+    }, {});
 
   const filterString = JSON.stringify(sortedFilters);
   return createHash('md5').update(filterString).digest('hex');
@@ -155,23 +128,20 @@ function hashFilters(filters: SearchVaultsInput['filters']): string {
 /**
  * Search and filter vaults with advanced criteria
  *
- * @param input - Search filters, pagination, and sorting options
+ * @param input - Search filters, pagination, and sorting options (pre-validated by createToolHandler)
  * @returns Paginated vault results with page info
  */
 export async function executeSearchVaults(input: SearchVaultsInput): Promise<CallToolResult> {
   try {
-    // Validate input
-    const validatedInput = searchVaultsInputSchema.parse(input);
-
-    // Extract parameters with defaults
-    const filters = validatedInput.filters;
-    const pagination = validatedInput.pagination || { first: 100, skip: 0 };
-    const orderBy = validatedInput.orderBy;
-    const orderDirection = validatedInput.orderDirection;
+    // Extract parameters with defaults (input already validated by createToolHandler)
+    const filters = input.filters;
+    const pagination = input.pagination || { first: 100, skip: 0 };
+    const orderBy = input.orderBy;
+    const orderDirection = input.orderDirection;
 
     // Generate cache key from filter hash
     const filterHash = hashFilters(filters);
-    const cacheKey = `${cacheKeys.searchVaults({ filterHash } as never)}:${pagination.first}:${pagination.skip}:${orderBy}:${orderDirection}`;
+    const cacheKey = `${cacheKeys.searchVaults({ filterHash })}:${pagination.first}:${pagination.skip}:${orderBy}:${orderDirection}`;
 
     // Check cache first
     const cachedData = cache.get<SearchVaultsResponse>(cacheKey);

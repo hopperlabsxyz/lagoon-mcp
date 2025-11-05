@@ -380,45 +380,8 @@ describe('predict_yield Tool', () => {
   // Input Validation
   // ==========================================
 
-  describe('Input Validation', () => {
-    it('should reject invalid vault address', async () => {
-      const result = await executePredictYield({
-        vaultAddress: 'invalid-address',
-        chainId: 1,
-        timeRange: '7d',
-      });
-
-      expect(result.isError).toBe(true);
-      const text = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(text).toContain('Validation Error');
-      expect(text).toContain('Invalid Ethereum address');
-    });
-
-    it('should reject invalid chain ID', async () => {
-      const result = await executePredictYield({
-        vaultAddress: '0x1234567890123456789012345678901234567890',
-        chainId: -1,
-        timeRange: '7d',
-      });
-
-      expect(result.isError).toBe(true);
-      const text = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(text).toContain('Validation Error');
-    });
-
-    it('should reject invalid time range', async () => {
-      const result = await executePredictYield({
-        vaultAddress: '0x1234567890123456789012345678901234567890',
-        chainId: 1,
-        timeRange: '1y' as never,
-      });
-
-      expect(result.isError).toBe(true);
-      const text = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(text).toContain('Validation Error');
-      expect(text).toContain('Time range must be one of: 7d, 30d, 90d');
-    });
-  });
+  // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
+  // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
   // ==========================================
   // Error Handling

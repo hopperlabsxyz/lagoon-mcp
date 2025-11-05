@@ -21,5 +21,6 @@ export function createSuccessResponse(data: unknown): CallToolResult {
         text: JSON.stringify(data, null, 2),
       },
     ],
+    isError: false,
   };
 }

@@ -454,40 +454,8 @@ describe('analyze_risk Tool', () => {
     });
   });
 
-  describe('Input Validation', () => {
-    it('should reject invalid vault address', async () => {
-      const result = await executeAnalyzeRisk({
-        vaultAddress: 'invalid-address' as never,
-        chainId: 1,
-      });
-
-      expect(result.isError).toBe(true);
-      const text = result.content[0].text as string;
-      expect(text).toContain('Validation Error');
-    });
-
-    it('should reject invalid chain ID', async () => {
-      const result = await executeAnalyzeRisk({
-        vaultAddress: '0x1234567890123456789012345678901234567890',
-        chainId: -1 as never,
-      });
-
-      expect(result.isError).toBe(true);
-      const text = result.content[0].text as string;
-      expect(text).toContain('Validation Error');
-    });
-
-    it('should reject zero chain ID', async () => {
-      const result = await executeAnalyzeRisk({
-        vaultAddress: '0x1234567890123456789012345678901234567890',
-        chainId: 0 as never,
-      });
-
-      expect(result.isError).toBe(true);
-      const text = result.content[0].text as string;
-      expect(text).toContain('Validation Error');
-    });
-  });
+  // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
+  // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
   describe('Error Handling', () => {
     it('should handle GraphQL network errors', async () => {

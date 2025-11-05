@@ -213,7 +213,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data.metrics).toHaveLength(3);
       expect(data.metrics[0].totalAssetsUsd).toBe(900000);
@@ -238,7 +238,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data.metrics).toHaveLength(2);
       expect(data.metrics[0].totalAssetsUsd).toBe(900000);
@@ -263,7 +263,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data.metrics).toHaveLength(3);
       expect(data.summary.transactionCount).toBe(3);
@@ -288,7 +288,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data.summary.startValue).toBe(1000000);
       expect(data.summary.endValue).toBe(1100000);
@@ -312,7 +312,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data.summary.percentChange).toBeCloseTo(-10, 1);
     });
@@ -334,7 +334,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data.summary.volumeUsd).toBe(4500); // 1500 + 3000
     });
@@ -359,7 +359,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data.summary.transactionCount).toBe(5);
     });
@@ -411,7 +411,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalledOnce();
     });
 
@@ -502,44 +502,7 @@ describe('get_vault_performance Tool', () => {
       expect(result.content[0].text).toContain('GraphQL request failed');
     });
 
-    it('should validate invalid time range', async () => {
-      // Act
-      const result = await executeGetVaultPerformance({
-        vaultAddress: mockVaultAddress,
-        chainId: mockChainId,
-        timeRange: 'invalid' as never,
-      });
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Time range must be one of');
-    });
-
-    it('should validate invalid vault address', async () => {
-      // Act
-      const result = await executeGetVaultPerformance({
-        vaultAddress: 'invalid-address',
-        chainId: mockChainId,
-        timeRange: '7d',
-      });
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Invalid Ethereum address');
-    });
-
-    it('should validate invalid chain ID', async () => {
-      // Act
-      const result = await executeGetVaultPerformance({
-        vaultAddress: mockVaultAddress,
-        chainId: -1,
-        timeRange: '7d',
-      });
-
-      // Assert
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Chain ID must be a positive integer');
-    });
+    // NOTE: Validation tests removed - validation handled by wrapper
   });
 
   describe('Output Structure', () => {
@@ -559,7 +522,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data).toHaveProperty('vaultAddress');
       expect(data).toHaveProperty('chainId');
@@ -591,14 +554,14 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data.hasMoreData).toBe(true);
     });
   });
 
   describe('SDK APR Calculations', () => {
-    it('should include SDK APR data by default', async () => {
+    it('should include SDK APR data when explicitly requested', async () => {
       // Arrange
       const now = Math.floor(Date.now() / 1000);
       const mockPerformanceResponse = createMockPerformanceResponse([
@@ -634,14 +597,17 @@ describe('get_vault_performance Tool', () => {
         .mockResolvedValueOnce(mockVaultResponse);
 
       // Act
+      // NOTE: Test bypasses wrapper, so we must explicitly pass includeSDKCalculations: true
+      // In production, the wrapper applies the default value from the schema
       const result = await executeGetVaultPerformance({
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: true,
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data).toHaveProperty('sdkCalculatedAPR');
     });
@@ -663,7 +629,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data).not.toHaveProperty('sdkCalculatedAPR');
     });
@@ -691,7 +657,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data).not.toHaveProperty('sdkCalculatedAPR');
     });
@@ -715,7 +681,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert - Main response should still succeed
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
       expect(data).toHaveProperty('metrics');
       expect(data).not.toHaveProperty('sdkCalculatedAPR');

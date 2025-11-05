@@ -17,66 +17,14 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { predictYieldInputSchema, PredictYieldInput } from '../utils/validators.js';
+import { PredictYieldInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
-import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import { VaultData } from '../graphql/fragments/index.js';
+import { YIELD_PREDICTION_QUERY } from '../graphql/queries/index.js';
 import { predictYield, YieldDataPoint, YieldPrediction } from '../utils/yield-prediction.js';
 import { cache, cacheTTL } from '../cache/index.js';
 
-/**
- * GraphQL query for vault yield prediction data
- */
-const YIELD_PREDICTION_QUERY = `
-  query YieldPrediction($vaultAddress: Address!, $chainId: Int!, $timestamp_gte: BigInt!) {
-    vault(address: $vaultAddress, chainId: $chainId) {
-      ...VaultFragment
-    }
-
-    # Get historical performance data
-    performanceHistory: transactions(
-      where: {
-        vault_eq: $vaultAddress,
-        timestamp_gte: $timestamp_gte,
-        type: "PeriodSummary"
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: 1000
-    ) {
-      items {
-        timestamp
-        data {
-          ... on PeriodSummary {
-            apy
-            totalAssetsUsd
-          }
-        }
-      }
-    }
-
-    # Get recent total assets updates for TVL tracking
-    tvlHistory: transactions(
-      where: {
-        vault_eq: $vaultAddress,
-        timestamp_gte: $timestamp_gte,
-        type: "TotalAssetsUpdated"
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: 100
-    ) {
-      items {
-        timestamp
-        data {
-          ... on TotalAssetsUpdated {
-            totalAssetsUsd
-          }
-        }
-      }
-    }
-  }
-  ${VAULT_FRAGMENT}
-`;
+// Query now imported from ../graphql/queries/index.js
 
 /**
  * Time range constants (in seconds)
@@ -205,11 +153,8 @@ This prediction uses:
  */
 export async function executePredictYield(input: PredictYieldInput): Promise<CallToolResult> {
   try {
-    // Validate input
-    const validatedInput = predictYieldInputSchema.parse(input);
-
-    // Check cache
-    const cacheKey = `yield_prediction:${validatedInput.chainId}:${validatedInput.vaultAddress}:${validatedInput.timeRange}`;
+    // Generate cache key (input already validated by createToolHandler)
+    const cacheKey = `yield_prediction:${input.chainId}:${input.vaultAddress}:${input.timeRange}`;
     const cached = cache.get<{ prediction: YieldPrediction; vaultName: string }>(cacheKey);
 
     if (cached) {
@@ -217,7 +162,7 @@ export async function executePredictYield(input: PredictYieldInput): Promise<Cal
         content: [
           {
             type: 'text',
-            text: `${formatYieldPrediction(cached.prediction, cached.vaultName, validatedInput.timeRange)}\n\n_Cached result from ${new Date().toISOString()}_`,
+            text: `${formatYieldPrediction(cached.prediction, cached.vaultName, input.timeRange)}\n\n_Cached result from ${new Date().toISOString()}_`,
           },
         ],
         isError: false,
@@ -226,7 +171,7 @@ export async function executePredictYield(input: PredictYieldInput): Promise<Cal
 
     // Calculate timestamp threshold for time range
     const nowTimestamp = Math.floor(Date.now() / 1000);
-    const timeRangeSeconds = TIME_RANGES[validatedInput.timeRange];
+    const timeRangeSeconds = TIME_RANGES[input.timeRange];
     const timestampThreshold = nowTimestamp - timeRangeSeconds;
 
     // Fetch vault data
@@ -245,8 +190,8 @@ export async function executePredictYield(input: PredictYieldInput): Promise<Cal
         }>;
       };
     }>(YIELD_PREDICTION_QUERY, {
-      vaultAddress: validatedInput.vaultAddress,
-      chainId: validatedInput.chainId,
+      vaultAddress: input.vaultAddress,
+      chainId: input.chainId,
       timestamp_gte: String(timestampThreshold),
     });
 
@@ -255,7 +200,7 @@ export async function executePredictYield(input: PredictYieldInput): Promise<Cal
         content: [
           {
             type: 'text',
-            text: `No vault found at address ${validatedInput.vaultAddress} on chain ${validatedInput.chainId}`,
+            text: `No vault found at address ${input.vaultAddress} on chain ${input.chainId}`,
           },
         ],
         isError: false,
@@ -313,7 +258,7 @@ export async function executePredictYield(input: PredictYieldInput): Promise<Cal
       content: [
         {
           type: 'text',
-          text: formatYieldPrediction(prediction, cacheValue.vaultName, validatedInput.timeRange),
+          text: formatYieldPrediction(prediction, cacheValue.vaultName, input.timeRange),
         },
       ],
       isError: false,

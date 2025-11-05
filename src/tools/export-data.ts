@@ -17,9 +17,15 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { exportDataInputSchema, ExportDataInput } from '../utils/validators.js';
+import { ExportDataInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
-import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import { VaultData } from '../graphql/fragments/index.js';
+import {
+  EXPORT_VAULTS_QUERY,
+  EXPORT_TRANSACTIONS_QUERY,
+  EXPORT_PRICE_HISTORY_QUERY,
+  EXPORT_PERFORMANCE_QUERY,
+} from '../graphql/queries/index.js';
 import {
   generateVaultCSV,
   generateTransactionCSV,
@@ -31,109 +37,7 @@ import {
   PerformanceCSVData,
 } from '../utils/csv-generator.js';
 
-/**
- * GraphQL query for vault data export
- */
-const EXPORT_VAULTS_QUERY = `
-  query ExportVaults($addresses: [Address!]!, $chainId: Int!) {
-    vaults(where: { address_in: $addresses, chainId: $chainId }) {
-      ...VaultFragment
-    }
-  }
-  ${VAULT_FRAGMENT}
-`;
-
-/**
- * GraphQL query for transaction export
- */
-const EXPORT_TRANSACTIONS_QUERY = `
-  query ExportTransactions($vault_in: [Address!]!, $chainId: Int!, $first: Int!) {
-    transactions(
-      where: { vault_in: $vault_in, chainId: $chainId },
-      orderBy: "timestamp",
-      orderDirection: "desc",
-      first: $first
-    ) {
-      items {
-        id
-        type
-        timestamp
-        blockNumber
-        vault {
-          address
-        }
-        data {
-          ... on SettleDeposit {
-            user
-            assets
-            shares
-          }
-          ... on SettleRedeem {
-            user
-            assets
-            shares
-          }
-          ... on DepositRequest {
-            user
-            assets
-          }
-          ... on RedeemRequest {
-            user
-            shares
-          }
-        }
-      }
-    }
-  }
-`;
-
-/**
- * GraphQL query for price history export
- */
-const EXPORT_PRICE_HISTORY_QUERY = `
-  query ExportPriceHistory($vault_in: [Address!]!, $first: Int!) {
-    transactions(
-      where: { vault_in: $vault_in, type: "TotalAssetsUpdated" },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: $first
-    ) {
-      items {
-        timestamp
-        data {
-          ... on TotalAssetsUpdated {
-            pricePerShareUsd
-            totalAssetsUsd
-          }
-        }
-      }
-    }
-  }
-`;
-
-/**
- * GraphQL query for performance metrics export
- */
-const EXPORT_PERFORMANCE_QUERY = `
-  query ExportPerformance($vault_in: [Address!]!, $first: Int!) {
-    transactions(
-      where: { vault_in: $vault_in, type: "TotalAssetsUpdated" },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: $first
-    ) {
-      items {
-        timestamp
-        blockNumber
-        data {
-          ... on TotalAssetsUpdated {
-            totalAssetsUsd
-          }
-        }
-      }
-    }
-  }
-`;
+// Queries now imported from ../graphql/queries/index.js
 
 /**
  * Convert VaultData to CSV format
@@ -168,21 +72,21 @@ function convertVaultToCSV(vault: VaultData, chainId: number): VaultCSVData {
 export async function executeExportData(input: ExportDataInput): Promise<CallToolResult> {
   try {
     // Validate input
-    const validatedInput = exportDataInputSchema.parse(input);
+    // Input already validated by createToolHandler
 
     // Route to appropriate export handler
-    switch (validatedInput.dataType) {
+    switch (input.dataType) {
       case 'vaults':
-        return await exportVaults(validatedInput);
+        return await exportVaults(input);
 
       case 'transactions':
-        return await exportTransactions(validatedInput);
+        return await exportTransactions(input);
 
       case 'price_history':
-        return await exportPriceHistory(validatedInput);
+        return await exportPriceHistory(input);
 
       case 'performance':
-        return await exportPerformance(validatedInput);
+        return await exportPerformance(input);
 
       default:
         // Exhaustiveness check - all data types should be handled above
@@ -190,7 +94,7 @@ export async function executeExportData(input: ExportDataInput): Promise<CallToo
           content: [
             {
               type: 'text',
-              text: `Unknown data type: ${String(validatedInput.dataType)}`,
+              text: `Unknown data type: ${String(input.dataType)}`,
             },
           ],
           isError: true,

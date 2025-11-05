@@ -546,74 +546,8 @@ describe('export_data Tool', () => {
   // Input Validation Tests
   // ==========================================
 
-  describe('Input Validation', () => {
-    it('should reject invalid vault addresses', async () => {
-      const result = await executeExportData({
-        vaultAddresses: ['invalid-address'],
-        chainId: 1,
-        dataType: 'vaults',
-        format: 'csv',
-      });
-
-      expect(result.isError).toBe(true);
-      const text = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(text).toContain('Validation Error');
-      expect(text).toContain('Invalid Ethereum address');
-    });
-
-    it('should reject invalid chain ID', async () => {
-      const result = await executeExportData({
-        vaultAddresses: ['0x1234567890123456789012345678901234567890'],
-        chainId: -1,
-        dataType: 'vaults',
-        format: 'csv',
-      });
-
-      expect(result.isError).toBe(true);
-      const text = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(text).toContain('Validation Error');
-    });
-
-    it('should reject empty vault addresses array', async () => {
-      const result = await executeExportData({
-        vaultAddresses: [],
-        chainId: 1,
-        dataType: 'vaults',
-        format: 'csv',
-      });
-
-      expect(result.isError).toBe(true);
-      const text = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(text).toContain('Validation Error');
-      expect(text).toContain('At least 1 vault address is required');
-    });
-
-    it('should reject invalid data type', async () => {
-      const result = await executeExportData({
-        vaultAddresses: ['0x1234567890123456789012345678901234567890'],
-        chainId: 1,
-        dataType: 'invalid' as never,
-        format: 'csv',
-      });
-
-      expect(result.isError).toBe(true);
-      const text = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(text).toContain('Validation Error');
-    });
-
-    it('should reject invalid format', async () => {
-      const result = await executeExportData({
-        vaultAddresses: ['0x1234567890123456789012345678901234567890'],
-        chainId: 1,
-        dataType: 'vaults',
-        format: 'xml' as never,
-      });
-
-      expect(result.isError).toBe(true);
-      const text = (result.content[0] as { type: 'text'; text: string }).text;
-      expect(text).toContain('Validation Error');
-    });
-  });
+  // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
+  // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
   // ==========================================
   // Error Handling Tests

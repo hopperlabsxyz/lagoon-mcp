@@ -2,129 +2,12 @@ import { createHash } from 'crypto';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
 import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
-import { getTransactionsInputSchema, type GetTransactionsInput } from '../utils/validators.js';
+import { type GetTransactionsInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
+import { TRANSACTIONS_QUERY } from '../graphql/queries/index.js';
 
-/**
- * GraphQL query for fetching vault transactions with all union type variants
- */
-const TRANSACTIONS_QUERY = `
-  query GetTransactions(
-    $first: Int!
-    $skip: Int!
-    $where: TransactionFilterInput
-    $orderBy: TransactionOrderBy!
-    $orderDirection: OrderDirection
-  ) {
-    transactions(
-      first: $first
-      skip: $skip
-      where: $where
-      orderBy: $orderBy
-      orderDirection: $orderDirection
-    ) {
-      items {
-        id
-        type
-        timestamp
-        blockNumber
-        hash
-        logIndex
-        chain {
-          id
-          name
-        }
-        vault {
-          id
-          address
-        }
-        data {
-          ... on SettleDeposit {
-            epochId
-            settledId
-            totalAssets
-            totalAssetsUsd
-            totalSupply
-            assetsDeposited
-            assetsDepositedUsd
-            sharesMinted
-          }
-          ... on SettleRedeem {
-            epochId
-            settledId
-            totalAssets
-            totalAssetsUsd
-            totalSupply
-            assetsWithdrawed
-            assetsWithdrawedUsd
-            sharesBurned
-          }
-          ... on DepositRequest {
-            controller
-            owner
-            requestId
-            sender
-            assets
-            assetsUsd
-          }
-          ... on RedeemRequest {
-            controller
-            owner
-            requestId
-            sender
-            shares
-            sharesUsd
-          }
-          ... on NewTotalAssetsUpdated {
-            totalAssets
-            totalAssetsUsd
-            totalSupply
-          }
-          ... on TotalAssetsUpdated {
-            totalAssets
-            totalAssetsUsd
-            totalSupply
-          }
-          ... on PeriodSummary {
-            duration
-            netTotalSupplyAtEnd
-            totalAssetsAtEnd
-            totalAssetsAtStart
-            totalSupplyAtEnd
-            totalSupplyAtStart
-          }
-          ... on DepositSync {
-            owner
-            sender
-            shares
-            assets
-            assetsUsd
-          }
-          ... on DepositRequestCanceled {
-            controller
-            requestId
-          }
-          ... on RatesUpdated {
-            newPerformanceFeeRate
-            newManagementFeeRate
-          }
-          ... on StateUpdated {
-            newState
-          }
-        }
-      }
-      pageInfo {
-        hasNextPage
-        hasPreviousPage
-        count
-        limit
-        skip
-        totalCount
-      }
-    }
-  }
-`;
+// Query now imported from ../graphql/queries/index.js
 
 /**
  * Build the where filter for the transactions query
@@ -212,28 +95,25 @@ interface TransactionsResponse {
  * Queries vault transaction history with flexible filtering, pagination, and ordering.
  * Supports all transaction types: deposits, redemptions, settlements, state changes, and more.
  *
- * @param input - Transaction query parameters
+ * @param input - Transaction query parameters (pre-validated by createToolHandler)
  * @returns Transaction history with pagination info
  */
 export async function executeGetTransactions(input: GetTransactionsInput): Promise<CallToolResult> {
   try {
-    // Validate input
-    const validatedInput = getTransactionsInputSchema.parse(input);
-
-    // Default pagination
-    const first = validatedInput.pagination?.first ?? 100;
-    const skip = validatedInput.pagination?.skip ?? 0;
-    const orderBy = validatedInput.orderBy ?? 'blockNumber';
-    const orderDirection = validatedInput.orderDirection ?? 'desc';
+    // Extract parameters with defaults (input already validated by createToolHandler)
+    const first = input.pagination?.first ?? 100;
+    const skip = input.pagination?.skip ?? 0;
+    const orderBy = input.orderBy ?? 'blockNumber';
+    const orderDirection = input.orderDirection ?? 'desc';
 
     // Build where filter
-    const where = buildWhereFilter(validatedInput);
+    const where = buildWhereFilter(input);
     const filterHash = hashFilters(where);
 
     // Generate cache key
     const cacheKey = cacheKeys.transactions({
-      vaultAddress: validatedInput.vaultAddress.toLowerCase(),
-      chainId: validatedInput.chainId,
+      vaultAddress: input.vaultAddress.toLowerCase(),
+      chainId: input.chainId,
       filterHash,
       first,
       skip,
@@ -261,8 +141,8 @@ export async function executeGetTransactions(input: GetTransactionsInput): Promi
 
     // Build result
     const result = {
-      vaultAddress: validatedInput.vaultAddress,
-      chainId: validatedInput.chainId,
+      vaultAddress: input.vaultAddress,
+      chainId: input.chainId,
       transactions,
       pageInfo: {
         hasNextPage: response.transactions.pageInfo.hasNextPage,
@@ -271,7 +151,7 @@ export async function executeGetTransactions(input: GetTransactionsInput): Promi
         totalCount: response.transactions.pageInfo.totalCount,
       },
       filters: {
-        transactionTypes: validatedInput.transactionTypes,
+        transactionTypes: input.transactionTypes,
         orderBy,
         orderDirection,
       },

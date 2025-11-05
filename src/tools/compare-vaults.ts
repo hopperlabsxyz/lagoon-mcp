@@ -18,10 +18,11 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { compareVaultsInputSchema, CompareVaultsInput } from '../utils/validators.js';
+import { CompareVaultsInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
-import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import { VaultData } from '../graphql/fragments/index.js';
+import { COMPARE_VAULTS_QUERY } from '../graphql/queries/index.js';
 import {
   VaultComparisonData,
   normalizeAndRankVaults,
@@ -29,18 +30,7 @@ import {
   formatComparisonTable,
 } from '../utils/comparison-metrics.js';
 
-/**
- * GraphQL query for batch vault comparison
- * Fetches multiple vaults in a single request
- */
-const COMPARE_VAULTS_QUERY = `
-  query CompareVaults($addresses: [Address!]!, $chainId: Int!) {
-    vaults(where: { address_in: $addresses, chainId: $chainId }) {
-      ...VaultFragment
-    }
-  }
-  ${VAULT_FRAGMENT}
-`;
+// Query now imported from ../graphql/queries/index.js
 
 /**
  * Response type for vault comparison query
@@ -77,16 +67,13 @@ function convertToComparisonData(vault: VaultData, chainId: number): VaultCompar
 /**
  * Compare multiple vaults with normalized metrics and rankings
  *
- * @param input - Array of vault addresses and chain ID
+ * @param input - Array of vault addresses and chain ID (pre-validated by createToolHandler)
  * @returns Comparison table with rankings and metrics
  */
 export async function executeCompareVaults(input: CompareVaultsInput): Promise<CallToolResult> {
   try {
-    // Validate input
-    const validatedInput = compareVaultsInputSchema.parse(input);
-
-    // Generate cache key (sorted addresses for consistency)
-    const cacheKey = cacheKeys.compareVaults(validatedInput.vaultAddresses, validatedInput.chainId);
+    // Generate cache key (sorted addresses for consistency, input already validated by createToolHandler)
+    const cacheKey = cacheKeys.compareVaults(input.vaultAddresses, input.chainId);
 
     // Check cache first
     const cachedData = cache.get<string>(cacheKey);
@@ -99,8 +86,8 @@ export async function executeCompareVaults(input: CompareVaultsInput): Promise<C
 
     // Execute GraphQL query with batch request
     const data = await graphqlClient.request<CompareVaultsResponse>(COMPARE_VAULTS_QUERY, {
-      addresses: validatedInput.vaultAddresses,
-      chainId: validatedInput.chainId,
+      addresses: input.vaultAddresses,
+      chainId: input.chainId,
     });
 
     // Handle no vaults found
@@ -109,7 +96,7 @@ export async function executeCompareVaults(input: CompareVaultsInput): Promise<C
         content: [
           {
             type: 'text',
-            text: `No vaults found for the provided addresses on chain ${validatedInput.chainId}`,
+            text: `No vaults found for the provided addresses on chain ${input.chainId}`,
           },
         ],
         isError: false,
@@ -117,9 +104,9 @@ export async function executeCompareVaults(input: CompareVaultsInput): Promise<C
     }
 
     // Warn if some vaults were not found
-    if (data.vaults.length < validatedInput.vaultAddresses.length) {
+    if (data.vaults.length < input.vaultAddresses.length) {
       const foundAddresses = data.vaults.map((v) => v.address.toLowerCase());
-      const missingAddresses = validatedInput.vaultAddresses.filter(
+      const missingAddresses = input.vaultAddresses.filter(
         (addr) => !foundAddresses.includes(addr.toLowerCase())
       );
       console.warn(
@@ -129,7 +116,7 @@ export async function executeCompareVaults(input: CompareVaultsInput): Promise<C
 
     // Convert to comparison data
     const comparisonData: VaultComparisonData[] = data.vaults.map((vault) =>
-      convertToComparisonData(vault, validatedInput.chainId)
+      convertToComparisonData(vault, input.chainId)
     );
 
     // Normalize and rank vaults
@@ -144,7 +131,7 @@ export async function executeCompareVaults(input: CompareVaultsInput): Promise<C
     // Build output text
     const output =
       `# Vault Comparison Results\n\n` +
-      `**Chain ID**: ${validatedInput.chainId}\n` +
+      `**Chain ID**: ${input.chainId}\n` +
       `**Vaults Analyzed**: ${summary.totalVaults}\n\n` +
       `## Summary Statistics\n\n` +
       `- **Average TVL**: $${(summary.averageTvl / 1000000).toFixed(2)}M

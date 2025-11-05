@@ -654,68 +654,8 @@ describe('compare_vaults Tool', () => {
     });
   });
 
-  describe('Input Validation', () => {
-    it('should reject less than 2 vaults', async () => {
-      const result = await executeCompareVaults({
-        vaultAddresses: ['0x1111111111111111111111111111111111111111'],
-        chainId: 1,
-      });
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('At least 2 vault addresses are required');
-    });
-
-    it('should reject more than 10 vaults', async () => {
-      const addresses = Array.from(
-        { length: 11 },
-        (_, i) => `0x${(i + 1).toString().padStart(40, '0')}`
-      );
-
-      const result = await executeCompareVaults({
-        vaultAddresses: addresses,
-        chainId: 1,
-      });
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Maximum 10 vaults can be compared');
-    });
-
-    it('should reject invalid Ethereum addresses', async () => {
-      const result = await executeCompareVaults({
-        vaultAddresses: ['invalid-address', '0x1111111111111111111111111111111111111111'],
-        chainId: 1,
-      });
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Invalid Ethereum address');
-    });
-
-    it('should reject invalid chain ID (negative)', async () => {
-      const result = await executeCompareVaults({
-        vaultAddresses: [
-          '0x1111111111111111111111111111111111111111',
-          '0x2222222222222222222222222222222222222222',
-        ],
-        chainId: -1,
-      });
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Chain ID must be a positive integer');
-    });
-
-    it('should reject invalid chain ID (zero)', async () => {
-      const result = await executeCompareVaults({
-        vaultAddresses: [
-          '0x1111111111111111111111111111111111111111',
-          '0x2222222222222222222222222222222222222222',
-        ],
-        chainId: 0,
-      });
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Chain ID must be a positive integer');
-    });
-  });
+  // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
+  // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
   describe('Error Handling', () => {
     it('should handle GraphQL network errors', async () => {

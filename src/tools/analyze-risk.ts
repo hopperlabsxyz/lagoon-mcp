@@ -17,57 +17,14 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { analyzeRiskInputSchema, AnalyzeRiskInput } from '../utils/validators.js';
+import { AnalyzeRiskInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
-import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import { VaultData } from '../graphql/fragments/index.js';
+import { RISK_ANALYSIS_QUERY } from '../graphql/queries/index.js';
 import { analyzeRisk, RiskScoreBreakdown } from '../utils/risk-scoring.js';
 import { cache, cacheTTL } from '../cache/index.js';
 
-/**
- * GraphQL query for vault risk analysis data
- */
-const RISK_ANALYSIS_QUERY = `
-  query RiskAnalysis($vaultAddress: Address!, $chainId: Int!) {
-    vault(address: $vaultAddress, chainId: $chainId) {
-      ...VaultFragment
-      createdAt
-      curatorId
-    }
-
-    # Get all vaults for concentration risk calculation
-    allVaults: vaults(where: { chainId: $chainId, isVisible_eq: true }) {
-      state {
-        totalAssetsUsd
-      }
-    }
-
-    # Get curator's other vaults for reputation analysis
-    curatorVaults: vaults(where: { chainId: $chainId, curatorIds_contains: [$curatorId] }) {
-      address
-      state {
-        totalAssetsUsd
-      }
-    }
-
-    # Get price history for volatility analysis
-    priceHistory: transactions(
-      where: { vault_eq: $vaultAddress, type: "TotalAssetsUpdated" },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: 100
-    ) {
-      items {
-        timestamp
-        data {
-          ... on TotalAssetsUpdated {
-            pricePerShareUsd
-          }
-        }
-      }
-    }
-  }
-  ${VAULT_FRAGMENT}
-`;
+// Query now imported from ../graphql/queries/index.js
 
 /**
  * Format risk breakdown as markdown table
@@ -142,16 +99,13 @@ function formatRiskBreakdown(breakdown: RiskScoreBreakdown): string {
 /**
  * Analyze vault risk with multi-factor scoring
  *
- * @param input - Risk analysis configuration (vault address, chain ID)
+ * @param input - Risk analysis configuration (vault address, chain ID; pre-validated by createToolHandler)
  * @returns Risk analysis with breakdown and recommendations
  */
 export async function executeAnalyzeRisk(input: AnalyzeRiskInput): Promise<CallToolResult> {
   try {
-    // Validate input
-    const validatedInput = analyzeRiskInputSchema.parse(input);
-
-    // Check cache
-    const cacheKey = `risk:${validatedInput.chainId}:${validatedInput.vaultAddress}`;
+    // Generate cache key (input already validated by createToolHandler)
+    const cacheKey = `risk:${input.chainId}:${input.vaultAddress}`;
     const cached = cache.get<RiskScoreBreakdown>(cacheKey);
 
     if (cached) {
@@ -178,8 +132,8 @@ export async function executeAnalyzeRisk(input: AnalyzeRiskInput): Promise<CallT
         }>;
       };
     }>(RISK_ANALYSIS_QUERY, {
-      vaultAddress: validatedInput.vaultAddress,
-      chainId: validatedInput.chainId,
+      vaultAddress: input.vaultAddress,
+      chainId: input.chainId,
       curatorId: '', // Will be filled in second query if needed
     });
 
@@ -188,7 +142,7 @@ export async function executeAnalyzeRisk(input: AnalyzeRiskInput): Promise<CallT
         content: [
           {
             type: 'text',
-            text: `No vault found at address ${validatedInput.vaultAddress} on chain ${validatedInput.chainId}`,
+            text: `No vault found at address ${input.vaultAddress} on chain ${input.chainId}`,
           },
         ],
         isError: false,

@@ -17,9 +17,10 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { OptimizePortfolioInput, optimizePortfolioInputSchema } from '../utils/validators.js';
+import { OptimizePortfolioInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
-import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import { VaultData } from '../graphql/fragments/index.js';
+import { PORTFOLIO_OPTIMIZATION_QUERY } from '../graphql/queries/index.js';
 import {
   optimizePortfolio,
   VaultForOptimization,
@@ -27,63 +28,7 @@ import {
 } from '../utils/portfolio-optimization.js';
 import { cache, cacheTTL } from '../cache/index.js';
 
-/**
- * GraphQL query for portfolio optimization data
- */
-const PORTFOLIO_OPTIMIZATION_QUERY = `
-  query PortfolioOptimization($vaultAddresses: [Address!]!, $chainId: Int!, $timestamp_gte: BigInt!) {
-    vaults(where: { address_in: $vaultAddresses, chainId: $chainId }) {
-      items {
-        ...VaultFragment
-      }
-    }
-
-    # Get price history for volatility calculation
-    priceHistory: transactions(
-      where: {
-        vault_in: $vaultAddresses,
-        timestamp_gte: $timestamp_gte,
-        type: "TotalAssetsUpdated"
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: 1000
-    ) {
-      items {
-        vault
-        timestamp
-        data {
-          ... on TotalAssetsUpdated {
-            pricePerShareUsd
-          }
-        }
-      }
-    }
-
-    # Get APY data for return estimation
-    performanceData: transactions(
-      where: {
-        vault_in: $vaultAddresses,
-        timestamp_gte: $timestamp_gte,
-        type: "PeriodSummary"
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: 1000
-    ) {
-      items {
-        vault
-        timestamp
-        data {
-          ... on PeriodSummary {
-            apy
-          }
-        }
-      }
-    }
-  }
-  ${VAULT_FRAGMENT}
-`;
+// Query now imported from ../graphql/queries/index.js
 
 /**
  * Calculate volatility from price history
@@ -258,11 +203,11 @@ export async function executeOptimizePortfolio(
 ): Promise<CallToolResult> {
   try {
     // Validate input
-    const validatedInput = optimizePortfolioInputSchema.parse(input);
+    // Input already validated by createToolHandler
 
     // Check cache
-    const vaultAddressesKey = validatedInput.vaultAddresses.sort().join(',');
-    const cacheKey = `portfolio_optimization:${validatedInput.chainId}:${vaultAddressesKey}:${validatedInput.strategy}`;
+    const vaultAddressesKey = input.vaultAddresses.sort().join(',');
+    const cacheKey = `portfolio_optimization:${input.chainId}:${vaultAddressesKey}:${input.strategy}`;
     const cached = cache.get<{
       optimization: PortfolioOptimization;
       currentPositions: Map<string, number>;
@@ -305,8 +250,8 @@ export async function executeOptimizePortfolio(
         }>;
       };
     }>(PORTFOLIO_OPTIMIZATION_QUERY, {
-      vaultAddresses: validatedInput.vaultAddresses,
-      chainId: validatedInput.chainId,
+      vaultAddresses: input.vaultAddresses,
+      chainId: input.chainId,
       timestamp_gte: String(timestampThreshold),
     });
 
@@ -315,7 +260,7 @@ export async function executeOptimizePortfolio(
         content: [
           {
             type: 'text',
-            text: `No vaults found for the provided addresses on chain ${validatedInput.chainId}`,
+            text: `No vaults found for the provided addresses on chain ${input.chainId}`,
           },
         ],
         isError: false,
@@ -324,7 +269,7 @@ export async function executeOptimizePortfolio(
 
     // Build current positions map from input
     const currentPositions = new Map<string, number>();
-    for (const position of validatedInput.currentPositions) {
+    for (const position of input.currentPositions) {
       currentPositions.set(position.vaultAddress.toLowerCase(), position.valueUsd);
     }
 
@@ -383,8 +328,8 @@ export async function executeOptimizePortfolio(
     // Perform portfolio optimization
     const optimization = optimizePortfolio(
       vaultsForOptimization,
-      validatedInput.strategy,
-      validatedInput.rebalanceThreshold
+      input.strategy,
+      input.rebalanceThreshold
     );
 
     // Cache the result

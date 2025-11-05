@@ -9,7 +9,7 @@
 
 import * as LagoonCore from '@lagoon-protocol/v0-core';
 import { getLastPeriodSummaryInDuration } from '@lagoon-protocol/v0-computation';
-import type { VaultData } from '../graphql/fragments.js';
+import type { VaultData } from '../graphql/fragments/index.js';
 import type { Vault } from '../types/generated.js';
 
 /**

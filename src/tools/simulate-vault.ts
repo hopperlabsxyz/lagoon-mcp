@@ -16,7 +16,7 @@ import { formatBigInt, safeBigIntStringify } from '../sdk/math-utils.js';
 import { graphqlClient } from '../graphql/client.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import type { VaultData } from '../types/generated.js';
-import { GET_PERIOD_SUMMARIES_QUERY } from '../graphql/queries/period-summaries.js';
+import { GET_PERIOD_SUMMARIES_QUERY } from '../graphql/queries/index.js';
 
 /**
  * Input schema for simulate_vault tool

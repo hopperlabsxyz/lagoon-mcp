@@ -19,38 +19,14 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { graphqlClient } from '../graphql/client.js';
-import { getUserPortfolioInputSchema, GetUserPortfolioInput } from '../utils/validators.js';
+import { GetUserPortfolioInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
-import { VAULT_FRAGMENT, VaultData } from '../graphql/fragments.js';
+import { VaultData } from '../graphql/fragments/index.js';
+import { GET_USER_PORTFOLIO_QUERY } from '../graphql/queries/index.js';
 
-/**
- * User portfolio GraphQL query for all chains
- * Includes complete vault data using shared fragment
- */
-const GET_USER_PORTFOLIO_QUERY = `
-  query GetUserPortfolio($where: UserFilterInput) {
-    users(where: $where) {
-      items {
-        state {
-          totalSharesUsd
-        }
-        vaultPositions {
-          vault {
-            ...VaultFragment
-          }
-          state {
-            assets
-            shares
-            sharesUsd
-          }
-        }
-      }
-    }
-  }
-  ${VAULT_FRAGMENT}
-`;
+// Query now imported from ../graphql/queries/index.js
 
 /**
  * User portfolio response type using shared types
@@ -98,18 +74,15 @@ interface PortfolioPosition {
 /**
  * Fetch user portfolio across all chains with single query
  *
- * @param input - User address (chainIds parameter deprecated)
+ * @param input - User address (pre-validated by createToolHandler)
  * @returns Aggregated portfolio data or error
  */
 export async function executeGetUserPortfolio(
   input: GetUserPortfolioInput
 ): Promise<CallToolResult> {
   try {
-    // Validate input
-    const validatedInput = getUserPortfolioInputSchema.parse(input);
-
-    // Generate cache key
-    const cacheKey = cacheKeys.userPortfolio(validatedInput.userAddress);
+    // Generate cache key (input already validated by createToolHandler)
+    const cacheKey = cacheKeys.userPortfolio(input.userAddress);
 
     // Check cache first
     const cachedData = cache.get(cacheKey);
@@ -120,7 +93,7 @@ export async function executeGetUserPortfolio(
     // Execute single query for all chains
     const data = await graphqlClient.request<UserPortfolioResponse>(GET_USER_PORTFOLIO_QUERY, {
       where: {
-        user_eq: validatedInput.userAddress,
+        user_eq: input.userAddress,
       },
     });
 
@@ -130,7 +103,7 @@ export async function executeGetUserPortfolio(
         content: [
           {
             type: 'text',
-            text: `No portfolio data found for user: ${validatedInput.userAddress}`,
+            text: `No portfolio data found for user: ${input.userAddress}`,
           },
         ],
         isError: false,
@@ -179,7 +152,7 @@ export async function executeGetUserPortfolio(
 
     // Build aggregated result
     const aggregatedPortfolio = {
-      userAddress: validatedInput.userAddress,
+      userAddress: input.userAddress,
       positions,
       totalValueUsd: totalValueUsd.toFixed(2),
       positionCount: positions.length,
