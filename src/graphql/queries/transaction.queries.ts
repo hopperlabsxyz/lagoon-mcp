@@ -15,8 +15,6 @@
  * - PeriodSummary
  * - DepositSync
  * - DepositRequestCanceled
- * - RatesUpdated
- * - StateUpdated
  *
  * Used by: get_transactions tool
  *
