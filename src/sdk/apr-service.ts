@@ -10,6 +10,7 @@
 import * as LagoonCore from '@lagoon-protocol/v0-core';
 import { getLastPeriodSummaryInDuration } from '@lagoon-protocol/v0-computation';
 import type { VaultData } from '../graphql/fragments.js';
+import type { Vault } from '../types/generated.js';
 
 /**
  * Duration constants (seconds)
@@ -74,7 +75,7 @@ export interface APRHistoricalData {
  */
 export function transformPeriodSummariesToAPRData(
   periodSummaries: PeriodSummary[],
-  vault: VaultData
+  vault: Vault | VaultData
 ): APRHistoricalData {
   // Graceful degradation for new vaults with no history
   if (!periodSummaries?.length) {
@@ -92,7 +93,7 @@ export function transformPeriodSummariesToAPRData(
 
     // Find 30-day data point using SDK function
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- SDK function lacks proper type exports
-    const thirtyDayPeriod = getLastPeriodSummaryInDuration<SDKPeriodSummary>(
+    const thirtyDayPeriod = getLastPeriodSummaryInDuration(
       sdkPeriodSummaries,
       THIRTY_DAYS_SECONDS
     ) as SDKPeriodSummary | undefined;
@@ -106,7 +107,7 @@ export function transformPeriodSummariesToAPRData(
       if (original) {
         result.thirtyDay = {
           timestamp: Number(thirtyDayPeriod.timestamp),
-          pricePerShare: calculatePricePerShareFromPeriod(original, vault),
+          pricePerShare: calculatePricePerShareFromPeriod(original, vault as VaultData),
         };
       }
     }
@@ -119,7 +120,7 @@ export function transformPeriodSummariesToAPRData(
     if (sorted[0]) {
       result.inception = {
         timestamp: parseInt(sorted[0].timestamp),
-        pricePerShare: calculatePricePerShareFromPeriod(sorted[0], vault),
+        pricePerShare: calculatePricePerShareFromPeriod(sorted[0], vault as VaultData),
       };
     }
 

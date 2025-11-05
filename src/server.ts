@@ -26,6 +26,7 @@ import { executeExportData } from './tools/export-data.js';
 import { executeAnalyzeRisk } from './tools/analyze-risk.js';
 import { executePredictYield } from './tools/predict-yield.js';
 import { executeOptimizePortfolio } from './tools/optimize-portfolio.js';
+import { executeSimulateVault, simulateVaultInputSchema } from './tools/simulate-vault.js';
 import {
   queryGraphQLInputSchema,
   getVaultDataInputSchema,
@@ -90,6 +91,7 @@ export function createServer(): McpServer {
     executeOptimizePortfolio,
     optimizePortfolioInputSchema
   );
+  const simulateVaultHandler = createToolHandler(executeSimulateVault, simulateVaultInputSchema);
 
   server.registerTool(
     'query_graphql',
@@ -328,6 +330,29 @@ export function createServer(): McpServer {
       },
     },
     optimizePortfolioHandler
+  );
+
+  server.registerTool(
+    'simulate_vault',
+    {
+      description:
+        'Simulate vault operations with new total assets to model deposit/withdrawal scenarios. ' +
+        'Provides protocol-accurate fee calculations (management and performance), ' +
+        'APR impact analysis, settlement requirements, and share price projections. ' +
+        'Returns current state, simulated state, fees breakdown, share price impact, ' +
+        'settlement analysis, and optional APR calculations from historical data. ' +
+        'Best for: deposit planning, withdrawal analysis, fee estimation, settlement strategy, what-if scenarios. ' +
+        'Performance: ~400-600 tokens per simulation. ' +
+        'Features: SDK-accurate calculations matching smart contract behavior.',
+      inputSchema: {
+        vaultAddress: simulateVaultInputSchema.shape.vaultAddress,
+        chainId: simulateVaultInputSchema.shape.chainId,
+        newTotalAssets: simulateVaultInputSchema.shape.newTotalAssets,
+        settleDeposit: simulateVaultInputSchema.shape.settleDeposit,
+        includeAPRCalculations: simulateVaultInputSchema.shape.includeAPRCalculations,
+      },
+    },
+    simulateVaultHandler
   );
 
   // ==========================================
