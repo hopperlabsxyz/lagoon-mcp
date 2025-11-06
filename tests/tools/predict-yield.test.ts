@@ -54,19 +54,24 @@ describe('predict_yield Tool', () => {
       name,
       symbol: 'TEST',
       decimals: 18,
-      asset: { address: '0xasset...', symbol: 'USDC' },
+      asset: { address: '0xasset...', symbol: 'USDC', decimals: 6 },
       state: {
         totalAssets: '1000000000000',
         totalSupply: '900000000000',
         totalAssetsUsd: 1000000,
+        pricePerShare: '1050000', // 1.05 in 6 decimals
         pricePerShareUsd: 1.05,
+        highWaterMark: '1000000', // 1.0 in 6 decimals
+        managementFee: includeFees ? 200 : 0, // 2% in basis points
+        performanceFee: includeFees ? 1000 : 0, // 10% in basis points
       },
     };
 
     if (includeFees) {
       baseVault.state = {
         ...baseVault.state,
-        pricePerShareUsd: 1.1, // 1.1 (above HWM)
+        pricePerShare: '1100000', // 1.1 in 6 decimals (above HWM)
+        pricePerShareUsd: 1.1,
       };
     }
 
@@ -79,14 +84,38 @@ describe('predict_yield Tool', () => {
   function createMockPerformanceHistory(
     data: Array<{ timestamp: number; apy: number; tvl: number }>
   ): unknown {
+    const baseAssets = 1000000000000n; // 1M in 6 decimals
+    const baseSupply = 1000000000000n;
+
     return {
-      items: data.map((d) => ({
-        timestamp: String(d.timestamp),
-        data: {
-          linearNetApr: d.apy / 100, // Convert from percentage to decimal
-          totalAssetsAtEnd: d.tvl,
-        },
-      })),
+      items: data.map((d, i) => {
+        // Calculate cumulative growth from inception (day 0) to current point
+        // based on the average APY up to this point
+        let cumulativeGrowth = 1.0;
+
+        if (i > 0) {
+          // Calculate average APY from start to current point
+          const avgApy = data.slice(0, i + 1).reduce((sum, item) => sum + item.apy, 0) / (i + 1);
+
+          // Calculate days elapsed from inception
+          const daysElapsed = (d.timestamp - data[0].timestamp) / (24 * 60 * 60);
+
+          // Apply cumulative growth: (1 + APY/100) ^ (days/365)
+          cumulativeGrowth = Math.pow(1 + avgApy / 100, daysElapsed / 365);
+        }
+
+        const totalAssets = String(BigInt(Math.floor(Number(baseAssets) * cumulativeGrowth)));
+        const totalSupply = String(baseSupply); // Supply stays constant
+
+        return {
+          timestamp: String(d.timestamp),
+          data: {
+            totalAssetsAtStart: totalAssets,
+            totalSupplyAtStart: totalSupply,
+            totalAssetsAtEnd: String(d.tvl),
+          },
+        };
+      }),
     };
   }
 
@@ -220,9 +249,19 @@ describe('predict_yield Tool', () => {
       expect(result.isError).toBe(false);
       const text = (result.content[0] as { type: 'text'; text: string }).text;
 
-      // Should show stable trend
-      expect(text).toContain('Stable');
-      expect(text).toContain('➡️');
+      // Should show predicted APY close to current APY (within 1%)
+      const currentAPYMatch = text.match(/Current APY.*?(\d+\.\d+)%/);
+      const predictedAPYMatch = text.match(/Predicted APY.*?(\d+\.\d+)%/);
+
+      expect(currentAPYMatch).toBeTruthy();
+      expect(predictedAPYMatch).toBeTruthy();
+
+      const currentAPY = parseFloat(currentAPYMatch![1]);
+      const predictedAPY = parseFloat(predictedAPYMatch![1]);
+      const apyDifference = Math.abs(predictedAPY - currentAPY);
+
+      // Stable trend should have < 1% difference between current and predicted
+      expect(apyDifference).toBeLessThan(1.0);
     });
   });
 

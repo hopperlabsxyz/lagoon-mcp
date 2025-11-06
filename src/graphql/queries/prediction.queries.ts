@@ -39,17 +39,18 @@ export const YIELD_PREDICTION_QUERY = `
     performanceHistory: transactions(
       where: {
         vault_in: [$vaultAddress],
-        type_in: ["PeriodSummary"]
+        type_in: [PeriodSummary]
       },
-      orderBy: "timestamp",
-      orderDirection: "asc",
+      orderBy: timestamp,
+      orderDirection: asc,
       first: 1000
     ) {
       items {
         timestamp
         data {
           ... on PeriodSummary {
-            linearNetApr
+            totalAssetsAtStart
+            totalSupplyAtStart
             totalAssetsAtEnd
           }
         }
@@ -60,10 +61,10 @@ export const YIELD_PREDICTION_QUERY = `
     tvlHistory: transactions(
       where: {
         vault_in: [$vaultAddress],
-        type_in: ["TotalAssetsUpdated"]
+        type_in: [TotalAssetsUpdated]
       },
-      orderBy: "timestamp",
-      orderDirection: "asc",
+      orderBy: timestamp,
+      orderDirection: asc,
       first: 100
     ) {
       items {

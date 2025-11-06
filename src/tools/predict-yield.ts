@@ -27,6 +27,11 @@ import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheTTL } from '../cache/index.js';
+import {
+  transformPeriodSummariesToAPRData,
+  calculateAPRFromPriceChange,
+  type PeriodSummary,
+} from '../sdk/apr-service.js';
 
 /**
  * Time range constants (in seconds)
@@ -45,7 +50,11 @@ interface YieldPredictionResponse {
   performanceHistory: {
     items: Array<{
       timestamp: string;
-      data: { linearNetApr: number; totalAssetsAtEnd: number };
+      data: {
+        totalAssetsAtStart: string;
+        totalSupplyAtStart: string;
+        totalAssetsAtEnd: string;
+      };
     }>;
   };
   tvlHistory: {
@@ -190,16 +199,56 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
     // Prepare historical data points
     const historicalData: YieldDataPoint[] = [];
 
-    // Add performance history data points with client-side timestamp filtering
+    // Transform performance history to period summaries for SDK
     if (data.performanceHistory && data.performanceHistory.items.length > 0) {
+      const periodSummaries: PeriodSummary[] = data.performanceHistory.items
+        .filter((item) => parseInt(item.timestamp, 10) >= timestampThreshold)
+        .map((item) => ({
+          timestamp: item.timestamp,
+          totalAssetsAtStart: item.data.totalAssetsAtStart,
+          totalSupplyAtStart: item.data.totalSupplyAtStart,
+        }));
+
+      // Use SDK to calculate APR from period summaries
+      const aprData = transformPeriodSummariesToAPRData(periodSummaries, data.vault);
+
+      // Calculate APR for each data point using SDK functions
       for (const item of data.performanceHistory.items) {
         const timestamp = parseInt(item.timestamp, 10);
         if (timestamp >= timestampThreshold) {
-          historicalData.push({
-            timestamp,
-            apy: item.data.linearNetApr * 100, // Convert APR to APY approximation
-            tvl: item.data.totalAssetsAtEnd,
-          });
+          // Calculate price per share at this point
+          const historicalPeriod: PeriodSummary = {
+            timestamp: item.timestamp,
+            totalAssetsAtStart: item.data.totalAssetsAtStart,
+            totalSupplyAtStart: item.data.totalSupplyAtStart,
+          };
+
+          // Use inception point as baseline for historical APR calculation
+          if (aprData.inception) {
+            const daysElapsed = (timestamp - aprData.inception.timestamp) / (24 * 60 * 60);
+
+            if (daysElapsed > 0) {
+              // Calculate price per share for this period using SDK helper
+              const historicalAPRData = transformPeriodSummariesToAPRData(
+                [historicalPeriod],
+                data.vault
+              );
+
+              if (historicalAPRData.inception) {
+                const apr = calculateAPRFromPriceChange(
+                  aprData.inception.pricePerShare,
+                  historicalAPRData.inception.pricePerShare,
+                  daysElapsed
+                );
+
+                historicalData.push({
+                  timestamp,
+                  apy: apr, // APR as percentage
+                  tvl: Number(item.data.totalAssetsAtEnd),
+                });
+              }
+            }
+          }
         }
       }
     }
