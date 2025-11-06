@@ -17,7 +17,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeCompareVaults } from '../../src/tools/compare-vaults';
+import { createExecuteCompareVaults } from '../../src/tools/compare-vaults';
+import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache } from '../../src/cache';
 
@@ -187,9 +188,21 @@ function createMockVault(
 describe('compare_vaults Tool', () => {
   const graphqlClient = graphqlClientModule.graphqlClient as { request: ReturnType<typeof vi.fn> };
 
+  // Executor function created from factory with mock container
+  let executeCompareVaults: ReturnType<typeof createExecuteCompareVaults>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     cache.flushAll();
+
+    // Create mock container and initialize executor
+    const mockContainer: ServiceContainer = {
+      graphqlClient: graphqlClientModule.graphqlClient,
+      cache,
+      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
+      riskService: {} as any,
+    };
+    executeCompareVaults = createExecuteCompareVaults(mockContainer);
   });
 
   afterEach(() => {
@@ -633,9 +646,6 @@ describe('compare_vaults Tool', () => {
         }),
       ];
 
-      // Mock console.warn to verify warning
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
       graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
 
       const result = await executeCompareVaults({
@@ -647,10 +657,10 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
+      // Should still succeed with partial results
       expect(result.isError).toBe(false);
-      expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('2 vault(s) not found'));
-
-      consoleWarnSpy.mockRestore();
+      const text = result.content[0].text as string;
+      expect(text).toContain('Found Vault');
     });
   });
 

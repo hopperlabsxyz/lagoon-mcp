@@ -14,13 +14,11 @@
  * - 15-minute TTL for comparison results
  * - Cache key: compare:{sorted_addresses}:{chainId}
  * - Cache hit rate target: 70-80%
+ * - Cache tags: [CacheTag.VAULT, CacheTag.ANALYTICS] for invalidation
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphqlClient } from '../graphql/client.js';
 import { CompareVaultsInput } from '../utils/validators.js';
-import { handleToolError } from '../utils/tool-error-handler.js';
-import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { COMPARE_VAULTS_QUERY } from '../graphql/queries/index.js';
 import {
@@ -29,14 +27,31 @@ import {
   generateComparisonSummary,
   formatComparisonTable,
 } from '../utils/comparison-metrics.js';
-
-// Query now imported from ../graphql/queries/index.js
+import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
+import { ServiceContainer } from '../core/container.js';
+import { CacheTag } from '../core/cache-invalidation.js';
+import { cacheKeys, cacheTTL } from '../cache/index.js';
 
 /**
- * Response type for vault comparison query
+ * GraphQL response type
  */
 interface CompareVaultsResponse {
   vaults: VaultData[];
+}
+
+/**
+ * GraphQL variables type for COMPARE_VAULTS_QUERY
+ */
+interface CompareVaultsVariables {
+  addresses: string[];
+  chainId: number;
+}
+
+/**
+ * Comparison output with markdown
+ */
+interface CompareVaultsOutput {
+  markdown: string;
 }
 
 /**
@@ -65,55 +80,11 @@ function convertToComparisonData(vault: VaultData, chainId: number): VaultCompar
 }
 
 /**
- * Compare multiple vaults with normalized metrics and rankings
- *
- * @param input - Array of vault addresses and chain ID (pre-validated by createToolHandler)
- * @returns Comparison table with rankings and metrics
+ * Transform raw GraphQL response into comparison markdown output
+ * Uses closure to capture input values
  */
-export async function executeCompareVaults(input: CompareVaultsInput): Promise<CallToolResult> {
-  try {
-    // Generate cache key (sorted addresses for consistency, input already validated by createToolHandler)
-    const cacheKey = cacheKeys.compareVaults(input.vaultAddresses, input.chainId);
-
-    // Check cache first
-    const cachedData = cache.get<string>(cacheKey);
-    if (cachedData) {
-      return {
-        content: [{ type: 'text', text: cachedData }],
-        isError: false,
-      };
-    }
-
-    // Execute GraphQL query with batch request
-    const data = await graphqlClient.request<CompareVaultsResponse>(COMPARE_VAULTS_QUERY, {
-      addresses: input.vaultAddresses,
-      chainId: input.chainId,
-    });
-
-    // Handle no vaults found
-    if (!data.vaults || data.vaults.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `No vaults found for the provided addresses on chain ${input.chainId}`,
-          },
-        ],
-        isError: false,
-      };
-    }
-
-    // Warn if some vaults were not found
-    if (data.vaults.length < input.vaultAddresses.length) {
-      const foundAddresses = data.vaults.map((v) => v.address.toLowerCase());
-      const missingAddresses = input.vaultAddresses.filter(
-        (addr) => !foundAddresses.includes(addr.toLowerCase())
-      );
-      console.warn(
-        `Warning: ${missingAddresses.length} vault(s) not found: ${missingAddresses.join(', ')}`
-      );
-    }
-
+function createTransformComparisonData(input: CompareVaultsInput) {
+  return (data: CompareVaultsResponse): CompareVaultsOutput => {
     // Convert to comparison data
     const comparisonData: VaultComparisonData[] = data.vaults.map((vault) =>
       convertToComparisonData(vault, input.chainId)
@@ -128,12 +99,19 @@ export async function executeCompareVaults(input: CompareVaultsInput): Promise<C
     // Format as markdown table
     const table = formatComparisonTable(normalizedVaults);
 
-    // Build output text
-    const output =
-      `# Vault Comparison Results\n\n` +
-      `**Chain ID**: ${input.chainId}\n` +
-      `**Vaults Analyzed**: ${summary.totalVaults}\n\n` +
-      `## Summary Statistics\n\n` +
+    // Build output markdown
+    const markdown =
+      `# Vault Comparison Results
+
+` +
+      `**Chain ID**: ${input.chainId}
+` +
+      `**Vaults Analyzed**: ${summary.totalVaults}
+
+` +
+      `## Summary Statistics
+
+` +
       `- **Average TVL**: $${(summary.averageTvl / 1000000).toFixed(2)}M
 ` +
       `- **Average APY**: ${(summary.averageApy * 100).toFixed(2)}%
@@ -153,29 +131,93 @@ export async function executeCompareVaults(input: CompareVaultsInput): Promise<C
       `- **APY**: ${(summary.worstPerformer.apy * 100).toFixed(2)}%
 
 ` +
-      `### Highest TVL\n` +
-      `- **Vault**: ${summary.highestTvl.name}\n` +
-      `- **TVL**: $${(summary.highestTvl.tvl / 1000000).toFixed(2)}M\n\n` +
-      `### Lowest TVL\n` +
-      `- **Vault**: ${summary.lowestTvl.name}\n` +
-      `- **TVL**: $${(summary.lowestTvl.tvl / 1000000).toFixed(2)}M\n\n` +
-      `## Detailed Comparison\n\n` +
-      `${table}\n\n` +
-      `**Legend**:\n` +
-      `- **Rank**: Overall ranking based on weighted score (60% APY, 40% TVL)\n` +
-      `- **Score**: Overall performance score (0-100)\n` +
-      `- **TVL Δ**: Delta from average TVL (%)\n` +
-      `- **APY Δ**: Delta from average APY (%)\n`;
+      `### Highest TVL
+` +
+      `- **Vault**: ${summary.highestTvl.name}
+` +
+      `- **TVL**: $${(summary.highestTvl.tvl / 1000000).toFixed(2)}M
 
-    // Store in cache with 15-minute TTL
-    cache.set(cacheKey, output, cacheTTL.comparison);
+` +
+      `### Lowest TVL
+` +
+      `- **Vault**: ${summary.lowestTvl.name}
+` +
+      `- **TVL**: $${(summary.lowestTvl.tvl / 1000000).toFixed(2)}M
 
-    // Return successful response
-    return {
-      content: [{ type: 'text', text: output }],
-      isError: false,
-    };
-  } catch (error) {
-    return handleToolError(error, 'compare_vaults');
-  }
+` +
+      `## Detailed Comparison
+
+` +
+      `${table}
+
+` +
+      `**Legend**:
+` +
+      `- **Rank**: Overall ranking based on weighted score (60% APY, 40% TVL)
+` +
+      `- **Score**: Overall performance score (0-100)
+` +
+      `- **TVL Δ**: Delta from average TVL (%)
+` +
+      `- **APY Δ**: Delta from average APY (%)
+`;
+
+    return { markdown };
+  };
+}
+
+/**
+ * Create the executeCompareVaults function with DI container
+ *
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
+ */
+export function createExecuteCompareVaults(
+  container: ServiceContainer
+): (input: CompareVaultsInput) => Promise<CallToolResult> {
+  return async (input: CompareVaultsInput): Promise<CallToolResult> => {
+    const executor = executeToolWithCache<
+      CompareVaultsInput,
+      CompareVaultsResponse,
+      CompareVaultsVariables,
+      CompareVaultsOutput
+    >({
+      container,
+      cacheKey: (input) => cacheKeys.compareVaults(input.vaultAddresses, input.chainId),
+      cacheTTL: cacheTTL.comparison,
+      query: COMPARE_VAULTS_QUERY,
+      variables: (input) => ({
+        addresses: input.vaultAddresses,
+        chainId: input.chainId,
+      }),
+      validateResult: (data) => ({
+        valid: !!(data.vaults && data.vaults.length > 0),
+        message:
+          data.vaults && data.vaults.length > 0
+            ? undefined
+            : `No vaults found for the provided addresses on chain ${input.chainId}`,
+      }),
+      transformResult: createTransformComparisonData(input),
+      toolName: 'compare_vaults',
+    });
+
+    // Register cache tags for invalidation
+    const cacheKey = cacheKeys.compareVaults(input.vaultAddresses, input.chainId);
+    container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT, CacheTag.ANALYTICS]);
+
+    // Execute and get result
+    const result = await executor(input);
+
+    // Transform JSON output to markdown text format
+    if (!result.isError && result.content[0]?.type === 'text') {
+      try {
+        const output = JSON.parse(result.content[0].text) as CompareVaultsOutput;
+        result.content[0].text = output.markdown;
+      } catch (error) {
+        console.error('Failed to parse comparison output:', error);
+      }
+    }
+
+    return result;
+  };
 }

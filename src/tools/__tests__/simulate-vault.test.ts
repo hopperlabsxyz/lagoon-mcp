@@ -4,17 +4,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  executeSimulateVault,
+  createExecuteSimulateVault,
   simulateVaultInputSchema,
   type SimulateVaultInput,
 } from '../simulate-vault.js';
 import type { VaultData } from '../../types/generated.js';
 import type { SimulationResult } from '@lagoon-protocol/v0-computation';
+import { createMockContainer } from '../../../tests/helpers/test-container.js';
 
 // Mock dependencies
 vi.mock('../../graphql/client.js', () => ({
   graphqlClient: {
-    request: vi.fn(),
+    request: vi.fn<[unknown, unknown?], Promise<unknown>>(),
   },
 }));
 
@@ -29,7 +30,6 @@ vi.mock('../../sdk/apr-service.js', () => ({
 import { graphqlClient } from '../../graphql/client.js';
 import { simulateVaultManagement } from '../../sdk/simulation-service.js';
 import { transformPeriodSummariesToAPRData } from '../../sdk/apr-service.js';
-
 describe('simulateVaultInputSchema', () => {
   it('should validate correct input', () => {
     const input = {
@@ -112,7 +112,7 @@ describe('executeSimulateVault', () => {
       symbol: 'USDC',
       name: 'USD Coin',
       decimals: 6,
-    },
+    } as const,
     state: {
       totalSupply: '1000000000000000000',
       totalAssets: '1000000000',
@@ -125,12 +125,12 @@ describe('executeSimulateVault', () => {
       pendingSiloBalances: {
         assets: '100000000',
         shares: '100000000000000000',
-      },
+      } as const,
       pendingSettlement: {
         assets: '50000000',
         shares: '50000000000000000',
-      },
-    },
+      } as const,
+    } as const,
     chainId: 42161,
     tvl: 1000,
   } as VaultData;
@@ -142,8 +142,15 @@ describe('executeSimulateVault', () => {
     pricePerShare: BigInt('1000000'),
   };
 
+  // Executor function created from factory with mock container
+  let executeSimulateVault: ReturnType<typeof createExecuteSimulateVault>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Create mock container and initialize executor
+    const mockContainer = createMockContainer();
+    executeSimulateVault = createExecuteSimulateVault(mockContainer);
   });
 
   it('should successfully simulate deposit scenario', async () => {
@@ -177,18 +184,18 @@ describe('executeSimulateVault', () => {
         timestamp: '1700000000',
         totalAssetsAtStart: '1000000000',
         totalSupplyAtStart: '1000000000000000000',
-      },
+      } as const,
     ];
 
     const mockAPRData = {
       thirtyDay: {
         timestamp: 1700000000,
         pricePerShare: BigInt('1050000'),
-      },
+      } as const,
       inception: {
         timestamp: 1690000000,
         pricePerShare: BigInt('1000000'),
-      },
+      } as const,
     };
 
     vi.mocked(graphqlClient)
@@ -366,7 +373,7 @@ describe('executeSimulateVault', () => {
         ...mockVault.state,
         totalSupply: '0',
         totalAssets: '0',
-      },
+      } as const,
     } as VaultData;
 
     const newVaultResult: SimulationResult = {

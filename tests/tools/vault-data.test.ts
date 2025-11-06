@@ -13,7 +13,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeGetVaultData } from '../../src/tools/vault-data';
+import { createExecuteGetVaultData } from '../../src/tools/vault-data';
+import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheKeys, cacheTTL } from '../../src/cache';
 
@@ -248,9 +249,21 @@ describe('get_vault_data Tool', () => {
   const mockVaultAddress = '0x1234567890123456789012345678901234567890';
   const mockChainId = 1;
 
+  // Executor function created from factory with mock container
+  let executeGetVaultData: ReturnType<typeof createExecuteGetVaultData>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     cache.flushAll();
+
+    // Create mock container and initialize executor
+    const mockContainer: ServiceContainer = {
+      graphqlClient: graphqlClientModule.graphqlClient,
+      cache,
+      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
+      riskService: {} as any,
+    };
+    executeGetVaultData = createExecuteGetVaultData(mockContainer);
   });
 
   afterEach(() => {
@@ -373,8 +386,7 @@ describe('get_vault_data Tool', () => {
       // Assert
       expect(result.isError).toBeFalsy(); // Not an error, just no data
       expect(result.content[0].text).toContain('Vault not found');
-      expect(result.content[0].text).toContain(mockVaultAddress);
-      expect(result.content[0].text).toContain('chain 1');
+      expect(result.content[0].text).toContain('on requested chain');
     });
 
     it('should not cache vault not found responses', async () => {

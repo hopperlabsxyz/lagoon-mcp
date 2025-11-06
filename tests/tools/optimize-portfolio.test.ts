@@ -3,12 +3,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeOptimizePortfolio } from '../../src/tools/optimize-portfolio.js';
+import { createExecuteOptimizePortfolio } from '../../src/tools/optimize-portfolio.js';
+import { createMockContainer } from '../helpers/test-container.js';
 
 // Mock GraphQL client
 vi.mock('../../src/graphql/client.js', () => ({
   graphqlClient: {
-    request: vi.fn(),
+    request: vi.fn<[unknown, unknown?], Promise<unknown>>(),
   },
 }));
 
@@ -36,9 +37,16 @@ const mockCacheGet = cache.get as ReturnType<typeof vi.fn>;
 const mockCacheSet = cache.set as ReturnType<typeof vi.fn>;
 
 describe('optimize_portfolio', () => {
+  // Executor function created from factory with mock container
+  let executeOptimizePortfolio: ReturnType<typeof createExecuteOptimizePortfolio>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockCacheGet.mockReturnValue(undefined);
+
+    // Create mock container and initialize executor
+    const mockContainer = createMockContainer();
+    executeOptimizePortfolio = createExecuteOptimizePortfolio(mockContainer);
   });
 
   const baseInput = {
@@ -202,12 +210,13 @@ describe('optimize_portfolio', () => {
 
       // Vault C has highest APY (8.25%) so should get higher allocation
       expect(text).toContain('Vault C');
+      // Cache stores raw GraphQL response, not transformed data
       expect(mockCacheSet).toHaveBeenCalledWith(
         expect.stringContaining('portfolio_optimization'),
         expect.objectContaining({
-          optimization: expect.objectContaining({
-            strategy: 'max_sharpe',
-          }),
+          vaults: expect.any(Object),
+          performanceData: expect.any(Object),
+          priceHistory: expect.any(Object),
         }),
         expect.any(Number)
       );
@@ -395,41 +404,29 @@ describe('optimize_portfolio', () => {
 
       await executeOptimizePortfolio(baseInput);
 
+      // Cache stores raw GraphQL response, not transformed data
       expect(mockCacheSet).toHaveBeenCalledWith(
         expect.stringContaining('portfolio_optimization'),
         expect.objectContaining({
-          optimization: expect.any(Object),
-          currentPositions: expect.any(Map),
+          vaults: expect.any(Object),
+          performanceData: expect.any(Object),
+          priceHistory: expect.any(Object),
         }),
         300 // Cache TTL from config
       );
     });
 
     it('should return cached results when available', async () => {
-      const cachedOptimization = {
-        optimization: {
-          strategy: 'max_sharpe' as const,
-          totalValueUsd: 10000,
-          positions: [],
-          metrics: {
-            expectedReturn: 6.0,
-            portfolioRisk: 3.5,
-            sharpeRatio: 1.14,
-            diversificationScore: 0.75,
-          },
-          rebalanceNeeded: false,
-          rebalanceThreshold: 5.0,
-          recommendations: ['Test recommendation'],
-        },
-        currentPositions: new Map(),
-      };
-      mockCacheGet.mockReturnValue(cachedOptimization);
+      // Cache raw GraphQL response, not transformed data
+      const cachedGraphQLResponse = mockVaultData;
+      mockCacheGet.mockReturnValue(cachedGraphQLResponse);
 
       const result = await executeOptimizePortfolio(baseInput);
 
       expect(result.isError).toBe(false);
       expect(mockGraphqlRequest).not.toHaveBeenCalled();
-      expect((result.content[0] as { text: string }).text).toContain('Cached result');
+      // Result should still be properly formatted after transformation
+      expect((result.content[0] as { text: string }).text).toContain('Sharpe');
     });
   });
 

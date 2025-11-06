@@ -15,12 +15,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { graphqlClient } from '../../src/graphql/client.js';
 import { cache } from '../../src/cache/index.js';
-import { executeGetPriceHistory } from '../../src/tools/get-price-history.js';
+import { createExecuteGetPriceHistory } from '../../src/tools/get-price-history.js';
+import { createMockContainer } from '../helpers/test-container.js';
 
 // Mock dependencies
 vi.mock('../../src/graphql/client.js', () => ({
   graphqlClient: {
-    request: vi.fn(),
+    request: vi.fn<[unknown, unknown?], Promise<unknown>>(),
   },
 }));
 
@@ -56,9 +57,16 @@ function createMockPriceTransaction(
 }
 
 describe('get_price_history Tool', () => {
+  // Executor function created from factory with mock container
+  let executeGetPriceHistory: ReturnType<typeof createExecuteGetPriceHistory>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     cache.flushAll();
+
+    // Create mock container and initialize executor
+    const mockContainer = createMockContainer();
+    executeGetPriceHistory = createExecuteGetPriceHistory(mockContainer);
   });
 
   describe('Basic Price History Functionality', () => {

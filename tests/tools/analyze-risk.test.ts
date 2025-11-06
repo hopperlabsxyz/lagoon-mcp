@@ -3,14 +3,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeAnalyzeRisk } from '../../src/tools/analyze-risk.js';
+import { createExecuteAnalyzeRisk } from '../../src/tools/analyze-risk.js';
 import { graphqlClient } from '../../src/graphql/client.js';
 import { clearCache } from '../../src/cache/index.js';
+import { createMockContainer } from '../helpers/test-container.js';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client.js', () => ({
   graphqlClient: {
-    request: vi.fn(),
+    request: vi.fn<[unknown, unknown?], Promise<unknown>>(),
   },
 }));
 
@@ -31,9 +32,16 @@ vi.mock('../../src/cache/index.js', async () => {
 });
 
 describe('analyze_risk Tool', () => {
+  // Executor function created from factory with mock container
+  let executeAnalyzeRisk: ReturnType<typeof createExecuteAnalyzeRisk>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     clearCache();
+
+    // Create mock container and initialize executor
+    const mockContainer = createMockContainer();
+    executeAnalyzeRisk = createExecuteAnalyzeRisk(mockContainer);
   });
 
   /**
@@ -468,7 +476,7 @@ describe('analyze_risk Tool', () => {
 
       expect(result.isError).toBe(true);
       const text = result.content[0].text as string;
-      expect(text).toContain('Error:');
+      expect(text).toContain('Error analyzing risk:');
       expect(text).toContain('Network error');
     });
 
@@ -486,7 +494,7 @@ describe('analyze_risk Tool', () => {
 
       expect(result.isError).toBe(true);
       const text = result.content[0].text as string;
-      expect(text).toContain('Error:');
+      expect(text).toContain('Error analyzing risk:');
     });
   });
 

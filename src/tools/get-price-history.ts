@@ -14,14 +14,16 @@
  * - 30-minute TTL for price history data
  * - Cache key: price_history:{address}:{chainId}:{timeRange}
  * - Cache hit rate target: 75-85%
+ * - Cache tags: [CacheTag.VAULT, CacheTag.ANALYTICS] for invalidation
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphqlClient } from '../graphql/client.js';
 import { PriceHistoryInput } from '../utils/validators.js';
-import { handleToolError } from '../utils/tool-error-handler.js';
-import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
 import { PRICE_HISTORY_QUERY } from '../graphql/queries/index.js';
+import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
+import { ServiceContainer } from '../core/container.js';
+import { CacheTag } from '../core/cache-invalidation.js';
+import { cacheKeys, cacheTTL } from '../cache/index.js';
 
 /**
  * Time range constants (in seconds)
@@ -212,64 +214,27 @@ function calculateStatistics(ohlcvData: OHLCVDataPoint[]): PriceStatistics {
 }
 
 /**
- * Fetch historical price data for a vault
- *
- * @param input - Vault address, chain ID, and time range
- * @returns OHLCV time-series data and price statistics
+ * GraphQL variables type for PRICE_HISTORY_QUERY
  */
-export async function executeGetPriceHistory(input: PriceHistoryInput): Promise<CallToolResult> {
-  try {
-    // Validate input
-    // Input already validated by createToolHandler
+interface PriceHistoryVariables {
+  vault_in: string[];
+  first: number;
+  timestamp_gte?: string;
+}
 
-    // Generate cache key
-    const cacheKey = cacheKeys.priceHistory(input.vaultAddress, input.chainId, input.timeRange);
+/**
+ * Markdown-formatted price history output
+ */
+interface PriceHistoryOutput {
+  markdown: string;
+}
 
-    // Check cache first
-    const cachedData = cache.get<string>(cacheKey);
-    if (cachedData) {
-      return {
-        content: [{ type: 'text', text: cachedData }],
-        isError: false,
-      };
-    }
-
-    // Calculate timestamp threshold (null for 'all')
-    const now = Math.floor(Date.now() / 1000);
-    const timeRangeSeconds = TIME_RANGES[input.timeRange];
-    const timestampGte = timeRangeSeconds > 0 ? now - timeRangeSeconds : 0;
-
-    // Build query variables
-    const variables: {
-      vault_in: string[];
-      first: number;
-      timestamp_gte?: string;
-    } = {
-      vault_in: [input.vaultAddress],
-      first: 2000, // Maximum data points
-    };
-
-    // Only add timestamp filter if not 'all'
-    if (timestampGte > 0) {
-      variables.timestamp_gte = timestampGte.toString();
-    }
-
-    // Execute GraphQL query
-    const data = await graphqlClient.request<PriceHistoryResponse>(PRICE_HISTORY_QUERY, variables);
-
-    // Handle no data
-    if (!data.transactions || data.transactions.items.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `No price history data found for vault ${input.vaultAddress} on chain ${input.chainId} in the ${input.timeRange} time range.`,
-          },
-        ],
-        isError: false,
-      };
-    }
-
+/**
+ * Transform raw GraphQL response into markdown-formatted output
+ * Uses closure to capture input values and page info
+ */
+function createTransformPriceHistoryData(input: PriceHistoryInput) {
+  return (data: PriceHistoryResponse): PriceHistoryOutput => {
     // Aggregate into OHLCV time-series
     const ohlcvData = aggregateOHLCV(data.transactions.items);
 
@@ -277,7 +242,7 @@ export async function executeGetPriceHistory(input: PriceHistoryInput): Promise<
     const statistics = calculateStatistics(ohlcvData);
 
     // Format output as markdown
-    const output =
+    const markdown =
       `# Price History: ${input.vaultAddress}\n\n` +
       `**Chain ID**: ${input.chainId}\n` +
       `**Time Range**: ${input.timeRange}\n` +
@@ -303,15 +268,78 @@ export async function executeGetPriceHistory(input: PriceHistoryInput): Promise<
       `\n\n` +
       `**Data Completeness**: ${data.transactions.pageInfo.hasNextPage ? 'More data available (truncated at 2000 points)' : 'Complete'}\n`;
 
-    // Store in cache with 30-minute TTL
-    cache.set(cacheKey, output, cacheTTL.priceHistory);
+    return { markdown };
+  };
+}
 
-    // Return successful response
-    return {
-      content: [{ type: 'text', text: output }],
-      isError: false,
+/**
+ * Create the executeGetPriceHistory function with DI container
+ *
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
+ */
+export function createExecuteGetPriceHistory(
+  container: ServiceContainer
+): (input: PriceHistoryInput) => Promise<CallToolResult> {
+  return async (input: PriceHistoryInput): Promise<CallToolResult> => {
+    // Calculate timestamp threshold (0 for 'all')
+    const now = Math.floor(Date.now() / 1000);
+    const timeRangeSeconds = TIME_RANGES[input.timeRange];
+    const timestampGte = timeRangeSeconds > 0 ? now - timeRangeSeconds : 0;
+
+    // Build query variables
+    const variables: PriceHistoryVariables = {
+      vault_in: [input.vaultAddress],
+      first: 2000, // Maximum data points
     };
-  } catch (error) {
-    return handleToolError(error, 'get_price_history');
-  }
+
+    // Only add timestamp filter if not 'all'
+    if (timestampGte > 0) {
+      variables.timestamp_gte = timestampGte.toString();
+    }
+
+    const executor = executeToolWithCache<
+      PriceHistoryInput,
+      PriceHistoryResponse,
+      PriceHistoryVariables,
+      PriceHistoryOutput
+    >({
+      container,
+      cacheKey: (input) =>
+        cacheKeys.priceHistory(input.vaultAddress, input.chainId, input.timeRange),
+      cacheTTL: cacheTTL.priceHistory,
+      query: PRICE_HISTORY_QUERY,
+      variables: () => variables,
+      validateResult: (data) => ({
+        valid: !!(data.transactions && data.transactions.items.length > 0),
+        message:
+          data.transactions && data.transactions.items.length > 0
+            ? undefined
+            : `No price history data found for vault ${input.vaultAddress} on chain ${input.chainId} in the ${input.timeRange} time range.`,
+      }),
+      transformResult: createTransformPriceHistoryData(input),
+      toolName: 'get_price_history',
+    });
+
+    // Register cache tags for invalidation
+    const cacheKey = cacheKeys.priceHistory(input.vaultAddress, input.chainId, input.timeRange);
+    container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT, CacheTag.ANALYTICS]);
+
+    // Execute and get result
+    const result = await executor(input);
+
+    // Transform JSON output to markdown text format
+    // executeToolWithCache returns JSON, but this tool should return markdown
+    if (!result.isError && result.content[0]?.type === 'text') {
+      try {
+        const output = JSON.parse(result.content[0].text) as PriceHistoryOutput;
+        result.content[0].text = output.markdown;
+      } catch (error) {
+        // If parsing fails, content is already in the right format
+        console.error('Failed to parse price history output:', error);
+      }
+    }
+
+    return result;
+  };
 }

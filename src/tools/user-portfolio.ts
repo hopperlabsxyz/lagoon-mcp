@@ -15,18 +15,17 @@
  * - Cache key: portfolio:{address}
  * - Single query returns all chains at once
  * - Cache hit rate target: 70-80%
+ * - Cache tags: [CacheTag.PORTFOLIO] for invalidation
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphqlClient } from '../graphql/client.js';
 import { GetUserPortfolioInput } from '../utils/validators.js';
-import { handleToolError } from '../utils/tool-error-handler.js';
-import { createSuccessResponse } from '../utils/tool-response.js';
-import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { GET_USER_PORTFOLIO_QUERY } from '../graphql/queries/index.js';
-
-// Query now imported from ../graphql/queries/index.js
+import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
+import { ServiceContainer } from '../core/container.js';
+import { CacheTag } from '../core/cache-invalidation.js';
+import { cacheKeys, cacheTTL } from '../cache/index.js';
 
 /**
  * User portfolio response type using shared types
@@ -72,45 +71,29 @@ interface PortfolioPosition {
 }
 
 /**
- * Fetch user portfolio across all chains with single query
- *
- * @param input - User address (pre-validated by createToolHandler)
- * @returns Aggregated portfolio data or error
+ * Aggregated portfolio data
  */
-export async function executeGetUserPortfolio(
-  input: GetUserPortfolioInput
-): Promise<CallToolResult> {
-  try {
-    // Generate cache key (input already validated by createToolHandler)
-    const cacheKey = cacheKeys.userPortfolio(input.userAddress);
+interface AggregatedPortfolio {
+  userAddress: string;
+  positions: PortfolioPosition[];
+  totalValueUsd: string;
+  positionCount: number;
+}
 
-    // Check cache first
-    const cachedData = cache.get(cacheKey);
-    if (cachedData) {
-      return createSuccessResponse(cachedData);
-    }
+/**
+ * GraphQL variables type for GET_USER_PORTFOLIO_QUERY
+ */
+interface GetUserPortfolioVariables {
+  where: {
+    user_eq: string;
+  };
+}
 
-    // Execute single query for all chains
-    const data = await graphqlClient.request<UserPortfolioResponse>(GET_USER_PORTFOLIO_QUERY, {
-      where: {
-        user_eq: input.userAddress,
-      },
-    });
-
-    // Handle case where no user data found
-    if (!data.users.items || data.users.items.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `No portfolio data found for user: ${input.userAddress}`,
-          },
-        ],
-        isError: false,
-      };
-    }
-
-    // Process response and aggregate positions
+/**
+ * Transform raw GraphQL response into aggregated portfolio
+ */
+function createTransformPortfolioData(userAddress: string) {
+  return (data: UserPortfolioResponse): AggregatedPortfolio => {
     const positions: PortfolioPosition[] = [];
     let totalValueUsd = 0;
 
@@ -150,20 +133,55 @@ export async function executeGetUserPortfolio(
       return bUsd - aUsd;
     });
 
-    // Build aggregated result
-    const aggregatedPortfolio = {
-      userAddress: input.userAddress,
+    return {
+      userAddress,
       positions,
       totalValueUsd: totalValueUsd.toFixed(2),
       positionCount: positions.length,
     };
+  };
+}
 
-    // Store in cache with 5-minute TTL
-    cache.set(cacheKey, aggregatedPortfolio, cacheTTL.userPortfolio);
+/**
+ * Create the executeGetUserPortfolio function with DI container
+ *
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
+ */
+export function createExecuteGetUserPortfolio(
+  container: ServiceContainer
+): (input: GetUserPortfolioInput) => Promise<CallToolResult> {
+  return (input: GetUserPortfolioInput) => {
+    const executor = executeToolWithCache<
+      GetUserPortfolioInput,
+      UserPortfolioResponse,
+      GetUserPortfolioVariables,
+      AggregatedPortfolio
+    >({
+      container,
+      cacheKey: (input) => cacheKeys.userPortfolio(input.userAddress),
+      cacheTTL: cacheTTL.userPortfolio,
+      query: GET_USER_PORTFOLIO_QUERY,
+      variables: (input) => ({
+        where: {
+          user_eq: input.userAddress,
+        },
+      }),
+      validateResult: (data) => ({
+        valid: !!(data.users.items && data.users.items.length > 0),
+        message:
+          data.users.items && data.users.items.length > 0
+            ? undefined
+            : `No portfolio data found for user: ${String(data)}`,
+      }),
+      transformResult: createTransformPortfolioData(input.userAddress),
+      toolName: 'get_user_portfolio',
+    });
 
-    // Return successful response
-    return createSuccessResponse(aggregatedPortfolio);
-  } catch (error) {
-    return handleToolError(error, 'get_user_portfolio');
-  }
+    // Register cache tags for invalidation
+    const cacheKey = cacheKeys.userPortfolio(input.userAddress);
+    container.cacheInvalidator.register(cacheKey, [CacheTag.PORTFOLIO]);
+
+    return executor(input);
+  };
 }

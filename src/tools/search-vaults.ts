@@ -13,20 +13,21 @@
  *
  * Cache strategy:
  * - 10-minute TTL for balance between freshness and performance
- * - Cache key: search:{MD5 hash of filters}
+ * - Cache key: search:{MD5 hash of filters}:{pagination}:{sort}
  * - Repeated searches with same filters hit cache
  * - Cache hit rate target: 70-80%
+ * - Cache tags: [CacheTag.VAULT] for invalidation
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createHash } from 'crypto';
-import { graphqlClient } from '../graphql/client.js';
 import { SearchVaultsInput } from '../utils/validators.js';
-import { handleToolError } from '../utils/tool-error-handler.js';
-import { createSuccessResponse } from '../utils/tool-response.js';
-import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { SEARCH_VAULTS_QUERY } from '../graphql/queries/index.js';
+import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
+import { ServiceContainer } from '../core/container.js';
+import { CacheTag } from '../core/cache-invalidation.js';
+import { cacheKeys, cacheTTL } from '../cache/index.js';
 
 // Query now imported from ../graphql/queries/index.js
 
@@ -126,60 +127,71 @@ function hashFilters(filters: SearchVaultsInput['filters']): string {
 }
 
 /**
- * Search and filter vaults with advanced criteria
- *
- * @param input - Search filters, pagination, and sorting options (pre-validated by createToolHandler)
- * @returns Paginated vault results with page info
+ * GraphQL variables type for SEARCH_VAULTS_QUERY
  */
-export async function executeSearchVaults(input: SearchVaultsInput): Promise<CallToolResult> {
-  try {
-    // Extract parameters with defaults (input already validated by createToolHandler)
-    const filters = input.filters;
-    const pagination = input.pagination || { first: 100, skip: 0 };
-    const orderBy = input.orderBy;
-    const orderDirection = input.orderDirection;
+interface SearchVaultsVariables {
+  first: number;
+  skip: number;
+  orderBy: string;
+  orderDirection: string;
+  where?: Record<string, unknown>;
+}
 
-    // Generate cache key from filter hash
-    const filterHash = hashFilters(filters);
-    const cacheKey = `${cacheKeys.searchVaults({ filterHash })}:${pagination.first}:${pagination.skip}:${orderBy}:${orderDirection}`;
-
-    // Check cache first
-    const cachedData = cache.get<SearchVaultsResponse>(cacheKey);
-    if (cachedData) {
-      return createSuccessResponse(cachedData);
-    }
-
-    // Build GraphQL filter object
-    const whereClause = buildGraphQLFilters(filters);
-
-    // Execute GraphQL query
-    const data = await graphqlClient.request<SearchVaultsResponse>(SEARCH_VAULTS_QUERY, {
-      first: pagination.first,
-      skip: pagination.skip,
-      orderBy,
-      orderDirection,
-      where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
-    });
-
-    // Handle empty results
-    if (!data.vaults || data.vaults.items.length === 0) {
+/**
+ * Create the executeSearchVaults function with DI container
+ *
+ * This factory function demonstrates the moderate complexity pattern:
+ * 1. Custom cache key generation with MD5 hashing
+ * 2. Complex variable mapping with filter transformation
+ * 3. Custom validation for empty results
+ * 4. Cache tag registration for invalidation
+ *
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
+ */
+export function createExecuteSearchVaults(
+  container: ServiceContainer
+): (input: SearchVaultsInput) => Promise<CallToolResult> {
+  const executor = executeToolWithCache<
+    SearchVaultsInput,
+    SearchVaultsResponse,
+    SearchVaultsVariables
+  >({
+    container,
+    cacheKey: (input) => {
+      const pagination = input.pagination || { first: 100, skip: 0 };
+      const filterHash = hashFilters(input.filters);
+      return `${cacheKeys.searchVaults({ filterHash })}:${pagination.first}:${pagination.skip}:${input.orderBy}:${input.orderDirection}`;
+    },
+    cacheTTL: cacheTTL.searchResults,
+    query: SEARCH_VAULTS_QUERY,
+    variables: (input) => {
+      const pagination = input.pagination || { first: 100, skip: 0 };
+      const whereClause = buildGraphQLFilters(input.filters);
       return {
-        content: [
-          {
-            type: 'text',
-            text: 'No vaults found matching the specified criteria.',
-          },
-        ],
-        isError: false,
+        first: pagination.first,
+        skip: pagination.skip,
+        orderBy: input.orderBy,
+        orderDirection: input.orderDirection,
+        where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
       };
-    }
+    },
+    validateResult: (data) => ({
+      valid: !!(data.vaults && data.vaults.items.length > 0),
+      message:
+        data.vaults && data.vaults.items.length > 0
+          ? undefined
+          : 'No vaults found matching the specified criteria.',
+    }),
+    toolName: 'search_vaults',
+  });
 
-    // Store in cache with 10-minute TTL
-    cache.set(cacheKey, data, cacheTTL.searchResults);
-
-    // Return successful response
-    return createSuccessResponse(data);
-  } catch (error) {
-    return handleToolError(error, 'search_vaults');
-  }
+  // Register cache tags for invalidation
+  return (input: SearchVaultsInput) => {
+    const pagination = input.pagination || { first: 100, skip: 0 };
+    const filterHash = hashFilters(input.filters);
+    const cacheKey = `${cacheKeys.searchVaults({ filterHash })}:${pagination.first}:${pagination.skip}:${input.orderBy}:${input.orderDirection}`;
+    container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT]);
+    return executor(input);
+  };
 }

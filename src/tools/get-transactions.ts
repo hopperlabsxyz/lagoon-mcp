@@ -1,13 +1,30 @@
+/**
+ * get_transactions Tool
+ *
+ * Vault transaction history with flexible filtering, pagination, and ordering.
+ * Supports all transaction types with 5-minute caching.
+ *
+ * Use cases:
+ * - Transaction history for specific vaults
+ * - Filtering by transaction type (deposits, redemptions, etc.)
+ * - Pagination and ordering support
+ * - Performance: ~300-800 tokens per query (depending on result count)
+ *
+ * Cache strategy:
+ * - 5-minute TTL for frequently changing transaction data
+ * - Cache key includes filters, pagination, and ordering
+ * - Cache hit rate target: 60-70%
+ * - Cache tags: [CacheTag.TRANSACTION] for invalidation
+ */
+
 import { createHash } from 'crypto';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphqlClient } from '../graphql/client.js';
-import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
 import { type GetTransactionsInput } from '../utils/validators.js';
-import { handleToolError } from '../utils/tool-error-handler.js';
-import { createSuccessResponse } from '../utils/tool-response.js';
 import { TRANSACTIONS_QUERY } from '../graphql/queries/index.js';
-
-// Query now imported from ../graphql/queries/index.js
+import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
+import { ServiceContainer } from '../core/container.js';
+import { CacheTag } from '../core/cache-invalidation.js';
+import { cacheKeys, cacheTTL } from '../cache/index.js';
 
 /**
  * Build the where filter for the transactions query
@@ -90,17 +107,80 @@ interface TransactionsResponse {
 }
 
 /**
- * Execute the get_transactions tool
- *
- * Queries vault transaction history with flexible filtering, pagination, and ordering.
- * Supports all transaction types: deposits, redemptions, settlements, state changes, and more.
- *
- * @param input - Transaction query parameters (pre-validated by createToolHandler)
- * @returns Transaction history with pagination info
+ * Processed transaction output
  */
-export async function executeGetTransactions(input: GetTransactionsInput): Promise<CallToolResult> {
-  try {
-    // Extract parameters with defaults (input already validated by createToolHandler)
+interface TransactionsOutput {
+  vaultAddress: string;
+  chainId: number;
+  transactions: TransactionItem[];
+  pageInfo: {
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+    count: number;
+    totalCount: number;
+  };
+  filters: {
+    transactionTypes?: string[];
+    orderBy: string;
+    orderDirection: string;
+  };
+}
+
+/**
+ * GraphQL variables type for TRANSACTIONS_QUERY
+ */
+interface TransactionsVariables {
+  first: number;
+  skip: number;
+  where: Record<string, unknown>;
+  orderBy: string;
+  orderDirection: string;
+}
+
+/**
+ * Transform raw GraphQL response into processed output
+ * Uses closure to capture input and processed parameters
+ */
+function createTransformTransactionsData(
+  input: GetTransactionsInput,
+  orderBy: string,
+  orderDirection: string
+) {
+  return (data: TransactionsResponse): TransactionsOutput => {
+    // Process transactions
+    const transactions = data.transactions.items.map(processTransaction);
+
+    // Build result
+    return {
+      vaultAddress: input.vaultAddress,
+      chainId: input.chainId,
+      transactions,
+      pageInfo: {
+        hasNextPage: data.transactions.pageInfo.hasNextPage,
+        hasPreviousPage: data.transactions.pageInfo.hasPreviousPage,
+        count: data.transactions.pageInfo.count,
+        totalCount: data.transactions.pageInfo.totalCount,
+      },
+      filters: {
+        transactionTypes: input.transactionTypes,
+        orderBy,
+        orderDirection,
+      },
+    };
+  };
+}
+
+/**
+ * Create the executeGetTransactions function with DI container
+ *
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
+ */
+export function createExecuteGetTransactions(
+  container: ServiceContainer
+): (input: GetTransactionsInput) => Promise<CallToolResult> {
+  return (input: GetTransactionsInput) => {
+    // Extract parameters with defaults
     const first = input.pagination?.first ?? 100;
     const skip = input.pagination?.skip ?? 0;
     const orderBy = input.orderBy ?? 'blockNumber';
@@ -110,7 +190,44 @@ export async function executeGetTransactions(input: GetTransactionsInput): Promi
     const where = buildWhereFilter(input);
     const filterHash = hashFilters(where);
 
-    // Generate cache key
+    const executor = executeToolWithCache<
+      GetTransactionsInput,
+      TransactionsResponse,
+      TransactionsVariables,
+      TransactionsOutput
+    >({
+      container,
+      cacheKey: (input) =>
+        cacheKeys.transactions({
+          vaultAddress: input.vaultAddress.toLowerCase(),
+          chainId: input.chainId,
+          filterHash,
+          first,
+          skip,
+          orderBy,
+          orderDirection,
+        }),
+      cacheTTL: cacheTTL.transactions,
+      query: TRANSACTIONS_QUERY,
+      variables: () => ({
+        first,
+        skip,
+        where,
+        orderBy,
+        orderDirection,
+      }),
+      validateResult: (data) => ({
+        valid: !!(data.transactions && data.transactions.items),
+        message:
+          data.transactions && data.transactions.items
+            ? undefined
+            : `No transaction data found for vault ${input.vaultAddress}`,
+      }),
+      transformResult: createTransformTransactionsData(input, orderBy, orderDirection),
+      toolName: 'get_transactions',
+    });
+
+    // Register cache tags for invalidation
     const cacheKey = cacheKeys.transactions({
       vaultAddress: input.vaultAddress.toLowerCase(),
       chainId: input.chainId,
@@ -120,48 +237,8 @@ export async function executeGetTransactions(input: GetTransactionsInput): Promi
       orderBy,
       orderDirection,
     });
+    container.cacheInvalidator.register(cacheKey, [CacheTag.TRANSACTION]);
 
-    // Check cache
-    const cached = cache.get<Record<string, unknown>>(cacheKey);
-    if (cached) {
-      return createSuccessResponse(cached);
-    }
-
-    // Execute GraphQL query
-    const response = await graphqlClient.request<TransactionsResponse>(TRANSACTIONS_QUERY, {
-      first,
-      skip,
-      where,
-      orderBy,
-      orderDirection,
-    });
-
-    // Process transactions
-    const transactions = response.transactions.items.map(processTransaction);
-
-    // Build result
-    const result = {
-      vaultAddress: input.vaultAddress,
-      chainId: input.chainId,
-      transactions,
-      pageInfo: {
-        hasNextPage: response.transactions.pageInfo.hasNextPage,
-        hasPreviousPage: response.transactions.pageInfo.hasPreviousPage,
-        count: response.transactions.pageInfo.count,
-        totalCount: response.transactions.pageInfo.totalCount,
-      },
-      filters: {
-        transactionTypes: input.transactionTypes,
-        orderBy,
-        orderDirection,
-      },
-    };
-
-    // Cache result
-    cache.set(cacheKey, result, cacheTTL.transactions);
-
-    return createSuccessResponse(result);
-  } catch (error) {
-    return handleToolError(error, 'get_transactions');
-  }
+    return executor(input);
+  };
 }

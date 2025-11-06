@@ -15,14 +15,15 @@
  * - 30-minute TTL (historical data changes infrequently)
  * - Cache key: perf:{address}:{chainId}:{timeRange}
  * - Cache hit rate target: 80-90%
+ * - Cache tags: [CacheTag.VAULT, CacheTag.APR] for invalidation
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphqlClient } from '../graphql/client.js';
 import { GetVaultPerformanceInput } from '../utils/validators.js';
-import { handleToolError } from '../utils/tool-error-handler.js';
-import { createSuccessResponse } from '../utils/tool-response.js';
-import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
+import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
+import { ServiceContainer } from '../core/container.js';
+import { CacheTag } from '../core/cache-invalidation.js';
+import { cacheKeys, cacheTTL } from '../cache/index.js';
 import {
   GET_VAULT_FOR_APR_QUERY,
   GET_VAULT_PERFORMANCE_QUERY,
@@ -229,17 +230,19 @@ function calculateSummary(metrics: MetricPoint[], transactions: Transaction[]): 
  * Fetches period summaries and vault data to calculate protocol-accurate APR
  * using Lagoon SDK functions.
  *
+ * @param container - Service container with GraphQL client
  * @param vaultAddress - Vault address
  * @param chainId - Chain ID
  * @returns SDK-calculated APR data or undefined if unavailable
  */
 async function calculateSDKAPR(
+  container: ServiceContainer,
   vaultAddress: string,
   chainId: number
 ): Promise<SDKCalculatedAPR | undefined> {
   try {
     // Fetch period summaries for historical APR data
-    const periodSummariesData = await graphqlClient.request<{
+    const periodSummariesData = await container.graphqlClient.request<{
       periodSummaries: PeriodSummary[];
     }>(GET_PERIOD_SUMMARIES_QUERY, {
       vaultAddress,
@@ -247,7 +250,7 @@ async function calculateSDKAPR(
     });
 
     // Fetch vault data for current price per share
-    const vaultData = await graphqlClient.request<{ vaultByAddress: VaultData | null }>(
+    const vaultData = await container.graphqlClient.request<{ vaultByAddress: VaultData | null }>(
       GET_VAULT_FOR_APR_QUERY,
       {
         address: vaultAddress,
@@ -319,55 +322,20 @@ async function calculateSDKAPR(
 }
 
 /**
- * Fetch vault performance data with historical metrics
- *
- * @param input - Vault address, chain ID, and time range
- * @returns Time-series metrics and summary statistics
+ * GraphQL variables type for GET_VAULT_PERFORMANCE_QUERY
  */
-export async function executeGetVaultPerformance(
-  input: GetVaultPerformanceInput
-): Promise<CallToolResult> {
-  try {
-    // Validate input
-    // Input already validated by createToolHandler
+interface GetVaultPerformanceVariables {
+  vault_in: string[];
+  timestamp_gte: string;
+  first: number;
+}
 
-    // Generate cache key
-    const cacheKey = cacheKeys.vaultPerformance(input.vaultAddress, input.chainId, input.timeRange);
-
-    // Check cache first
-    const cachedData = cache.get<VaultPerformanceOutput>(cacheKey);
-    if (cachedData) {
-      return createSuccessResponse(cachedData);
-    }
-
-    // Calculate timestamp threshold
-    const now = Math.floor(Date.now() / 1000);
-    const timeRangeSeconds = TIME_RANGES[input.timeRange];
-    const timestampGte = now - timeRangeSeconds;
-
-    // Execute GraphQL query
-    const data = await graphqlClient.request<VaultPerformanceResponse>(
-      GET_VAULT_PERFORMANCE_QUERY,
-      {
-        vault_in: [input.vaultAddress],
-        timestamp_gte: timestampGte.toString(),
-        first: 1000, // Maximum transactions to fetch
-      }
-    );
-
-    // Handle empty results
-    if (!data.transactions || data.transactions.items.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `No transaction data found for vault ${input.vaultAddress} on chain ${input.chainId} in the ${input.timeRange} time range.`,
-          },
-        ],
-        isError: false,
-      };
-    }
-
+/**
+ * Transform raw GraphQL response into performance output
+ * Uses closure to capture input values
+ */
+function createTransformPerformanceData(input: GetVaultPerformanceInput) {
+  return (data: VaultPerformanceResponse): VaultPerformanceOutput => {
     // Aggregate metrics from transactions
     const metrics = aggregateMetrics(data.transactions.items);
 
@@ -375,7 +343,7 @@ export async function executeGetVaultPerformance(
     const summary = calculateSummary(metrics, data.transactions.items);
 
     // Build output
-    const output: VaultPerformanceOutput = {
+    return {
       vaultAddress: input.vaultAddress,
       chainId: input.chainId,
       timeRange: input.timeRange,
@@ -383,21 +351,76 @@ export async function executeGetVaultPerformance(
       summary,
       hasMoreData: data.transactions.pageInfo.hasNextPage,
     };
+  };
+}
 
-    // Add SDK-calculated APR if requested (default: true)
-    if (input.includeSDKCalculations) {
-      const sdkAPR = await calculateSDKAPR(input.vaultAddress, input.chainId);
-      if (sdkAPR) {
-        output.sdkCalculatedAPR = sdkAPR;
+/**
+ * Create the executeGetVaultPerformance function with DI container
+ *
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
+ */
+export function createExecuteGetVaultPerformance(
+  container: ServiceContainer
+): (input: GetVaultPerformanceInput) => Promise<CallToolResult> {
+  return async (input: GetVaultPerformanceInput): Promise<CallToolResult> => {
+    // Calculate timestamp threshold for GraphQL query
+    const now = Math.floor(Date.now() / 1000);
+    const timeRangeSeconds = TIME_RANGES[input.timeRange];
+    const timestampGte = now - timeRangeSeconds;
+
+    // Create executor with caching
+    const executor = executeToolWithCache<
+      GetVaultPerformanceInput,
+      VaultPerformanceResponse,
+      GetVaultPerformanceVariables,
+      VaultPerformanceOutput
+    >({
+      container,
+      cacheKey: (input) =>
+        cacheKeys.vaultPerformance(input.vaultAddress, input.chainId, input.timeRange),
+      cacheTTL: cacheTTL.performance,
+      query: GET_VAULT_PERFORMANCE_QUERY,
+      variables: (input) => ({
+        vault_in: [input.vaultAddress],
+        timestamp_gte: timestampGte.toString(),
+        first: 1000, // Maximum transactions to fetch
+      }),
+      validateResult: (data) => ({
+        valid: !!(data.transactions && data.transactions.items.length > 0),
+        message:
+          data.transactions && data.transactions.items.length > 0
+            ? undefined
+            : `No transaction data found for vault ${input.vaultAddress} on chain ${input.chainId} in the ${input.timeRange} time range.`,
+      }),
+      transformResult: createTransformPerformanceData(input),
+      toolName: 'get_vault_performance',
+    });
+
+    // Register cache tags for invalidation
+    const cacheKey = cacheKeys.vaultPerformance(input.vaultAddress, input.chainId, input.timeRange);
+    container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT, CacheTag.APR]);
+
+    // Execute main query with caching
+    const result = await executor(input);
+
+    // Post-processing: Add SDK APR calculations if requested
+    // This happens outside executeToolWithCache because it requires additional async GraphQL calls
+    if (input.includeSDKCalculations && !result.isError && result.content[0]?.type === 'text') {
+      try {
+        const output = JSON.parse(result.content[0].text) as VaultPerformanceOutput;
+        const sdkAPR = await calculateSDKAPR(container, input.vaultAddress, input.chainId);
+        if (sdkAPR) {
+          output.sdkCalculatedAPR = sdkAPR;
+          // Update result with SDK APR data
+          result.content[0].text = JSON.stringify(output, null, 2);
+        }
+      } catch (error) {
+        // Log error but don't fail the entire request
+        console.error('Failed to add SDK APR to response:', error);
       }
     }
 
-    // Store in cache with 30-minute TTL
-    cache.set(cacheKey, output, cacheTTL.performance);
-
-    // Return successful response
-    return createSuccessResponse(output);
-  } catch (error) {
-    return handleToolError(error, 'get_vault_performance');
-  }
+    return result;
+  };
 }

@@ -11,7 +11,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeGetUserPortfolio } from '../../src/tools/user-portfolio';
+import { createExecuteGetUserPortfolio } from '../../src/tools/user-portfolio';
+import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheKeys } from '../../src/cache';
 
@@ -159,9 +160,21 @@ function createMockVault(overrides: any = {}): any {
 describe('get_user_portfolio Tool', () => {
   const mockUserAddress = '0x1234567890123456789012345678901234567890';
 
+  // Executor function created from factory with mock container
+  let executeGetUserPortfolio: ReturnType<typeof createExecuteGetUserPortfolio>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     cache.flushAll();
+
+    // Create mock container and initialize executor
+    const mockContainer: ServiceContainer = {
+      graphqlClient: graphqlClientModule.graphqlClient,
+      cache,
+      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
+      riskService: {} as any,
+    };
+    executeGetUserPortfolio = createExecuteGetUserPortfolio(mockContainer);
   });
 
   afterEach(() => {
@@ -195,37 +208,38 @@ describe('get_user_portfolio Tool', () => {
       // Act
       await executeGetUserPortfolio(input);
 
-      // Assert - Verify data is cached
+      // Assert - Verify raw GraphQL response is cached (not transformed)
       const cacheKey = cacheKeys.userPortfolio(mockUserAddress);
       const cachedData = cache.get(cacheKey);
       expect(cachedData).toBeDefined();
-      expect(cachedData).toHaveProperty('positions');
-      expect(cachedData).toHaveProperty('totalValueUsd');
+      expect(cachedData).toHaveProperty('users');
+      expect(cachedData.users).toHaveProperty('items');
     });
 
     it('should return cached data without querying GraphQL', async () => {
-      // Arrange
-      const cachedPortfolio = {
-        userAddress: mockUserAddress,
-        positions: [
-          {
-            vaultAddress: '0xv1',
-            vaultSymbol: 'CACHED',
-            vaultName: 'Cached Vault',
-            assetSymbol: 'USDC',
-            assetAddress: '0xasset1234567890123456789012345678901234',
-            shares: '1000',
-            assets: '1000',
-            sharesUsd: '1000',
-            vault: createMockVault({ address: '0xv1', symbol: 'CACHED', name: 'Cached Vault' }),
-          },
-        ],
-        totalValueUsd: '1000.00',
-        positionCount: 1,
+      // Arrange - Cache raw GraphQL response (not transformed)
+      const cachedGraphQLResponse = {
+        users: {
+          items: [
+            {
+              vaultPositions: [
+                {
+                  vault: createMockVault({
+                    address: '0xv1',
+                    symbol: 'CACHED',
+                    name: 'Cached Vault',
+                  }),
+                  state: { shares: '1000', assets: '1000', sharesUsd: '1000' },
+                },
+              ],
+              state: { totalSharesUsd: '1000' },
+            },
+          ],
+        },
       };
 
       const cacheKey = cacheKeys.userPortfolio(mockUserAddress);
-      cache.set(cacheKey, cachedPortfolio);
+      cache.set(cacheKey, cachedGraphQLResponse);
 
       const input = {
         userAddress: mockUserAddress,

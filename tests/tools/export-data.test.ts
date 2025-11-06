@@ -15,7 +15,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { executeExportData } from '../../src/tools/export-data';
+import { createExecuteExportData } from '../../src/tools/export-data';
+import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 
 // Mock the GraphQL client
@@ -154,8 +155,27 @@ function createMockPriceTransaction(
 }
 
 describe('export_data Tool', () => {
+  // Executor function created from factory with mock container
+  let executeExportData: ReturnType<typeof createExecuteExportData>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Create mock container and initialize executor
+    const mockContainer: ServiceContainer = {
+      graphqlClient: graphqlClientModule.graphqlClient,
+      cache: new Map(),
+      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
+      config: {
+        graphql: { endpoint: 'http://test', timeout: 30000 },
+        cache: { stdTTL: 600, checkperiod: 120, maxKeys: 1000 },
+        server: { name: 'lagoon-mcp', version: '0.1.0' },
+        isDevelopment: false,
+        isProduction: false,
+        isTest: true,
+      } as const,
+    };
+    executeExportData = createExecuteExportData(mockContainer);
   });
 
   // ==========================================

@@ -13,18 +13,20 @@
  *
  * Cache strategy:
  * - 60-minute TTL (predictions valid for moderate duration)
+ * - Cache key: yield_prediction:{chainId}:{vaultAddress}:{timeRange}
+ * - Cache hit rate target: 75-85%
+ * - Cache tags: [CacheTag.VAULT, CacheTag.APR, CacheTag.ANALYTICS] for invalidation
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphqlClient } from '../graphql/client.js';
 import { PredictYieldInput } from '../utils/validators.js';
-import { handleToolError } from '../utils/tool-error-handler.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { YIELD_PREDICTION_QUERY } from '../graphql/queries/index.js';
 import { predictYield, YieldDataPoint, YieldPrediction } from '../utils/yield-prediction.js';
-import { cache, cacheTTL } from '../cache/index.js';
-
-// Query now imported from ../graphql/queries/index.js
+import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
+import { ServiceContainer } from '../core/container.js';
+import { CacheTag } from '../core/cache-invalidation.js';
+import { cacheTTL } from '../cache/index.js';
 
 /**
  * Time range constants (in seconds)
@@ -34,6 +36,41 @@ const TIME_RANGES = {
   '30d': 30 * 24 * 60 * 60,
   '90d': 90 * 24 * 60 * 60,
 } as const;
+
+/**
+ * GraphQL response type
+ */
+interface YieldPredictionResponse {
+  vault: VaultData;
+  performanceHistory: {
+    items: Array<{
+      timestamp: string;
+      data: { apy: number; totalAssetsUsd: number };
+    }>;
+  };
+  tvlHistory: {
+    items: Array<{
+      timestamp: string;
+      data: { totalAssetsUsd: number };
+    }>;
+  };
+}
+
+/**
+ * GraphQL variables type for YIELD_PREDICTION_QUERY
+ */
+interface YieldPredictionVariables {
+  vaultAddress: string;
+  chainId: number;
+  timestamp_gte: string;
+}
+
+/**
+ * Prediction output with markdown
+ */
+interface YieldPredictionOutput {
+  markdown: string;
+}
 
 /**
  * Format yield prediction as markdown
@@ -146,67 +183,11 @@ This prediction uses:
 }
 
 /**
- * Predict vault yield with ML-based forecasting
- *
- * @param input - Yield prediction configuration (vault address, chain ID, time range)
- * @returns Yield prediction with confidence intervals and insights
+ * Transform raw GraphQL response into yield prediction markdown output
+ * Uses closure to capture input values
  */
-export async function executePredictYield(input: PredictYieldInput): Promise<CallToolResult> {
-  try {
-    // Generate cache key (input already validated by createToolHandler)
-    const cacheKey = `yield_prediction:${input.chainId}:${input.vaultAddress}:${input.timeRange}`;
-    const cached = cache.get<{ prediction: YieldPrediction; vaultName: string }>(cacheKey);
-
-    if (cached) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `${formatYieldPrediction(cached.prediction, cached.vaultName, input.timeRange)}\n\n_Cached result from ${new Date().toISOString()}_`,
-          },
-        ],
-        isError: false,
-      };
-    }
-
-    // Calculate timestamp threshold for time range
-    const nowTimestamp = Math.floor(Date.now() / 1000);
-    const timeRangeSeconds = TIME_RANGES[input.timeRange];
-    const timestampThreshold = nowTimestamp - timeRangeSeconds;
-
-    // Fetch vault data
-    const data = await graphqlClient.request<{
-      vault: VaultData;
-      performanceHistory: {
-        items: Array<{
-          timestamp: string;
-          data: { apy: number; totalAssetsUsd: number };
-        }>;
-      };
-      tvlHistory: {
-        items: Array<{
-          timestamp: string;
-          data: { totalAssetsUsd: number };
-        }>;
-      };
-    }>(YIELD_PREDICTION_QUERY, {
-      vaultAddress: input.vaultAddress,
-      chainId: input.chainId,
-      timestamp_gte: String(timestampThreshold),
-    });
-
-    if (!data.vault) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `No vault found at address ${input.vaultAddress} on chain ${input.chainId}`,
-          },
-        ],
-        isError: false,
-      };
-    }
-
+function createTransformYieldPredictionData(input: PredictYieldInput) {
+  return (data: YieldPredictionResponse): YieldPredictionOutput => {
     // Prepare historical data points
     const historicalData: YieldDataPoint[] = [];
 
@@ -220,9 +201,6 @@ export async function executePredictYield(input: PredictYieldInput): Promise<Cal
         });
       }
     }
-
-    // If no PeriodSummary data available, prediction will have low confidence
-    // Historical APY data is required for meaningful predictions
 
     // Extract fee data for fee-adjusted predictions
     const managementFee = data.vault.state?.managementFee || 0;
@@ -246,24 +224,79 @@ export async function executePredictYield(input: PredictYieldInput): Promise<Cal
         : undefined
     );
 
-    // Cache the result
-    const cacheValue = {
+    // Format prediction as markdown
+    const markdown = formatYieldPrediction(
       prediction,
-      vaultName: data.vault.name || 'Unknown Vault',
-    };
-    cache.set(cacheKey, cacheValue, cacheTTL.yieldPrediction);
+      data.vault.name || 'Unknown Vault',
+      input.timeRange
+    );
 
-    // Return formatted prediction
-    return {
-      content: [
-        {
-          type: 'text',
-          text: formatYieldPrediction(prediction, cacheValue.vaultName, input.timeRange),
-        },
-      ],
-      isError: false,
-    };
-  } catch (error) {
-    return handleToolError(error, 'predict_yield');
-  }
+    return { markdown };
+  };
+}
+
+/**
+ * Create the executePredictYield function with DI container
+ *
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
+ */
+export function createExecutePredictYield(
+  container: ServiceContainer
+): (input: PredictYieldInput) => Promise<CallToolResult> {
+  return async (input: PredictYieldInput): Promise<CallToolResult> => {
+    // Calculate timestamp threshold for time range
+    const nowTimestamp = Math.floor(Date.now() / 1000);
+    const timeRangeSeconds = TIME_RANGES[input.timeRange];
+    const timestampThreshold = nowTimestamp - timeRangeSeconds;
+
+    const executor = executeToolWithCache<
+      PredictYieldInput,
+      YieldPredictionResponse,
+      YieldPredictionVariables,
+      YieldPredictionOutput
+    >({
+      container,
+      cacheKey: (input) =>
+        `yield_prediction:${input.chainId}:${input.vaultAddress}:${input.timeRange}`,
+      cacheTTL: cacheTTL.yieldPrediction,
+      query: YIELD_PREDICTION_QUERY,
+      variables: () => ({
+        vaultAddress: input.vaultAddress,
+        chainId: input.chainId,
+        timestamp_gte: String(timestampThreshold),
+      }),
+      validateResult: (data) => ({
+        valid: !!data.vault,
+        message: data.vault
+          ? undefined
+          : `No vault found at address ${input.vaultAddress} on chain ${input.chainId}`,
+      }),
+      transformResult: createTransformYieldPredictionData(input),
+      toolName: 'predict_yield',
+    });
+
+    // Register cache tags for invalidation
+    const cacheKey = `yield_prediction:${input.chainId}:${input.vaultAddress}:${input.timeRange}`;
+    container.cacheInvalidator.register(cacheKey, [
+      CacheTag.VAULT,
+      CacheTag.APR,
+      CacheTag.ANALYTICS,
+    ]);
+
+    // Execute and get result
+    const result = await executor(input);
+
+    // Transform JSON output to markdown text format
+    if (!result.isError && result.content[0]?.type === 'text') {
+      try {
+        const output = JSON.parse(result.content[0].text) as YieldPredictionOutput;
+        result.content[0].text = output.markdown;
+      } catch (error) {
+        console.error('Failed to parse yield prediction output:', error);
+      }
+    }
+
+    return result;
+  };
 }

@@ -13,12 +13,13 @@
  *
  * Cache strategy:
  * - 30-minute TTL (balances freshness with stability)
+ * - Cache key: portfolio_optimization:{chainId}:{vaultAddresses}:{strategy}
+ * - Cache hit rate target: 70-80%
+ * - Cache tags: [CacheTag.PORTFOLIO, CacheTag.ANALYTICS] for invalidation
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphqlClient } from '../graphql/client.js';
 import { OptimizePortfolioInput } from '../utils/validators.js';
-import { handleToolError } from '../utils/tool-error-handler.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { PORTFOLIO_OPTIMIZATION_QUERY } from '../graphql/queries/index.js';
 import {
@@ -26,9 +27,49 @@ import {
   VaultForOptimization,
   PortfolioOptimization,
 } from '../utils/portfolio-optimization.js';
-import { cache, cacheTTL } from '../cache/index.js';
+import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
+import { ServiceContainer } from '../core/container.js';
+import { CacheTag } from '../core/cache-invalidation.js';
+import { cacheTTL } from '../cache/index.js';
 
-// Query now imported from ../graphql/queries/index.js
+/**
+ * GraphQL response type
+ */
+interface PortfolioOptimizationResponse {
+  vaults: {
+    items: VaultData[];
+  };
+  priceHistory: {
+    items: Array<{
+      vault: string;
+      timestamp: string;
+      data: { pricePerShareUsd: number };
+    }>;
+  };
+  performanceData: {
+    items: Array<{
+      vault: string;
+      timestamp: string;
+      data: { apy: number };
+    }>;
+  };
+}
+
+/**
+ * GraphQL variables type for PORTFOLIO_OPTIMIZATION_QUERY
+ */
+interface PortfolioOptimizationVariables {
+  vaultAddresses: string[];
+  chainId: number;
+  timestamp_gte: string;
+}
+
+/**
+ * Optimization output with markdown
+ */
+interface PortfolioOptimizationOutput {
+  markdown: string;
+}
 
 /**
  * Calculate volatility from price history
@@ -193,80 +234,11 @@ ${
 }
 
 /**
- * Optimize portfolio with rebalancing recommendations
- *
- * @param input - Portfolio configuration (vault addresses, positions, strategy)
- * @returns Portfolio optimization with target allocations and rebalancing guidance
+ * Transform raw GraphQL response into portfolio optimization markdown output
+ * Uses closure to capture input values and current positions
  */
-export async function executeOptimizePortfolio(
-  input: OptimizePortfolioInput
-): Promise<CallToolResult> {
-  try {
-    // Validate input
-    // Input already validated by createToolHandler
-
-    // Check cache
-    const vaultAddressesKey = input.vaultAddresses.sort().join(',');
-    const cacheKey = `portfolio_optimization:${input.chainId}:${vaultAddressesKey}:${input.strategy}`;
-    const cached = cache.get<{
-      optimization: PortfolioOptimization;
-      currentPositions: Map<string, number>;
-    }>(cacheKey);
-
-    if (cached) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `${formatPortfolioOptimization(cached.optimization)}\n\n_Cached result from ${new Date().toISOString()}_`,
-          },
-        ],
-        isError: false,
-      };
-    }
-
-    // Calculate timestamp threshold for 90-day lookback
-    const nowTimestamp = Math.floor(Date.now() / 1000);
-    const lookbackSeconds = 90 * 24 * 60 * 60; // 90 days
-    const timestampThreshold = nowTimestamp - lookbackSeconds;
-
-    // Fetch vault data
-    const data = await graphqlClient.request<{
-      vaults: {
-        items: VaultData[];
-      };
-      priceHistory: {
-        items: Array<{
-          vault: string;
-          timestamp: string;
-          data: { pricePerShareUsd: number };
-        }>;
-      };
-      performanceData: {
-        items: Array<{
-          vault: string;
-          timestamp: string;
-          data: { apy: number };
-        }>;
-      };
-    }>(PORTFOLIO_OPTIMIZATION_QUERY, {
-      vaultAddresses: input.vaultAddresses,
-      chainId: input.chainId,
-      timestamp_gte: String(timestampThreshold),
-    });
-
-    if (!data.vaults || data.vaults.items.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `No vaults found for the provided addresses on chain ${input.chainId}`,
-          },
-        ],
-        isError: false,
-      };
-    }
-
+function createTransformOptimizationData(input: OptimizePortfolioInput) {
+  return (data: PortfolioOptimizationResponse): PortfolioOptimizationOutput => {
     // Build current positions map from input
     const currentPositions = new Map<string, number>();
     for (const position of input.currentPositions) {
@@ -311,7 +283,6 @@ export async function executeOptimizePortfolio(
       const expectedApy = calculateAverageAPY(apyHistory);
 
       // Use simplified risk score (based on volatility)
-      // In production, this would use the full risk scoring from analyze_risk
       const riskScore = Math.min(1, volatility / 0.2); // Normalize to 0-1
 
       return {
@@ -332,24 +303,75 @@ export async function executeOptimizePortfolio(
       input.rebalanceThreshold
     );
 
-    // Cache the result
-    const cacheValue = {
-      optimization,
-      currentPositions,
-    };
-    cache.set(cacheKey, cacheValue, cacheTTL.portfolioOptimization);
+    // Format optimization as markdown
+    const markdown = formatPortfolioOptimization(optimization);
 
-    // Return formatted optimization
-    return {
-      content: [
-        {
-          type: 'text',
-          text: formatPortfolioOptimization(optimization),
-        },
-      ],
-      isError: false,
-    };
-  } catch (error) {
-    return handleToolError(error, 'optimize_portfolio');
-  }
+    return { markdown };
+  };
+}
+
+/**
+ * Create the executeOptimizePortfolio function with DI container
+ *
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
+ */
+export function createExecuteOptimizePortfolio(
+  container: ServiceContainer
+): (input: OptimizePortfolioInput) => Promise<CallToolResult> {
+  return async (input: OptimizePortfolioInput): Promise<CallToolResult> => {
+    // Calculate timestamp threshold for 90-day lookback
+    const nowTimestamp = Math.floor(Date.now() / 1000);
+    const lookbackSeconds = 90 * 24 * 60 * 60; // 90 days
+    const timestampThreshold = nowTimestamp - lookbackSeconds;
+
+    const executor = executeToolWithCache<
+      OptimizePortfolioInput,
+      PortfolioOptimizationResponse,
+      PortfolioOptimizationVariables,
+      PortfolioOptimizationOutput
+    >({
+      container,
+      cacheKey: (input) => {
+        const vaultAddressesKey = input.vaultAddresses.sort().join(',');
+        return `portfolio_optimization:${input.chainId}:${vaultAddressesKey}:${input.strategy}`;
+      },
+      cacheTTL: cacheTTL.portfolioOptimization,
+      query: PORTFOLIO_OPTIMIZATION_QUERY,
+      variables: () => ({
+        vaultAddresses: input.vaultAddresses,
+        chainId: input.chainId,
+        timestamp_gte: String(timestampThreshold),
+      }),
+      validateResult: (data) => ({
+        valid: !!(data.vaults && data.vaults.items.length > 0),
+        message:
+          data.vaults && data.vaults.items.length > 0
+            ? undefined
+            : `No vaults found for the provided addresses on chain ${input.chainId}`,
+      }),
+      transformResult: createTransformOptimizationData(input),
+      toolName: 'optimize_portfolio',
+    });
+
+    // Register cache tags for invalidation
+    const vaultAddressesKey = input.vaultAddresses.sort().join(',');
+    const cacheKey = `portfolio_optimization:${input.chainId}:${vaultAddressesKey}:${input.strategy}`;
+    container.cacheInvalidator.register(cacheKey, [CacheTag.PORTFOLIO, CacheTag.ANALYTICS]);
+
+    // Execute and get result
+    const result = await executor(input);
+
+    // Transform JSON output to markdown text format
+    if (!result.isError && result.content[0]?.type === 'text') {
+      try {
+        const output = JSON.parse(result.content[0].text) as PortfolioOptimizationOutput;
+        result.content[0].text = output.markdown;
+      } catch (error) {
+        console.error('Failed to parse optimization output:', error);
+      }
+    }
+
+    return result;
+  };
 }

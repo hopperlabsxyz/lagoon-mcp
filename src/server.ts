@@ -11,7 +11,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { config } from './config.js';
-import { checkBackendHealth } from './graphql/client.js';
+import { checkBackendHealth, graphqlClient } from './graphql/client.js';
+
+// Dependency injection
+import { createContainer } from './core/container.js';
+import { createNodeCacheAdapter } from './core/cache-adapter.js';
 
 // Tool registry
 import { registerTools } from './tools/registry.js';
@@ -36,11 +40,26 @@ export function createServer(): McpServer {
   });
 
   // ==========================================
+  // Dependency Injection Container
+  // ==========================================
+
+  // Create service container with all dependencies
+  const container = createContainer(
+    graphqlClient,
+    createNodeCacheAdapter({
+      stdTTL: config.cache.stdTTL,
+      checkperiod: config.cache.checkperiod,
+      maxKeys: config.cache.maxKeys,
+    }),
+    config
+  );
+
+  // ==========================================
   // Tool Registration
   // ==========================================
 
-  // Register all tools from unified registry
-  registerTools(server);
+  // Register all tools from unified registry with DI container
+  registerTools(server, container);
 
   // ==========================================
   // Resource Registration

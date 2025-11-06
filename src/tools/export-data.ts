@@ -13,10 +13,16 @@
  *
  * Cache strategy:
  * - No caching (exports are generated on-demand with latest data)
+ *
+ * WHY NO CACHING?
+ * This tool is intentionally non-cached because:
+ * 1. Export format/data type varies per request (CSV/JSON, vaults/transactions/etc)
+ * 2. Exports need fresh data (no staleness tolerance)
+ * 3. Large dataset exports would waste cache memory
+ * 4. One-time use exports (unlikely to be re-requested with same parameters)
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphqlClient } from '../graphql/client.js';
 import { ExportDataInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { VaultData } from '../graphql/fragments/index.js';
@@ -36,8 +42,7 @@ import {
   PriceHistoryCSVData,
   PerformanceCSVData,
 } from '../utils/csv-generator.js';
-
-// Queries now imported from ../graphql/queries/index.js
+import { ServiceContainer } from '../core/container.js';
 
 /**
  * Convert VaultData to CSV format
@@ -64,52 +69,59 @@ function convertVaultToCSV(vault: VaultData, chainId: number): VaultCSVData {
 }
 
 /**
- * Export data in requested format
+ * Create the executeExportData function with DI container
  *
- * @param input - Export configuration (data type, format, addresses, filters)
- * @returns Exported data in CSV or JSON format
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
  */
-export async function executeExportData(input: ExportDataInput): Promise<CallToolResult> {
-  try {
-    // Validate input
-    // Input already validated by createToolHandler
+export function createExecuteExportData(
+  container: ServiceContainer
+): (input: ExportDataInput) => Promise<CallToolResult> {
+  return async (input: ExportDataInput): Promise<CallToolResult> => {
+    try {
+      // Validate input
+      // Input already validated by createToolHandler
 
-    // Route to appropriate export handler
-    switch (input.dataType) {
-      case 'vaults':
-        return await exportVaults(input);
+      // Route to appropriate export handler
+      switch (input.dataType) {
+        case 'vaults':
+          return await exportVaults(container, input);
 
-      case 'transactions':
-        return await exportTransactions(input);
+        case 'transactions':
+          return await exportTransactions(container, input);
 
-      case 'price_history':
-        return await exportPriceHistory(input);
+        case 'price_history':
+          return await exportPriceHistory(container, input);
 
-      case 'performance':
-        return await exportPerformance(input);
+        case 'performance':
+          return await exportPerformance(container, input);
 
-      default:
-        // Exhaustiveness check - all data types should be handled above
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Unknown data type: ${String(input.dataType)}`,
-            },
-          ],
-          isError: true,
-        };
+        default:
+          // Exhaustiveness check - all data types should be handled above
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Unknown data type: ${String(input.dataType)}`,
+              },
+            ],
+            isError: true,
+          };
+      }
+    } catch (error) {
+      return handleToolError(error, 'export_data');
     }
-  } catch (error) {
-    return handleToolError(error, 'export_data');
-  }
+  };
 }
 
 /**
  * Export vault data
  */
-async function exportVaults(input: ExportDataInput): Promise<CallToolResult> {
-  const data = await graphqlClient.request<{ vaults: VaultData[] }>(EXPORT_VAULTS_QUERY, {
+async function exportVaults(
+  container: ServiceContainer,
+  input: ExportDataInput
+): Promise<CallToolResult> {
+  const data = await container.graphqlClient.request<{ vaults: VaultData[] }>(EXPORT_VAULTS_QUERY, {
     addresses: input.vaultAddresses,
     chainId: input.chainId,
   });
@@ -156,8 +168,11 @@ async function exportVaults(input: ExportDataInput): Promise<CallToolResult> {
 /**
  * Export transaction data
  */
-async function exportTransactions(input: ExportDataInput): Promise<CallToolResult> {
-  const data = await graphqlClient.request<{
+async function exportTransactions(
+  container: ServiceContainer,
+  input: ExportDataInput
+): Promise<CallToolResult> {
+  const data = await container.graphqlClient.request<{
     transactions: {
       items: Array<{
         id: string;
@@ -233,8 +248,11 @@ async function exportTransactions(input: ExportDataInput): Promise<CallToolResul
 /**
  * Export price history data
  */
-async function exportPriceHistory(input: ExportDataInput): Promise<CallToolResult> {
-  const data = await graphqlClient.request<{
+async function exportPriceHistory(
+  container: ServiceContainer,
+  input: ExportDataInput
+): Promise<CallToolResult> {
+  const data = await container.graphqlClient.request<{
     transactions: {
       items: Array<{
         timestamp: string;
@@ -307,8 +325,11 @@ async function exportPriceHistory(input: ExportDataInput): Promise<CallToolResul
 /**
  * Export performance metrics
  */
-async function exportPerformance(input: ExportDataInput): Promise<CallToolResult> {
-  const data = await graphqlClient.request<{
+async function exportPerformance(
+  container: ServiceContainer,
+  input: ExportDataInput
+): Promise<CallToolResult> {
+  const data = await container.graphqlClient.request<{
     transactions: {
       items: Array<{
         timestamp: string;

@@ -15,7 +15,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeSearchVaults } from '../../src/tools/search-vaults';
+import { createExecuteSearchVaults } from '../../src/tools/search-vaults';
+import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheTTL } from '../../src/cache';
 
@@ -188,9 +189,21 @@ function createMockSearchResponse(
 }
 
 describe('search_vaults Tool', () => {
+  // Executor function created from factory with mock container
+  let executeSearchVaults: ReturnType<typeof createExecuteSearchVaults>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     cache.flushAll();
+
+    // Create mock container and initialize executor
+    const mockContainer: ServiceContainer = {
+      graphqlClient: graphqlClientModule.graphqlClient,
+      cache,
+      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
+      riskService: {} as any,
+    };
+    executeSearchVaults = createExecuteSearchVaults(mockContainer);
   });
 
   afterEach(() => {

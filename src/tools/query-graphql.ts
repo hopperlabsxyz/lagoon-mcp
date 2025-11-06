@@ -9,28 +9,44 @@
  * - Large dataset queries (20+ vaults)
  * - One-time analysis queries
  * - Advanced filtering and aggregation
+ *
+ * WHY NO CACHING?
+ * This tool is intentionally non-cached because:
+ * 1. Query content is unpredictable (user-controlled)
+ * 2. Results are typically one-time use
+ * 3. Large datasets would waste cache memory
+ * 4. Fresh data is required (no staleness tolerance)
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { graphqlClient } from '../graphql/client.js';
 import { QueryGraphQLInput } from '../utils/validators.js';
+import { ServiceContainer } from '../core/container.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 
 /**
- * Execute a raw GraphQL query against the Lagoon backend
+ * Create the executeQueryGraphQL function with DI container
  *
- * @param input - Query and optional variables (pre-validated by createToolHandler)
- * @returns GraphQL response data or error
+ * This factory function demonstrates the lightweight pattern for non-cached tools:
+ * 1. Dependency injection for testability
+ * 2. No caching overhead (inappropriate for unpredictable queries)
+ * 3. Simple, focused implementation
+ *
+ * @param container - Service container with dependencies
+ * @returns Configured tool executor function
  */
-export async function executeQueryGraphQL(input: QueryGraphQLInput): Promise<CallToolResult> {
-  try {
-    // Execute GraphQL query (input already validated by createToolHandler)
-    const data = await graphqlClient.request(input.query, input.variables);
+export function createExecuteQueryGraphQL(
+  container: ServiceContainer
+): (input: QueryGraphQLInput) => Promise<CallToolResult> {
+  return async (input: QueryGraphQLInput): Promise<CallToolResult> => {
+    try {
+      // Execute GraphQL query using injected client
+      const data = await container.graphqlClient.request(input.query, input.variables);
 
-    // Return successful response
-    return createSuccessResponse(data);
-  } catch (error) {
-    return handleToolError(error, 'query_graphql');
-  }
+      // Return successful response
+      return createSuccessResponse(data);
+    } catch (error) {
+      return handleToolError(error, 'query_graphql');
+    }
+  };
 }

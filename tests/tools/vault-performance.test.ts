@@ -14,7 +14,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeGetVaultPerformance } from '../../src/tools/vault-performance';
+import { createExecuteGetVaultPerformance } from '../../src/tools/vault-performance';
+import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheKeys, cacheTTL } from '../../src/cache';
 
@@ -86,9 +87,21 @@ describe('get_vault_performance Tool', () => {
   const mockVaultAddress = '0x1234567890123456789012345678901234567890';
   const mockChainId = 1;
 
+  // Executor function created from factory with mock container
+  let executeGetVaultPerformance: ReturnType<typeof createExecuteGetVaultPerformance>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     cache.flushAll();
+
+    // Create mock container and initialize executor
+    const mockContainer: ServiceContainer = {
+      graphqlClient: graphqlClientModule.graphqlClient,
+      cache,
+      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
+      riskService: {} as any,
+    };
+    executeGetVaultPerformance = createExecuteGetVaultPerformance(mockContainer);
   });
 
   afterEach(() => {

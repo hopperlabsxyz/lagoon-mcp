@@ -10,20 +10,23 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { ZodSchema } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
-// Tool executors
-import { executeQueryGraphQL } from './query-graphql.js';
-import { executeGetVaultData } from './vault-data.js';
-import { executeGetUserPortfolio } from './user-portfolio.js';
-import { executeSearchVaults } from './search-vaults.js';
-import { executeGetVaultPerformance } from './vault-performance.js';
-import { executeGetTransactions } from './get-transactions.js';
-import { executeCompareVaults } from './compare-vaults.js';
-import { executeGetPriceHistory } from './get-price-history.js';
-import { executeExportData } from './export-data.js';
-import { executeAnalyzeRisk } from './analyze-risk.js';
-import { executePredictYield } from './predict-yield.js';
-import { executeOptimizePortfolio } from './optimize-portfolio.js';
-import { executeSimulateVault, simulateVaultInputSchema } from './simulate-vault.js';
+// Tool factory functions
+import { createExecuteQueryGraphQL } from './query-graphql.js';
+import { createExecuteGetVaultData } from './vault-data.js';
+import { createExecuteGetUserPortfolio } from './user-portfolio.js';
+import { createExecuteSearchVaults } from './search-vaults.js';
+import { createExecuteGetVaultPerformance } from './vault-performance.js';
+import { createExecuteGetTransactions } from './get-transactions.js';
+import { createExecuteCompareVaults } from './compare-vaults.js';
+import { createExecuteGetPriceHistory } from './get-price-history.js';
+import { createExecuteExportData } from './export-data.js';
+import { createExecuteAnalyzeRisk } from './analyze-risk.js';
+import { createExecutePredictYield } from './predict-yield.js';
+import { createExecuteOptimizePortfolio } from './optimize-portfolio.js';
+import { createExecuteSimulateVault, simulateVaultInputSchema } from './simulate-vault.js';
+
+// Service container
+import { ServiceContainer } from '../core/container.js';
 
 // Input schemas
 import {
@@ -46,12 +49,13 @@ import { createToolHandler } from '../utils/tool-handler.js';
 
 /**
  * Tool definition with type safety
+ * Now uses factory functions that accept ServiceContainer
  */
 export interface ToolDefinition<TInput = unknown> {
   name: string;
   description: string;
   schema: ZodSchema<TInput>;
-  executor: (input: TInput) => Promise<CallToolResult>;
+  executorFactory: (container: ServiceContainer) => (input: TInput) => Promise<CallToolResult>;
 }
 
 /**
@@ -68,7 +72,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'or advanced filtering. No caching - results are always fresh. ' +
       'Requires GraphQL query syntax knowledge.',
     schema: queryGraphQLInputSchema,
-    executor: executeQueryGraphQL,
+    executorFactory: createExecuteQueryGraphQL,
   },
   {
     name: 'get_vault_data',
@@ -79,7 +83,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Best for: small vault sets, repeated queries, comprehensive analysis. ' +
       'Performance: ~500 tokens per vault.',
     schema: getVaultDataInputSchema,
-    executor: executeGetVaultData,
+    executorFactory: createExecuteGetVaultData,
   },
   {
     name: 'get_user_portfolio',
@@ -90,7 +94,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Best for: multi-chain portfolio analysis, user position tracking, portfolio value aggregation. ' +
       'Performance: ~300-800 tokens per user (varies with position count).',
     schema: getUserPortfolioInputSchema,
-    executor: executeGetUserPortfolio,
+    executorFactory: createExecuteGetUserPortfolio,
   },
   {
     name: 'search_vaults',
@@ -102,7 +106,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~300-500 tokens per page. ' +
       'Cache key based on filter hash for efficient repeated searches.',
     schema: searchVaultsInputSchema,
-    executor: executeSearchVaults,
+    executorFactory: createExecuteSearchVaults,
   },
   {
     name: 'get_vault_performance',
@@ -115,7 +119,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~400-600 tokens per vault per time range. ' +
       'Fetches up to 1000 transactions per query.',
     schema: getVaultPerformanceInputSchema,
-    executor: executeGetVaultPerformance,
+    executorFactory: createExecuteGetVaultPerformance,
   },
   {
     name: 'get_transactions',
@@ -130,7 +134,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~400-600 tokens per query (varies with transaction count). ' +
       'Features 15-minute caching and pagination support (default 100, max 1000).',
     schema: getTransactionsInputSchema,
-    executor: executeGetTransactions,
+    executorFactory: createExecuteGetTransactions,
   },
   {
     name: 'compare_vaults',
@@ -143,7 +147,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~300 tokens per vault. ' +
       'Features 15-minute caching based on vault address combinations.',
     schema: compareVaultsInputSchema,
-    executor: executeCompareVaults,
+    executorFactory: createExecuteCompareVaults,
   },
   {
     name: 'get_price_history',
@@ -157,7 +161,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Features 30-minute caching for historical data. ' +
       'Time ranges: 7d (7 days), 30d (30 days), 90d (90 days), 1y (1 year), all (complete history).',
     schema: priceHistoryInputSchema,
-    executor: executeGetPriceHistory,
+    executorFactory: createExecuteGetPriceHistory,
   },
   {
     name: 'export_data',
@@ -172,7 +176,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'No caching (exports generated on-demand with latest data). ' +
       'Up to 1000 records per export.',
     schema: exportDataInputSchema,
-    executor: executeExportData,
+    executorFactory: createExecuteExportData,
   },
   {
     name: 'analyze_risk',
@@ -186,7 +190,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~400-600 tokens per analysis. ' +
       'Features 15-minute caching for risk stability.',
     schema: analyzeRiskInputSchema,
-    executor: executeAnalyzeRisk,
+    executorFactory: createExecuteAnalyzeRisk,
   },
   {
     name: 'predict_yield',
@@ -199,7 +203,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~400-600 tokens per prediction. ' +
       'Features 60-minute caching for prediction stability.',
     schema: predictYieldInputSchema,
-    executor: executePredictYield,
+    executorFactory: createExecutePredictYield,
   },
   {
     name: 'optimize_portfolio',
@@ -214,7 +218,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~600-800 tokens per optimization. ' +
       'Features 30-minute caching for optimization stability.',
     schema: optimizePortfolioInputSchema,
-    executor: executeOptimizePortfolio,
+    executorFactory: createExecuteOptimizePortfolio,
   },
   {
     name: 'simulate_vault',
@@ -227,18 +231,24 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~300-500 tokens per simulation. ' +
       'No caching (simulations are scenario-specific).',
     schema: simulateVaultInputSchema,
-    executor: executeSimulateVault,
+    executorFactory: createExecuteSimulateVault,
   },
 ];
 
 /**
  * Register all tools with the MCP server
  * Converts registry entries to MCP tool registrations
+ *
+ * @param server - MCP server instance
+ * @param container - Service container with dependencies (GraphQL client, cache, config)
  */
-export function registerTools(server: McpServer): void {
+export function registerTools(server: McpServer, container: ServiceContainer): void {
   for (const tool of TOOL_REGISTRY) {
+    // Create executor from factory with injected container
+    const executor = tool.executorFactory(container);
+
     // Create wrapped handler with validation
-    const handler = createToolHandler(tool.executor, tool.schema);
+    const handler = createToolHandler(executor, tool.schema);
 
     // Convert Zod schema to JSON schema for MCP
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
