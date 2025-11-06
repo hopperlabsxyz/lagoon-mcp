@@ -6,7 +6,7 @@ describe('MCP Server Integration - Claude Desktop Compatibility', () => {
   const timeout = 60000; // 60 seconds for integration tests
 
   beforeAll(() => {
-    console.log('🚀 Starting MCP Server Integration Tests for Claude Desktop...');
+    // Starting MCP Server Integration Tests for Claude Desktop
   }, timeout);
   afterAll(async () => {
     if (mcpProcess) {
@@ -113,7 +113,7 @@ describe('MCP Server Integration - Claude Desktop Compatibility', () => {
           let hasResponded = false;
           let responseBuffer = '';
 
-          const dataHandler = (chunk: Buffer) => {
+          const dataHandler = (chunk: Buffer): void => {
             responseBuffer += chunk.toString();
 
             const lines = responseBuffer.split('\n');
@@ -190,7 +190,7 @@ describe('MCP Server Integration - Claude Desktop Compatibility', () => {
           let hasResponded = false;
           let responseBuffer = '';
 
-          const dataHandler = (chunk: Buffer) => {
+          const dataHandler = (chunk: Buffer): void => {
             responseBuffer += chunk.toString();
 
             const lines = responseBuffer.split('\n');
@@ -205,10 +205,7 @@ describe('MCP Server Integration - Claude Desktop Compatibility', () => {
 
                     if (response.error) {
                       // Errors are acceptable for network issues
-                      console.log(
-                        'GraphQL query returned error (expected):',
-                        response.error.message
-                      );
+                      // GraphQL query returned error (expected): response.error.message
                       resolve(undefined);
                     } else if (response.result) {
                       expect(response.result.content).toBeDefined();
@@ -268,7 +265,7 @@ describe('MCP Server Integration - Claude Desktop Compatibility', () => {
           const expectedResponses = 3;
           let responseBuffer = '';
 
-          const dataHandler = (chunk: Buffer) => {
+          const dataHandler = (chunk: Buffer): void => {
             responseBuffer += chunk.toString();
 
             const lines = responseBuffer.split('\n');
@@ -310,7 +307,7 @@ describe('MCP Server Integration - Claude Desktop Compatibility', () => {
           setTimeout(() => {
             if (responsesReceived < expectedResponses) {
               mcpProcess?.stdout?.off('data', dataHandler);
-              console.log(`Received ${responsesReceived}/${expectedResponses} responses`);
+              // Received ${responsesReceived}/${expectedResponses} responses
               // This is acceptable - server might be busy
               resolve(undefined);
             }
