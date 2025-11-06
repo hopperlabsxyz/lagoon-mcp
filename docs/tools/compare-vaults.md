@@ -219,6 +219,18 @@ Calculates differences for context:
 3. Identify market leaders and trends
 ```
 
+## Related Prompts
+
+**Vault Performance Analysis Pattern**: [/docs/prompts/financial-analysis.md#2-vault-performance-analysis-pattern](../prompts/financial-analysis.md#2-vault-performance-analysis-pattern)
+
+See the analytical guide for:
+- Benchmark comparison techniques
+- Relative performance assessment
+- Risk-adjusted return calculations
+- Investment decision frameworks
+
+---
+
 ## See Also
 
 - [Comparison Validators](../../src/utils/validators.ts) - Input validation

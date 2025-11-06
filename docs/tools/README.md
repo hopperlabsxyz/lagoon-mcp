@@ -2,6 +2,18 @@
 
 Complete reference for all available tools in the Lagoon MCP Server.
 
+## Related Documentation
+
+📊 **Analytical Frameworks**: [/docs/prompts/README.md](../prompts/README.md)
+
+For guidance on *how to analyze* vault data using these tools, see:
+- **[Financial Analysis Framework](../prompts/financial-analysis.md)** - Comprehensive patterns for portfolio analysis, vault evaluation, and risk assessment
+- **[Advanced Analysis Patterns](../prompts/analysis-patterns.md)** - Complex analysis techniques *(coming soon)*
+
+This document focuses on **tool capabilities** (what tools can do). For **analytical patterns** (how to use tools together), see the prompts documentation above.
+
+---
+
 ## Tool Categories
 
 ### Core Data Access

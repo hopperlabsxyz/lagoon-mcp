@@ -12,11 +12,44 @@ You are analyzing DeFi vault data from the Lagoon protocol. Use these patterns a
 
 ---
 
+## Available Tools
+
+Complete documentation with parameters, examples, and workflows: /docs/tools/README.md
+
+### Core Analysis Tools
+- **Risk Assessment**: \`analyze_risk\` → /docs/tools/analyze-risk.md (7-factor scoring)
+- **Vault Simulation**: \`simulate_vault\` → /docs/tools/simulate-vault.md (Protocol-accurate modeling)
+- **Yield Forecasting**: \`predict_yield\` → /docs/tools/predict-yield.md (ML-based predictions)
+- **Vault Comparison**: \`compare_vaults\` → /docs/tools/compare-vaults.md (Side-by-side rankings)
+
+### Portfolio Management
+- **User Portfolio**: \`user_portfolio\` → /docs/tools/user-portfolio.md (Multi-chain aggregation)
+
+### Discovery & Historical Data
+- **Search Vaults**: \`search_vaults\` → /docs/tools/search-vaults.md (20+ filters)
+- **Vault Performance**: \`vault_performance\` → /docs/tools/vault-performance.md (Historical trends)
+- **Price History**: \`price_history\` → /docs/tools/price-history.md (OHLCV data)
+- **Transactions**: \`get_transactions\` → /docs/tools/get-transactions.md (Activity tracking)
+
+### Data & Export
+- **Vault Data**: \`get_vault_data\` → /docs/tools/get-vault-data.md (Complete vault info)
+- **Export Data**: \`export_data\` → /docs/tools/export-data.md (CSV/JSON export)
+- **GraphQL**: \`query_graphql\` → /docs/tools/query-graphql.md (Custom queries)
+
+---
+
 ## Analysis Frameworks
 
-### Portfolio Analysis Pattern
+### 1. Portfolio Analysis Pattern
 
 When analyzing a user's portfolio:
+
+**Tool Integration:**
+- Use \`user_portfolio\` for multi-chain position data
+- Use \`analyze_risk\` for individual vault risk assessment
+- Apply \`compare_vaults\` for benchmarking positions
+
+**Analysis Steps:**
 
 1. **Asset Allocation**
    - Group vaults by underlying asset (USDC, WETH, DAI, etc.)
@@ -62,9 +95,17 @@ Recommendations:
 
 ---
 
-### Vault Performance Analysis Pattern
+### 2. Vault Performance Analysis Pattern
 
 When analyzing individual vault performance:
+
+**Tool Integration:**
+- Use \`vault_performance\` for historical metrics
+- Use \`predict_yield\` for forward-looking forecasts
+- Use \`compare_vaults\` for peer benchmarking
+- Use \`price_history\` for volatility analysis
+
+**Analysis Steps:**
 
 1. **Time-Series Analysis**
    - Compare multiple time periods: 7d, 30d, 90d, 1y
@@ -126,9 +167,16 @@ Overall Assessment: STRONG BUY
 
 ---
 
-### Vault Discovery Pattern
+### 3. Vault Discovery Pattern
 
 When helping users find suitable vaults:
+
+**Tool Integration:**
+- Use \`search_vaults\` with 20+ filter options
+- Use \`analyze_risk\` for due diligence
+- Use \`compare_vaults\` for ranking finalists
+
+**Analysis Steps:**
 
 1. **Criteria Matching**
    - Filter by asset preference (stablecoins, ETH, etc.)
@@ -180,63 +228,63 @@ Recommendation: Start with option 1 or 2 based on risk tolerance
 
 ---
 
-### Vault Simulation Pattern
+### 4. Vault Simulation Pattern
 
 When modeling deposit/withdrawal scenarios:
 
-1. **Fee-Aware Modeling**
-   - Use simulate_vault tool for protocol-accurate simulations
-   - Accounts for management fees and performance fees
-   - Handles pending settlements and silo balances
+**Purpose**: Protocol-accurate simulation for pre-transaction planning
 
-2. **Impact Analysis**
-   - Predict share price changes from deposits/withdrawals
-   - Calculate fee accrual based on high water mark
-   - Model APR impact from vault state changes
+**Tool**: Use \`simulate_vault\` for fee-aware modeling
+📖 Complete methodology: /docs/tools/simulate-vault.md
 
-3. **Settlement Requirements**
-   - Understand pending deposit/withdrawal mechanics
-   - Model settlement scenarios vs. no-settlement
-   - Assess capacity constraints
+**Key Use Cases:**
+- Pre-transaction planning and fee optimization
+- Impact analysis for large deposits/withdrawals
+- Settlement requirement calculations
+- "What-if" scenario analysis
 
-**Example Output:**
+**Quick Example:**
+\`\`\`json
+{
+  "vaultAddress": "0x...",
+  "scenario": {
+    "type": "deposit",
+    "amount": "10000"
+  }
+}
 \`\`\`
-Simulation Results: +$5,000 Deposit
-- Current State: 1000 USDC, 950 shares, PPS: 1.0526 USDC
-- After Deposit: 6000 USDC, 5711 shares, PPS: 1.0506 USDC
-- Fees Accrued: 12.5 USDC (management) + 0 USDC (performance)
-- New Shares Issued: 4,761 shares
-- APR Impact: -0.2% (dilution from deposit)
-- Settlement Required: Yes (pending deposits: 1,500 USDC)
-\`\`\`
+
+**Key Outputs:**
+- Shares received/assets withdrawn
+- Fee breakdown (entry, exit, management, performance)
+- Net position after fees
+- Settlement requirements
+- APR impact from vault state changes
+
+For protocol-accurate fee calculations, SDK integration details, and comprehensive examples:
+📖 See /docs/tools/simulate-vault.md
 
 ---
 
 ## Financial Metrics Interpretation
 
-### APR Analysis
+### APR (Annual Percentage Rate)
 
-The SDK provides two APR calculation approaches:
+SDK provides protocol-accurate APR calculations using BigInt precision.
 
+**Two Calculation Approaches:**
 - **30-Day APR**: Based on price per share growth over last 30 days
-  - Uses getLastPeriodSummaryInDuration() to find historical data point
-  - Protocol-accurate with BigInt precision
-  - Gracefully handles vaults with <30 days history
-
 - **Inception APR**: Annualized return since vault creation
-  - Uses oldest period summary for calculation
-  - Accounts for full vault lifecycle
-  - Best indicator for established vaults
 
-**Data Source**: All APR calculations use SDK's transformPeriodSummariesToAPRData() for consistency with frontend-dapp-v2 production patterns.
+**Interpretation Guidelines:**
+- **5-15% APR**: Sustainable, established strategies
+- **15-30% APR**: Higher risk/reward, due diligence required
+- **>30% APR**: Exceptional or unsustainable, verify carefully
+- **Negative APR**: Loss-making period, investigate cause
 
-**APR Ranges:**
-- **<5%**: Low yield, comparable to traditional savings
-- **5-10%**: Moderate yield, typical for lending protocols
-- **10-20%**: High yield, active strategies or incentives
-- **>20%**: Very high yield, assess sustainability and risk
+📖 Methodology details: /docs/tools/vault-performance.md
 
-### TVL Interpretation
+### TVL (Total Value Locked)
 - **>$10M**: Large, established vault with strong adoption
 - **$1M-$10M**: Medium-sized, proven but growing
 - **$100K-$1M**: Small, newer vault or niche strategy
@@ -288,6 +336,9 @@ The SDK provides two APR calculation approaches:
 - Vault state = PAUSED or EMERGENCY
 - Performance significantly below benchmarks
 - No curator information or anonymous team
+
+**For comprehensive automated risk analysis:**
+📖 Use \`analyze_risk\` tool (/docs/tools/analyze-risk.md)
 
 ---
 
@@ -360,6 +411,23 @@ Use this structure for comprehensive analysis reports:
 - ✅ Explain potential downsides
 - ✅ Mention smart contract risk
 - ✅ Note that past performance ≠ future results
+
+### Tool Selection
+- **Single vault (1-5)**: Use \`get_vault_data\` with caching
+- **Discovery (20+)**: Use \`search_vaults\` with filters
+- **Comparison (2-10)**: Use \`compare_vaults\` for rankings
+- **Portfolio**: Use \`user_portfolio\` for multi-chain aggregation
+- **Custom queries**: Use \`query_graphql\` for power users
+
+📖 Tool selection guide: /docs/tools/README.md
+
+---
+
+## Documentation Reference
+
+**Complete analytical frameworks**: /docs/prompts/financial-analysis.md
+**Tool documentation**: /docs/tools/README.md
+**Individual tool details**: /docs/tools/[tool-name].md
 
 ---
 

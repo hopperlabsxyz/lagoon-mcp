@@ -266,6 +266,18 @@ Important disclaimers:
 4. Refine investment strategy
 ```
 
+## Related Prompts
+
+**Vault Performance Analysis Pattern**: [/docs/prompts/financial-analysis.md#2-vault-performance-analysis-pattern](../prompts/financial-analysis.md#2-vault-performance-analysis-pattern)
+
+See the analytical guide for:
+- Forward-looking yield analysis
+- Confidence interval interpretation
+- Forecast-based investment planning
+- Combining historical and predicted performance
+
+---
+
 ## See Also
 
 - [Yield Prediction Algorithm](../../src/utils/yield-prediction.ts) - Implementation

@@ -249,6 +249,18 @@ For large result sets:
 4. Identify market trends
 ```
 
+## Related Prompts
+
+**Vault Discovery Pattern**: [/docs/prompts/financial-analysis.md#3-vault-discovery-pattern](../prompts/financial-analysis.md#3-vault-discovery-pattern)
+
+See the analytical guide for:
+- Criteria matching strategies
+- Quality filtering approaches
+- Ranking and recommendation patterns
+- Risk-tolerance-based vault selection
+
+---
+
 ## See Also
 
 - [Search Validators](../../src/utils/validators.ts) - Complete filter reference

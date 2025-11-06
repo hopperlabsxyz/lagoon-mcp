@@ -418,6 +418,18 @@ Common errors and solutions:
 - **Protocol Accuracy**: Calculations match vault smart contract logic exactly
 - **Stateless**: Each simulation is independent, no server-side state
 
+## Related Prompts
+
+**Vault Simulation Pattern**: [/docs/prompts/financial-analysis.md#4-vault-simulation-pattern](../prompts/financial-analysis.md#4-vault-simulation-pattern)
+
+See the analytical guide for:
+- Pre-transaction planning strategies
+- Fee optimization techniques
+- Impact analysis for large transactions
+- Settlement timing optimization
+
+---
+
 ## Version History
 
 - **v0.1.0** (Phase 2): Initial release with complete simulation functionality

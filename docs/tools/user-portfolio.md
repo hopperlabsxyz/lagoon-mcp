@@ -165,6 +165,18 @@ For single-chain analysis, filter results after query or use [query_graphql](./q
 4. Track performance over time
 ```
 
+## Related Prompts
+
+**Portfolio Analysis Pattern**: [/docs/prompts/financial-analysis.md#1-portfolio-analysis-pattern](../prompts/financial-analysis.md#1-portfolio-analysis-pattern)
+
+See the analytical guide for:
+- Asset allocation analysis techniques
+- Concentration risk assessment
+- Portfolio performance evaluation
+- Rebalancing recommendations
+
+---
+
 ## See Also
 
 - [GraphQL User Queries](../../src/graphql/client.ts) - Query implementation

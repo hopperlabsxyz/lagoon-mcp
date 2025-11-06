@@ -287,6 +287,18 @@ System generates recommendations based on:
 4. Compare across vaults
 ```
 
+## Related Prompts
+
+**Risk Assessment Framework**: [/docs/prompts/financial-analysis.md#risk-assessment-framework](../prompts/financial-analysis.md#risk-assessment-framework)
+
+See the analytical guide for:
+- Risk interpretation guidelines (LOW/MEDIUM/HIGH categories)
+- Red flag identification and investigation
+- Risk-adjusted return analysis
+- Portfolio risk monitoring patterns
+
+---
+
 ## See Also
 
 - [Risk Scoring Algorithm](../../src/utils/risk-scoring.ts) - Implementation details

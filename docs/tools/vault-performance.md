@@ -229,6 +229,18 @@ Analysis includes:
 4. Forecast future performance
 ```
 
+## Related Prompts
+
+**Vault Performance Analysis Pattern**: [/docs/prompts/financial-analysis.md#2-vault-performance-analysis-pattern](../prompts/financial-analysis.md#2-vault-performance-analysis-pattern)
+
+See the analytical guide for:
+- Time-series analysis techniques
+- Return calculation methodologies
+- Benchmark comparison strategies
+- Volume analysis and trend identification
+
+---
+
 ## See Also
 
 - [Performance Validators](../../src/utils/validators.ts) - Time range options
