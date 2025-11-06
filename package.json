@@ -17,6 +17,8 @@
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "test": "vitest",
+    "test:unit": "vitest run tests/tools/ tests/graphql/ src/sdk/__tests__/",
+    "test:integration": "./scripts/test-integration.sh",
     "test:coverage": "vitest --coverage",
     "codegen": "graphql-codegen",
     "lint": "eslint src/**/*.ts",
