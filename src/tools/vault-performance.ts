@@ -248,8 +248,13 @@ async function calculateSDKAPR(
         pageInfo: PageInfo;
       };
     }>(GET_PERIOD_SUMMARIES_QUERY, {
-      vault_in: [vaultAddress],
-      chainId,
+      where: {
+        vault_in: [vaultAddress],
+        chainId_eq: chainId,
+        type_in: ['PeriodSummary'],
+      },
+      orderBy: 'timestamp',
+      orderDirection: 'asc',
       first: 1000,
     });
 
@@ -336,7 +341,12 @@ async function calculateSDKAPR(
  * GraphQL variables type for GET_VAULT_PERFORMANCE_QUERY
  */
 interface GetVaultPerformanceVariables {
-  vault_in: string[];
+  where: {
+    vault_in: string[];
+    type_in: string[];
+  };
+  orderBy: string;
+  orderDirection: string;
   first: number;
 }
 
@@ -397,7 +407,12 @@ export function createExecuteGetVaultPerformance(
       cacheTTL: cacheTTL.performance,
       query: GET_VAULT_PERFORMANCE_QUERY,
       variables: (input) => ({
-        vault_in: [input.vaultAddress],
+        where: {
+          vault_in: [input.vaultAddress],
+          type_in: ['TotalAssetsUpdated', 'PeriodSummary'],
+        },
+        orderBy: 'timestamp',
+        orderDirection: 'asc',
         first: 5000, // Increased to fetch more transactions for client-side filtering
       }),
       validateResult: (data) => ({

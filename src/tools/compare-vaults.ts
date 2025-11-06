@@ -36,7 +36,9 @@ import { cacheKeys, cacheTTL } from '../cache/index.js';
  * GraphQL response type
  */
 interface CompareVaultsResponse {
-  vaults: VaultData[];
+  vaults: {
+    items: VaultData[];
+  };
 }
 
 /**
@@ -86,7 +88,7 @@ function convertToComparisonData(vault: VaultData, chainId: number): VaultCompar
 function createTransformComparisonData(input: CompareVaultsInput) {
   return (data: CompareVaultsResponse): CompareVaultsOutput => {
     // Convert to comparison data
-    const comparisonData: VaultComparisonData[] = data.vaults.map((vault) =>
+    const comparisonData: VaultComparisonData[] = data.vaults.items.map((vault) =>
       convertToComparisonData(vault, input.chainId)
     );
 
@@ -191,9 +193,9 @@ export function createExecuteCompareVaults(
         chainId: input.chainId,
       }),
       validateResult: (data) => ({
-        valid: !!(data.vaults && data.vaults.length > 0),
+        valid: !!(data.vaults?.items && data.vaults.items.length > 0),
         message:
-          data.vaults && data.vaults.length > 0
+          data.vaults?.items && data.vaults.items.length > 0
             ? undefined
             : `No vaults found for the provided addresses on chain ${input.chainId}`,
       }),

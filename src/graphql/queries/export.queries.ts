@@ -23,9 +23,11 @@ import { VAULT_FRAGMENT, TRANSACTION_BASE_FRAGMENT } from '../fragments/index.js
  * ```
  */
 export const EXPORT_VAULTS_QUERY = `
-  query ExportVaults($addresses: [Address!]!, $chainId: Int!) {
+  query ExportVaults($addresses: [String!]!, $chainId: Int!) {
     vaults(where: { address_in: $addresses, chainId_eq: $chainId }) {
-      ...VaultFragment
+      items {
+        ...VaultFragment
+      }
     }
   }
   ${VAULT_FRAGMENT}

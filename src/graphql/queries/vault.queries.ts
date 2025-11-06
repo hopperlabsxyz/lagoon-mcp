@@ -63,16 +63,18 @@ export const GET_VAULT_FOR_APR_QUERY = `
  *
  * Usage:
  * ```typescript
- * const data = await graphqlClient.request<{ vaults: VaultData[] }>(
+ * const data = await graphqlClient.request<{ vaults: { items: VaultData[] } }>(
  *   COMPARE_VAULTS_QUERY,
  *   { addresses: ['0x...', '0x...'], chainId: 1 }
  * );
  * ```
  */
 export const COMPARE_VAULTS_QUERY = `
-  query CompareVaults($addresses: [Address!]!, $chainId: Int!) {
+  query CompareVaults($addresses: [String!]!, $chainId: Int!) {
     vaults(where: { address_in: $addresses, chainId_eq: $chainId }) {
-      ...VaultFragment
+      items {
+        ...VaultFragment
+      }
     }
   }
   ${VAULT_FRAGMENT}

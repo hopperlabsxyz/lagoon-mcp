@@ -25,17 +25,28 @@ import { VAULT_FRAGMENT } from '../fragments/index.js';
  *   {
  *     vaultAddress: '0x...',
  *     chainId: 1,
- *     curatorId: 'curator-id'
+ *     curatorId: 'curator-id',
+ *     where: {
+ *       vault_in: ['0x...'],
+ *       type_in: ['TotalAssetsUpdated']
+ *     },
+ *     orderBy: 'timestamp',
+ *     orderDirection: 'asc'
  *   }
  * );
  * ```
  */
 export const RISK_ANALYSIS_QUERY = `
-  query RiskAnalysis($vaultAddress: Address!, $chainId: Int!, $curatorId: String!) {
+  query RiskAnalysis(
+    $vaultAddress: Address!,
+    $chainId: Int!,
+    $curatorId: String!,
+    $where: TransactionFilterInput!,
+    $orderBy: TransactionOrderBy!,
+    $orderDirection: OrderDirection!
+  ) {
     vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
       ...VaultFragment
-      createdAt
-      curatorId
     }
 
     # Get all vaults for concentration risk calculation
@@ -48,7 +59,7 @@ export const RISK_ANALYSIS_QUERY = `
     }
 
     # Get curator's other vaults for reputation analysis
-    curatorVaults: vaults(where: { chainId_eq: $chainId, curatorIds_contains: [$curatorId] }) {
+    curatorVaults: vaults(where: { chainId_eq: $chainId, curatorIds_contains: $curatorId }) {
       items {
         address
         state {
@@ -59,16 +70,18 @@ export const RISK_ANALYSIS_QUERY = `
 
     # Get price history for volatility analysis
     priceHistory: transactions(
-      where: { vault_in: [$vaultAddress], type_in: ["TotalAssetsUpdated"] },
-      orderBy: "timestamp",
-      orderDirection: "asc",
+      where: $where,
+      orderBy: $orderBy,
+      orderDirection: $orderDirection,
       first: 100
     ) {
       items {
         timestamp
         data {
           ... on TotalAssetsUpdated {
-            pricePerShareUsd
+            totalAssets
+            totalAssetsUsd
+            totalSupply
           }
         }
       }

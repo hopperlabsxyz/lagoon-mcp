@@ -121,12 +121,15 @@ async function exportVaults(
   container: ServiceContainer,
   input: ExportDataInput
 ): Promise<CallToolResult> {
-  const data = await container.graphqlClient.request<{ vaults: VaultData[] }>(EXPORT_VAULTS_QUERY, {
-    addresses: input.vaultAddresses,
-    chainId: input.chainId,
-  });
+  const data = await container.graphqlClient.request<{ vaults: { items: VaultData[] } }>(
+    EXPORT_VAULTS_QUERY,
+    {
+      addresses: input.vaultAddresses,
+      chainId: input.chainId,
+    }
+  );
 
-  if (!data.vaults || data.vaults.length === 0) {
+  if (!data.vaults || !data.vaults.items || data.vaults.items.length === 0) {
     return {
       content: [
         {
@@ -138,7 +141,7 @@ async function exportVaults(
     };
   }
 
-  const csvData = data.vaults.map((vault) => convertVaultToCSV(vault, input.chainId));
+  const csvData = data.vaults.items.map((vault) => convertVaultToCSV(vault, input.chainId));
 
   if (input.format === 'csv') {
     const csv = generateVaultCSV(csvData);

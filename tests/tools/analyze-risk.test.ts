@@ -148,11 +148,20 @@ describe('analyze_risk Tool', () => {
   /**
    * Helper to create mock price history
    */
-  function createMockPriceHistory(prices: number[]): unknown {
+  function createMockPriceHistory(prices: number[], ageInDays?: number): unknown {
+    const now = Math.floor(Date.now() / 1000);
+    // If ageInDays is provided, first transaction is that many days ago
+    const startTimestamp = ageInDays
+      ? now - ageInDays * 24 * 60 * 60
+      : now - prices.length * 24 * 60 * 60;
+
     return {
       items: prices.map((price, i) => ({
-        timestamp: String(Math.floor(Date.now() / 1000) - (prices.length - i) * 24 * 60 * 60),
+        timestamp: String(startTimestamp + i * 24 * 60 * 60),
         data: {
+          totalAssets: '1000000000000000000',
+          totalAssetsUsd: 1000000,
+          totalSupply: String(Math.floor((1000000 / price) * 1e18)),
           pricePerShareUsd: price,
         },
       })),
@@ -166,9 +175,9 @@ describe('analyze_risk Tool', () => {
           tvl: 15000000, // $15M = very high TVL (low risk)
           createdAt: String(Math.floor(Date.now() / 1000) - 400 * 24 * 60 * 60), // >1 year
         }),
-        allVaults: createMockAllVaults(100, 500000000), // 3% concentration
-        curatorVaults: createMockCuratorVaults(10, 9), // 90% success rate
-        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01, 1.02, 1.02, 1.03, 1.03]), // Low volatility
+        allVaults: { items: createMockAllVaults(100, 500000000) }, // 3% concentration
+        curatorVaults: { items: createMockCuratorVaults(10, 9) }, // 90% success rate
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01, 1.02, 1.02, 1.03, 1.03], 400), // Low volatility, 400 days old
       };
 
       vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
@@ -194,11 +203,11 @@ describe('analyze_risk Tool', () => {
       const mockData = {
         vault: createMockVault({
           tvl: 5000, // <$10K = critical TVL risk
-          createdAt: String(Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60), // 15 days old
+          createdAt: String(Math.floor(Date.now() / 1000) - 5 * 24 * 60 * 60), // 5 days old = very new
         }),
-        allVaults: createMockAllVaults(10, 50000), // 10% concentration
-        curatorVaults: createMockCuratorVaults(1, 0), // 0% success rate, new curator
-        priceHistory: createMockPriceHistory([1.0, 0.85, 1.1, 0.9, 1.15, 0.8, 1.2]), // High volatility
+        allVaults: { items: createMockAllVaults(10, 50000) }, // 10% concentration
+        curatorVaults: { items: createMockCuratorVaults(1, 0) }, // 0% success rate, new curator
+        priceHistory: createMockPriceHistory([1.0, 0.6, 1.3, 0.7, 1.4, 0.5, 1.5], 5), // Very high volatility, 5 days old
       };
 
       vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
@@ -219,8 +228,8 @@ describe('analyze_risk Tool', () => {
     it('should calculate TVL risk correctly', async () => {
       const mockData = {
         vault: createMockVault({ tvl: 500000 }), // Medium TVL
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -239,8 +248,8 @@ describe('analyze_risk Tool', () => {
     it('should calculate concentration risk correctly', async () => {
       const mockData = {
         vault: createMockVault({ tvl: 50000000 }), // High concentration if protocol is small
-        allVaults: createMockAllVaults(2, 100000000), // Vault is 50% of protocol
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(2, 100000000) }, // Vault is 50% of protocol
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -259,8 +268,8 @@ describe('analyze_risk Tool', () => {
     it('should calculate volatility risk correctly', async () => {
       const mockData = {
         vault: createMockVault(),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.2, 0.8, 1.3, 0.7]), // Very volatile
       };
 
@@ -281,9 +290,9 @@ describe('analyze_risk Tool', () => {
         vault: createMockVault({
           createdAt: String(Math.floor(Date.now() / 1000) - 10 * 24 * 60 * 60), // 10 days old
         }),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
-        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01], 10), // 10 days old
       };
 
       vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
@@ -301,8 +310,8 @@ describe('analyze_risk Tool', () => {
     it('should calculate curator risk correctly', async () => {
       const mockData = {
         vault: createMockVault(),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(15, 14), // Experienced curator, 93% success
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(15, 14) }, // Experienced curator, 93% success
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -323,8 +332,8 @@ describe('analyze_risk Tool', () => {
     it('should handle vault with no price history', async () => {
       const mockData = {
         vault: createMockVault(),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: { items: [] }, // No price history
       };
 
@@ -344,8 +353,8 @@ describe('analyze_risk Tool', () => {
     it('should handle vault not found', async () => {
       const mockData = {
         vault: null,
-        allVaults: [],
-        curatorVaults: [],
+        allVaults: { items: [] },
+        curatorVaults: { items: [] },
         priceHistory: { items: [] },
       };
 
@@ -365,8 +374,8 @@ describe('analyze_risk Tool', () => {
     it('should handle zero protocol TVL gracefully', async () => {
       const mockData = {
         vault: createMockVault({ tvl: 1000000 }),
-        allVaults: [], // No other vaults = zero protocol TVL
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: [] }, // No other vaults = zero protocol TVL
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -386,8 +395,8 @@ describe('analyze_risk Tool', () => {
     it('should handle new curator (no other vaults)', async () => {
       const mockData = {
         vault: createMockVault(),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: [], // New curator with no other vaults
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: [] }, // New curator with no other vaults
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -409,8 +418,8 @@ describe('analyze_risk Tool', () => {
     it('should cache risk analysis results', async () => {
       const mockData = {
         vault: createMockVault(),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -439,8 +448,8 @@ describe('analyze_risk Tool', () => {
     it('should use separate cache keys for different vaults', async () => {
       const mockData = {
         vault: createMockVault(),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -503,8 +512,8 @@ describe('analyze_risk Tool', () => {
     it('should include all risk factors in the output', async () => {
       const mockData = {
         vault: createMockVault(),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -536,8 +545,8 @@ describe('analyze_risk Tool', () => {
     it('should use emoji indicators for risk levels', async () => {
       const mockData = {
         vault: createMockVault(),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -564,8 +573,8 @@ describe('analyze_risk Tool', () => {
           pricePerShare: '900000000000000000', // Below HWM, no performance fee active
           highWaterMark: '1000000000000000000',
         }),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -589,8 +598,8 @@ describe('analyze_risk Tool', () => {
           pricePerShare: '1100000000000000000', // Above HWM, performance fee active
           highWaterMark: '1000000000000000000',
         }),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -614,8 +623,8 @@ describe('analyze_risk Tool', () => {
           safeAssetBalanceUsd: 500000,
           pendingSettlementUsd: 0, // No pending redemptions
         }),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -637,8 +646,8 @@ describe('analyze_risk Tool', () => {
           safeAssetBalanceUsd: 50000, // Only 50K safe assets
           pendingSettlementUsd: 200000, // 200K pending redemptions = 25% coverage
         }),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -661,8 +670,8 @@ describe('analyze_risk Tool', () => {
           safeAssetBalanceUsd: 100000, // 100K safe assets
           pendingSettlementUsd: 100000, // 100K pending redemptions = 100% coverage
         }),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
@@ -682,8 +691,8 @@ describe('analyze_risk Tool', () => {
     it('should include all 7 risk factors in analysis', async () => {
       const mockData = {
         vault: createMockVault(),
-        allVaults: createMockAllVaults(100, 100000000),
-        curatorVaults: createMockCuratorVaults(5, 5),
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 

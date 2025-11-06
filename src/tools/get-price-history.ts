@@ -44,8 +44,7 @@ const TIME_RANGES = {
 interface TotalAssetsUpdatedData {
   totalAssets: string;
   totalAssetsUsd: number;
-  pricePerShare: string;
-  pricePerShareUsd: number;
+  totalSupply: string;
 }
 
 /**
@@ -104,10 +103,7 @@ interface PriceStatistics {
  */
 function isTotalAssetsUpdated(data: unknown): data is TotalAssetsUpdatedData {
   return (
-    typeof data === 'object' &&
-    data !== null &&
-    'pricePerShareUsd' in data &&
-    'totalAssetsUsd' in data
+    typeof data === 'object' && data !== null && 'totalAssetsUsd' in data && 'totalSupply' in data
   );
 }
 
@@ -139,7 +135,11 @@ function aggregateOHLCV(transactions: PriceTransaction[]): OHLCVDataPoint[] {
   for (const [dayTimestamp, txs] of Array.from(dayBuckets.entries()).sort((a, b) => a[0] - b[0])) {
     const prices = txs
       .filter((tx) => isTotalAssetsUpdated(tx.data))
-      .map((tx) => tx.data.pricePerShareUsd);
+      .map((tx) => {
+        // Calculate price per share from totalAssetsUsd / totalSupply
+        const totalSupply = parseFloat(tx.data.totalSupply) / 1e18; // Convert from wei to decimal
+        return totalSupply > 0 ? tx.data.totalAssetsUsd / totalSupply : 0;
+      });
 
     if (prices.length === 0) continue;
 
@@ -217,7 +217,12 @@ function calculateStatistics(ohlcvData: OHLCVDataPoint[]): PriceStatistics {
  * GraphQL variables type for PRICE_HISTORY_QUERY
  */
 interface PriceHistoryVariables {
-  vault_in: string[];
+  where: {
+    vault_in: string[];
+    type_in: string[];
+  };
+  orderBy: string;
+  orderDirection: string;
   first: number;
 }
 
@@ -294,7 +299,12 @@ export function createExecuteGetPriceHistory(
 
     // Build query variables
     const variables: PriceHistoryVariables = {
-      vault_in: [input.vaultAddress],
+      where: {
+        vault_in: [input.vaultAddress],
+        type_in: ['TotalAssetsUpdated'],
+      },
+      orderBy: 'timestamp',
+      orderDirection: 'asc',
       first: 5000, // Increased to fetch more data for client-side filtering
     };
 

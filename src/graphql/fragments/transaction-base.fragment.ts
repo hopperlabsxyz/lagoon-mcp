@@ -28,9 +28,5 @@ export const TRANSACTION_BASE_FRAGMENT = `
       id
       name
     }
-    vault {
-      id
-      address
-    }
   }
 `;

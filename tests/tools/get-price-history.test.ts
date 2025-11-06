@@ -40,6 +40,7 @@ function createMockPriceTransaction(
   data: {
     totalAssets: string;
     totalAssetsUsd: number;
+    totalSupply: string;
     pricePerShare: string;
     pricePerShareUsd: number;
   };
@@ -51,6 +52,9 @@ function createMockPriceTransaction(
     data: {
       totalAssets: '1000000000000000000',
       totalAssetsUsd,
+      // totalSupply should be totalAssetsUsd / pricePerShareUsd in wei
+      // If totalAssetsUsd = 1M and pricePerShareUsd = 1.0, totalSupply = 1M tokens = 1e24 wei
+      totalSupply: ((totalAssetsUsd / pricePerShareUsd) * 1e18).toString(),
       pricePerShare: '1000000000000000000',
       pricePerShareUsd,
     },
@@ -250,16 +254,20 @@ describe('get_price_history Tool', () => {
 
     it('should handle multiple days with varying transaction counts', async () => {
       const now = Math.floor(Date.now() / 1000);
+      // Align to day boundaries to ensure transactions fall in different day buckets
+      const currentDayBucket = Math.floor(now / 86400) * 86400;
       const transactions = [];
 
-      // Day 1: 5 transactions
+      // Day 1: 5 transactions (all within the same day bucket, spaced by 10 minutes)
+      const day1Start = currentDayBucket - 86400;
       for (let i = 0; i < 5; i++) {
-        transactions.push(createMockPriceTransaction(now - 86400 + i * 1000, 1.0 + i * 0.01));
+        transactions.push(createMockPriceTransaction(day1Start + i * 600, 1.0 + i * 0.01));
       }
 
-      // Day 2: 2 transactions
+      // Day 2: 2 transactions (all within a different day bucket, spaced by 10 minutes)
+      const day2Start = currentDayBucket - 2 * 86400;
       for (let i = 0; i < 2; i++) {
-        transactions.push(createMockPriceTransaction(now - 2 * 86400 + i * 1000, 1.1));
+        transactions.push(createMockPriceTransaction(day2Start + i * 600, 1.1));
       }
 
       vi.mocked(graphqlClient).request.mockResolvedValueOnce({

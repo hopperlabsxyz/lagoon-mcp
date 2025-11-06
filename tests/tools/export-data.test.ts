@@ -174,7 +174,7 @@ describe('export_data Tool', () => {
     it('should export vaults in CSV format', async () => {
       const mockVault = createMockVault();
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        vaults: [mockVault],
+        vaults: { items: [mockVault] },
       });
 
       const result = await executeExportData({
@@ -197,7 +197,7 @@ describe('export_data Tool', () => {
     it('should export vaults in JSON format', async () => {
       const mockVault = createMockVault();
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        vaults: [mockVault],
+        vaults: { items: [mockVault] },
       });
 
       const result = await executeExportData({
@@ -221,7 +221,7 @@ describe('export_data Tool', () => {
       const vault3 = createMockVault({ weeklyApr: undefined, monthlyApr: undefined });
 
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        vaults: [vault1, vault2, vault3],
+        vaults: { items: [vault1, vault2, vault3] },
       });
 
       const result = await executeExportData({
@@ -246,7 +246,7 @@ describe('export_data Tool', () => {
 
     it('should handle empty vault results', async () => {
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        vaults: [],
+        vaults: { items: [] },
       });
 
       const result = await executeExportData({
@@ -498,7 +498,7 @@ describe('export_data Tool', () => {
     it('should escape CSV fields with quotes', async () => {
       const mockVault = createMockVault({ name: 'Vault "Special" Name' });
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        vaults: [mockVault],
+        vaults: { items: [mockVault] },
       });
 
       const result = await executeExportData({
@@ -516,7 +516,7 @@ describe('export_data Tool', () => {
     it('should escape CSV fields with commas', async () => {
       const mockVault = createMockVault({ name: 'Vault, with commas' });
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        vaults: [mockVault],
+        vaults: { items: [mockVault] },
       });
 
       const result = await executeExportData({
@@ -534,7 +534,7 @@ describe('export_data Tool', () => {
     it('should escape CSV fields with newlines', async () => {
       const mockVault = createMockVault({ name: 'Vault\nwith\nnewlines' });
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        vaults: [mockVault],
+        vaults: { items: [mockVault] },
       });
 
       const result = await executeExportData({

@@ -20,8 +20,12 @@ import { TRANSACTION_BASE_FRAGMENT, PAGEINFO_MINIMAL_FRAGMENT } from '../fragmen
  * const data = await graphqlClient.request<VaultPerformanceResponse>(
  *   GET_VAULT_PERFORMANCE_QUERY,
  *   {
- *     vault_in: ['0x...'],
- *     timestamp_gte: '1234567890',
+ *     where: {
+ *       vault_in: ['0x...'],
+ *       type_in: ['TotalAssetsUpdated', 'PeriodSummary']
+ *     },
+ *     orderBy: 'timestamp',
+ *     orderDirection: 'asc',
  *     first: 1000
  *   }
  * );
@@ -29,16 +33,15 @@ import { TRANSACTION_BASE_FRAGMENT, PAGEINFO_MINIMAL_FRAGMENT } from '../fragmen
  */
 export const GET_VAULT_PERFORMANCE_QUERY = `
   query GetVaultPerformance(
-    $vault_in: [Address!]!,
+    $where: TransactionFilterInput!,
+    $orderBy: TransactionOrderBy!,
+    $orderDirection: OrderDirection!,
     $first: Int!
   ) {
     transactions(
-      where: {
-        vault_in: $vault_in,
-        type_in: ["TotalAssetsUpdated", "PeriodSummary"]
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
+      where: $where,
+      orderBy: $orderBy,
+      orderDirection: $orderDirection,
       first: $first
     ) {
       items {
@@ -82,7 +85,16 @@ export const GET_VAULT_PERFORMANCE_QUERY = `
  * ```typescript
  * const data = await graphqlClient.request<{ transactions: { items: Transaction[] } }>(
  *   GET_PERIOD_SUMMARIES_QUERY,
- *   { vault_in: ['0x...'], chainId: 1, first: 1000 }
+ *   {
+ *     where: {
+ *       vault_in: ['0x...'],
+ *       chainId_eq: 1,
+ *       type_in: ['PeriodSummary']
+ *     },
+ *     orderBy: 'timestamp',
+ *     orderDirection: 'asc',
+ *     first: 1000
+ *   }
  * );
  * ```
  *
@@ -90,18 +102,15 @@ export const GET_VAULT_PERFORMANCE_QUERY = `
  */
 export const GET_PERIOD_SUMMARIES_QUERY = `
   query GetPeriodSummaries(
-    $vault_in: [Address!]!,
-    $chainId: Int!,
+    $where: TransactionFilterInput!,
+    $orderBy: TransactionOrderBy!,
+    $orderDirection: OrderDirection!,
     $first: Int!
   ) {
     transactions(
-      where: {
-        vault_in: $vault_in,
-        chainId_eq: $chainId,
-        type_in: ["PeriodSummary"]
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
+      where: $where,
+      orderBy: $orderBy,
+      orderDirection: $orderDirection,
       first: $first
     ) {
       items {

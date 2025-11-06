@@ -14,13 +14,17 @@ import { analyzeRisk, RiskScoreBreakdown } from '../../utils/risk-scoring.js';
  * Risk analysis input data extracted from GraphQL
  */
 export interface RiskAnalysisData {
-  vault: VaultData & { createdAt: string; curatorId: string };
-  allVaults: Array<{ state: { totalAssetsUsd: number } }>;
-  curatorVaults: Array<{ address: string; state: { totalAssetsUsd: number } }>;
+  vault: VaultData;
+  allVaults: { items: Array<{ state: { totalAssetsUsd: number } }> };
+  curatorVaults: { items: Array<{ address: string; state: { totalAssetsUsd: number } }> };
   priceHistory: {
     items: Array<{
       timestamp: string;
-      data: { pricePerShareUsd: number };
+      data: {
+        totalAssets: string;
+        totalAssetsUsd: number;
+        totalSupply: string;
+      };
     }>;
   };
 }
@@ -36,7 +40,13 @@ export class RiskService extends BaseService {
     const data = await this.client.request<RiskAnalysisData>(RISK_ANALYSIS_QUERY, {
       vaultAddress,
       chainId,
-      curatorId: '', // Will be filled if needed by backend
+      curatorId: '', // Will be extracted from vault.curators after fetch
+      where: {
+        vault_in: [vaultAddress],
+        type_in: ['TotalAssetsUpdated'],
+      },
+      orderBy: 'timestamp',
+      orderDirection: 'asc',
     });
 
     return data.vault ? data : null;
@@ -50,24 +60,31 @@ export class RiskService extends BaseService {
     const vaultTVL = data.vault.state?.totalAssetsUsd || 0;
 
     // Calculate total protocol TVL
-    const totalProtocolTVL = data.allVaults.reduce(
+    const totalProtocolTVL = data.allVaults.items.reduce(
       (sum, v) => sum + (v.state?.totalAssetsUsd || 0),
       0
     );
 
-    // Extract price history
-    const priceHistory = data.priceHistory.items.map((item) => item.data.pricePerShareUsd);
+    // Extract price history and calculate price per share
+    const priceHistory = data.priceHistory.items.map((item) => {
+      // Calculate price per share from totalAssetsUsd / totalSupply
+      const totalSupply = parseFloat(item.data.totalSupply) / 1e18; // Convert from wei
+      return totalSupply > 0 ? item.data.totalAssetsUsd / totalSupply : 0;
+    });
 
-    // Calculate vault age in days
-    const createdAtTimestamp = parseInt(data.vault.createdAt, 10);
-    const nowTimestamp = Math.floor(Date.now() / 1000);
-    const ageInDays = Math.floor((nowTimestamp - createdAtTimestamp) / (24 * 60 * 60));
+    // Calculate vault age in days from first transaction
+    const now = Math.floor(Date.now() / 1000);
+    const firstTransaction = data.priceHistory.items[0];
+    const createdAtTimestamp = firstTransaction
+      ? parseInt(firstTransaction.timestamp, 10)
+      : now - 365 * 24 * 60 * 60;
+    const ageInDays = Math.floor((now - createdAtTimestamp) / (24 * 60 * 60));
 
     // Get curator vault count
-    const curatorVaultCount = data.curatorVaults.length;
+    const curatorVaultCount = data.curatorVaults.items.length;
 
     // Calculate curator success rate (vaults with TVL > $10K)
-    const successfulVaults = data.curatorVaults.filter(
+    const successfulVaults = data.curatorVaults.items.filter(
       (v) => (v.state?.totalAssetsUsd || 0) > 10_000
     ).length;
     const curatorSuccessRate = curatorVaultCount > 0 ? successfulVaults / curatorVaultCount : 0.5;

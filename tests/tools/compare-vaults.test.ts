@@ -224,7 +224,7 @@ describe('compare_vaults Tool', () => {
       ];
 
       graphqlClient.request.mockResolvedValueOnce({
-        vaults: mockVaults,
+        vaults: { items: mockVaults },
       });
 
       const result = await executeCompareVaults({
@@ -283,7 +283,7 @@ describe('compare_vaults Tool', () => {
         }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -310,7 +310,7 @@ describe('compare_vaults Tool', () => {
         })
       );
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -330,7 +330,7 @@ describe('compare_vaults Tool', () => {
         createMockVault({ address: '0x2222222222222222222222222222222222222222', name: 'Vault 2' }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       // First call - cache miss
       await executeCompareVaults({
@@ -362,7 +362,7 @@ describe('compare_vaults Tool', () => {
         createMockVault({ address: '0x2222222222222222222222222222222222222222', name: 'Vault 2' }),
       ];
 
-      graphqlClient.request.mockResolvedValue({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValue({ vaults: { items: mockVaults } });
 
       // First call with one order
       await executeCompareVaults({
@@ -392,7 +392,7 @@ describe('compare_vaults Tool', () => {
         createMockVault({ address: '0x2222222222222222222222222222222222222222' }),
       ];
 
-      graphqlClient.request.mockResolvedValue({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValue({ vaults: { items: mockVaults } });
 
       // Chain ID 1
       await executeCompareVaults({
@@ -440,7 +440,7 @@ describe('compare_vaults Tool', () => {
         }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -474,7 +474,7 @@ describe('compare_vaults Tool', () => {
         }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -509,7 +509,7 @@ describe('compare_vaults Tool', () => {
         }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -544,7 +544,7 @@ describe('compare_vaults Tool', () => {
         }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -581,7 +581,7 @@ describe('compare_vaults Tool', () => {
         }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -602,7 +602,7 @@ describe('compare_vaults Tool', () => {
 
   describe('Empty Results Handling', () => {
     it('should handle no vaults found gracefully', async () => {
-      graphqlClient.request.mockResolvedValueOnce({ vaults: [] });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: [] } });
 
       const result = await executeCompareVaults({
         vaultAddresses: [
@@ -617,7 +617,7 @@ describe('compare_vaults Tool', () => {
     });
 
     it('should handle null vaults response', async () => {
-      graphqlClient.request.mockResolvedValueOnce({ vaults: null });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: null } });
 
       const result = await executeCompareVaults({
         vaultAddresses: [
@@ -641,7 +641,7 @@ describe('compare_vaults Tool', () => {
         }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: [
@@ -701,7 +701,7 @@ describe('compare_vaults Tool', () => {
         createMockVault({ address: '0x2222222222222222222222222222222222222222', tvl: 2500000 }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -724,7 +724,7 @@ describe('compare_vaults Tool', () => {
         }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -741,7 +741,7 @@ describe('compare_vaults Tool', () => {
         createMockVault({ address: '0x2222222222222222222222222222222222222222' }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: mockVaults });
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
 
       const result = await executeCompareVaults({
         vaultAddresses: mockVaults.map((v: any) => v.address),
@@ -766,10 +766,12 @@ describe('compare_vaults Tool', () => {
       });
 
       graphqlClient.request.mockResolvedValueOnce({
-        vaults: [
-          mockVault,
-          createMockVault({ address: '0x2222222222222222222222222222222222222222' }),
-        ],
+        vaults: {
+          items: [
+            mockVault,
+            createMockVault({ address: '0x2222222222222222222222222222222222222222' }),
+          ],
+        },
       });
 
       const result = await executeCompareVaults({
@@ -798,10 +800,12 @@ describe('compare_vaults Tool', () => {
       };
 
       graphqlClient.request.mockResolvedValueOnce({
-        vaults: [
-          mockVault,
-          createMockVault({ address: '0x2222222222222222222222222222222222222222' }),
-        ],
+        vaults: {
+          items: [
+            mockVault,
+            createMockVault({ address: '0x2222222222222222222222222222222222222222' }),
+          ],
+        },
       });
 
       const result = await executeCompareVaults({
@@ -827,10 +831,12 @@ describe('compare_vaults Tool', () => {
       };
 
       graphqlClient.request.mockResolvedValueOnce({
-        vaults: [
-          mockVault,
-          createMockVault({ address: '0x2222222222222222222222222222222222222222' }),
-        ],
+        vaults: {
+          items: [
+            mockVault,
+            createMockVault({ address: '0x2222222222222222222222222222222222222222' }),
+          ],
+        },
       });
 
       const result = await executeCompareVaults({

@@ -154,8 +154,12 @@ export const TRANSACTIONS_QUERY = `
  * const data = await graphqlClient.request<PriceHistoryResponse>(
  *   PRICE_HISTORY_QUERY,
  *   {
- *     vault_in: ['0x...'],
- *     timestamp_gte: '1234567890',
+ *     where: {
+ *       vault_in: ['0x...'],
+ *       type_in: ['TotalAssetsUpdated']
+ *     },
+ *     orderBy: 'timestamp',
+ *     orderDirection: 'asc',
  *     first: 2000
  *   }
  * );
@@ -163,16 +167,15 @@ export const TRANSACTIONS_QUERY = `
  */
 export const PRICE_HISTORY_QUERY = `
   query GetPriceHistory(
-    $vault_in: [Address!]!,
+    $where: TransactionFilterInput!,
+    $orderBy: TransactionOrderBy!,
+    $orderDirection: OrderDirection!,
     $first: Int!
   ) {
     transactions(
-      where: {
-        vault_in: $vault_in,
-        type_in: ["TotalAssetsUpdated"]
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
+      where: $where,
+      orderBy: $orderBy,
+      orderDirection: $orderDirection,
       first: $first
     ) {
       items {
@@ -181,8 +184,7 @@ export const PRICE_HISTORY_QUERY = `
           ... on TotalAssetsUpdated {
             totalAssets
             totalAssetsUsd
-            pricePerShare
-            pricePerShareUsd
+            totalSupply
           }
         }
       }
