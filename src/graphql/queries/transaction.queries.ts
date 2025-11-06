@@ -5,6 +5,12 @@
  * Includes transaction history and price history queries.
  */
 
+import {
+  TRANSACTION_BASE_FRAGMENT,
+  PAGEINFO_FULL_FRAGMENT,
+  PAGEINFO_MINIMAL_FRAGMENT,
+} from '../fragments/index.js';
+
 /**
  * GraphQL query for fetching vault transactions with all union type variants
  *
@@ -129,8 +135,8 @@ export const TRANSACTIONS_QUERY = `
       }
     }
   }
-  \${TRANSACTION_BASE_FRAGMENT}
-  \${PAGEINFO_FULL_FRAGMENT}
+  ${TRANSACTION_BASE_FRAGMENT}
+  ${PAGEINFO_FULL_FRAGMENT}
 `;
 
 /**
@@ -185,6 +191,6 @@ export const PRICE_HISTORY_QUERY = `
       }
     }
   }
-  \${TRANSACTION_BASE_FRAGMENT}
-  \${PAGEINFO_MINIMAL_FRAGMENT}
+  ${TRANSACTION_BASE_FRAGMENT}
+  ${PAGEINFO_MINIMAL_FRAGMENT}
 `;

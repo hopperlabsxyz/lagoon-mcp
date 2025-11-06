@@ -6,6 +6,9 @@
  */
 
 import { type APRBreakdown } from './apr-breakdown.fragment.js';
+import { ASSET_INFO_FRAGMENT } from './asset-info.fragment.js';
+import { CHAIN_INFO_FRAGMENT } from './chain-info.fragment.js';
+import { APR_BREAKDOWN_FRAGMENT } from './apr-breakdown.fragment.js';
 
 /**
  * Complete vault data type matching the vault fragment
@@ -257,7 +260,7 @@ export const VAULT_FRAGMENT = `
       type
     }
   }
-  \${ASSET_INFO_FRAGMENT}
-  \${CHAIN_INFO_FRAGMENT}
-  \${APR_BREAKDOWN_FRAGMENT}
+  ${ASSET_INFO_FRAGMENT}
+  ${CHAIN_INFO_FRAGMENT}
+  ${APR_BREAKDOWN_FRAGMENT}
 `;

@@ -7,8 +7,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { ZodSchema } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { ZodSchema, ZodObject, ZodRawShape } from 'zod';
 
 // Tool factory functions
 import { createExecuteQueryGraphQL } from './query-graphql.js';
@@ -250,17 +249,24 @@ export function registerTools(server: McpServer, container: ServiceContainer): v
     // Create wrapped handler with validation
     const handler = createToolHandler(executor, tool.schema);
 
-    // Convert Zod schema to JSON schema for MCP
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-    const jsonSchema = zodToJsonSchema(tool.schema) as any;
+    // Extract raw shape from Zod schema for MCP registration
+    // The MCP SDK expects a ZodRawShape, not a complete schema or JSON Schema
+    // The SDK will wrap this with z.object() internally
+    // We use type assertion here because ZodObject's shape property is typed as any in the library
+    // but we know it's safe because we're checking the instance type
+    const inputShape: ZodRawShape =
+      tool.schema instanceof ZodObject
+        ? (tool.schema.shape as ZodRawShape)
+        : (() => {
+            throw new Error(`Tool ${tool.name} schema must be a ZodObject`);
+          })();
 
     // Register with server
     server.registerTool(
       tool.name,
       {
         description: tool.description,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        inputSchema: jsonSchema,
+        inputSchema: inputShape,
       },
       handler
     );

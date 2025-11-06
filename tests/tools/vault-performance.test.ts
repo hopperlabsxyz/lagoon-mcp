@@ -51,9 +51,10 @@ function createMockTotalAssetsUpdated(
  */
 function createMockPeriodSummary(
   timestamp: number,
-  tvl: number,
-  deposits: string = '1000000000000000000000',
-  withdrawals: string = '500000000000000000000'
+  totalAssetsAtEnd: number,
+  totalAssetsAtStart: string = '900000000000000000000',
+  totalSupplyAtStart: string = '1000000000000000000000',
+  totalSupplyAtEnd: string = '1000000000000000000000'
 ): unknown {
   return {
     id: `tx-${timestamp}`,
@@ -61,9 +62,12 @@ function createMockPeriodSummary(
     timestamp: timestamp.toString(),
     blockNumber: '1000000',
     data: {
-      tvl,
-      deposits,
-      withdrawals,
+      duration: '86400',
+      totalAssetsAtStart,
+      totalAssetsAtEnd: totalAssetsAtEnd.toString(),
+      totalSupplyAtStart,
+      totalSupplyAtEnd,
+      netTotalSupplyAtEnd: totalSupplyAtEnd,
     },
   };
 }
@@ -330,12 +334,12 @@ describe('get_vault_performance Tool', () => {
       expect(data.summary.percentChange).toBeCloseTo(-10, 1);
     });
 
-    it('should calculate volume from PeriodSummary transactions', async () => {
+    it('should return zero volume (field not available in schema)', async () => {
       // Arrange
       const now = Math.floor(Date.now() / 1000);
       const mockResponse = createMockPerformanceResponse([
-        createMockPeriodSummary(now - 3600, 1000000, '1000', '500'), // vol = 1500
-        createMockPeriodSummary(now - 1800, 1100000, '2000', '1000'), // vol = 3000
+        createMockPeriodSummary(now - 3600, 1000000),
+        createMockPeriodSummary(now - 1800, 1100000),
       ]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
@@ -349,7 +353,8 @@ describe('get_vault_performance Tool', () => {
       // Assert
       expect(result.isError).toBe(false);
       const data = JSON.parse(result.content[0].text as string);
-      expect(data.summary.volumeUsd).toBe(4500); // 1500 + 3000
+      // Volume is 0 because deposit/withdrawal fields are not available in current schema
+      expect(data.summary.volumeUsd).toBe(0);
     });
 
     it('should count all transactions', async () => {
@@ -582,13 +587,21 @@ describe('get_vault_performance Tool', () => {
       ]);
 
       const mockPeriodSummariesResponse = {
-        periodSummaries: [
-          {
-            timestamp: (now - 30 * 24 * 60 * 60).toString(),
-            totalAssetsAtStart: '1000000000000',
-            totalSupplyAtStart: '1000000000000',
+        transactions: {
+          items: [
+            {
+              timestamp: (now - 30 * 24 * 60 * 60).toString(),
+              data: {
+                totalAssetsAtStart: '1000000000000',
+                totalSupplyAtStart: '1000000000000',
+              },
+            },
+          ],
+          pageInfo: {
+            hasNextPage: false,
+            hasPreviousPage: false,
           },
-        ],
+        },
       };
 
       const mockVaultResponse = {

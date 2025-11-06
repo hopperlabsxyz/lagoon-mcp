@@ -26,6 +26,11 @@ import { getDefiGlossary } from './resources/glossary.js';
 
 // Prompt imports
 import { getFinancialAnalysisPrompt } from './prompts/financial-analysis.js';
+import { getCuratorPerformancePrompt } from './prompts/curator-performance.js';
+import { getCompetitorComparisonPrompt } from './prompts/competitor-comparison.js';
+import { getOnboardingFirstVaultPrompt } from './prompts/onboarding-first-vault.js';
+import { getProtocolOverviewPrompt } from './prompts/protocol-overview.js';
+import { getPortfolioOptimizationPrompt } from './prompts/portfolio-optimization.js';
 
 /**
  * Create and configure the MCP server instance
@@ -130,6 +135,121 @@ export function createServer(): McpServer {
           content: {
             type: 'text',
             text: getFinancialAnalysisPrompt(),
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerPrompt(
+    'curator-performance',
+    {
+      title: 'Curator Performance Intelligence',
+      description:
+        'Comprehensive framework for evaluating curator performance, reputation, and vault management capabilities. ' +
+        'Includes metrics for weighted APY, Sharpe ratio, consistency analysis, and reputation scoring. ' +
+        'Provides curator selection criteria, trust signals, and monitoring frameworks.',
+      argsSchema: {},
+    },
+    () => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: getCuratorPerformancePrompt(),
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerPrompt(
+    'competitor-comparison',
+    {
+      title: 'Competitor Comparison Framework',
+      description:
+        'Objective comparison of Lagoon Protocol against major competitors (Gauntlet, Veda, Ether.fi). ' +
+        'Includes financial performance, platform features, security metrics, and use case recommendations. ' +
+        'Provides scenario-based guidance and migration considerations.',
+      argsSchema: {},
+    },
+    () => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: getCompetitorComparisonPrompt(),
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerPrompt(
+    'onboarding-first-vault',
+    {
+      title: 'Onboarding: First Vault Selection',
+      description:
+        'Structured guidance for new users selecting their first vault with confidence-building approach. ' +
+        'Includes 5-step selection process, risk assessment, performance validation, and curator credibility checks. ' +
+        'Provides beginner-friendly decision frameworks and best practices.',
+      argsSchema: {},
+    },
+    () => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: getOnboardingFirstVaultPrompt(),
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerPrompt(
+    'protocol-overview',
+    {
+      title: 'Protocol Overview & KPI Dashboard',
+      description:
+        'Real-time protocol health insights and competitive positioning analysis. ' +
+        'Includes TVL trends, vault performance metrics, user growth, ecosystem health, and security assessment. ' +
+        'Provides protocol health scoring and competitive benchmarking.',
+      argsSchema: {},
+    },
+    () => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: getProtocolOverviewPrompt(),
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerPrompt(
+    'portfolio-optimization',
+    {
+      title: 'Portfolio Optimization Engine',
+      description:
+        'Modern Portfolio Theory (MPT) based optimization for vault portfolio management. ' +
+        'Includes correlation analysis, efficient frontier calculation, Sharpe ratio optimization, and rebalancing strategies. ' +
+        'Provides risk-return optimization and diversification recommendations.',
+      argsSchema: {},
+    },
+    () => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: getPortfolioOptimizationPrompt(),
           },
         },
       ],

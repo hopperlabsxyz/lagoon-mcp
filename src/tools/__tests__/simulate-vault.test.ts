@@ -200,7 +200,18 @@ describe('executeSimulateVault', () => {
 
     vi.mocked(graphqlClient)
       .request.mockResolvedValueOnce({ vault: mockVault })
-      .mockResolvedValueOnce({ periodSummaries: mockPeriodSummaries });
+      .mockResolvedValueOnce({
+        transactions: {
+          items: mockPeriodSummaries.map((ps) => ({
+            timestamp: ps.timestamp,
+            data: {
+              totalAssetsAtStart: ps.totalAssetsAtStart,
+              totalSupplyAtStart: ps.totalSupplyAtStart,
+            },
+          })),
+          pageInfo: { hasNextPage: false, hasPreviousPage: false },
+        },
+      });
     vi.mocked(simulateVaultManagement).mockReturnValue(mockSimulationResult);
     vi.mocked(transformPeriodSummariesToAPRData).mockReturnValue(mockAPRData);
 

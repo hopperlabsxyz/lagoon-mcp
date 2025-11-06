@@ -57,9 +57,12 @@ interface TotalAssetsUpdatedData {
 }
 
 interface PeriodSummaryData {
-  tvl: number;
-  deposits: string;
-  withdrawals: string;
+  duration: string;
+  totalAssetsAtStart: string;
+  totalAssetsAtEnd: string;
+  totalSupplyAtStart: string;
+  totalSupplyAtEnd: string;
+  netTotalSupplyAtEnd: string;
 }
 
 interface Transaction {
@@ -154,9 +157,9 @@ function isPeriodSummary(data: unknown): data is PeriodSummaryData {
   return (
     typeof data === 'object' &&
     data !== null &&
-    'tvl' in data &&
-    'deposits' in data &&
-    'withdrawals' in data
+    'duration' in data &&
+    'totalAssetsAtStart' in data &&
+    'totalSupplyAtStart' in data
   );
 }
 
@@ -174,10 +177,10 @@ function aggregateMetrics(transactions: Transaction[]): MetricPoint[] {
         blockNumber: tx.blockNumber,
       });
     } else if (tx.type === 'PeriodSummary' && isPeriodSummary(tx.data)) {
-      // PeriodSummary contains TVL which is equivalent to totalAssetsUsd
+      // PeriodSummary contains totalAssetsAtEnd which represents the total assets at period end
       metrics.push({
         timestamp: parseInt(tx.timestamp, 10),
-        totalAssetsUsd: tx.data.tvl,
+        totalAssetsUsd: parseFloat(tx.data.totalAssetsAtEnd),
         blockNumber: tx.blockNumber,
       });
     }
@@ -204,16 +207,10 @@ function calculateSummary(metrics: MetricPoint[], transactions: Transaction[]): 
   const endValue = metrics[metrics.length - 1].totalAssetsUsd;
   const percentChange = startValue > 0 ? ((endValue - startValue) / startValue) * 100 : 0;
 
-  // Calculate total volume from PeriodSummary transactions
-  let volumeUsd = 0;
-  for (const tx of transactions) {
-    if (tx.type === 'PeriodSummary' && isPeriodSummary(tx.data)) {
-      // Convert BigInt strings to numbers and add to volume
-      const deposits = parseFloat(tx.data.deposits);
-      const withdrawals = parseFloat(tx.data.withdrawals);
-      volumeUsd += deposits + withdrawals;
-    }
-  }
+  // Volume calculation: deposit/withdrawal fields not available in current schema
+  // Frontend confirmed it doesn't use volume metrics, so we set to 0
+  // If volume is needed in future, fields must be added to GraphQL schema first
+  const volumeUsd = 0;
 
   return {
     startValue,
@@ -243,10 +240,17 @@ async function calculateSDKAPR(
   try {
     // Fetch period summaries for historical APR data
     const periodSummariesData = await container.graphqlClient.request<{
-      periodSummaries: PeriodSummary[];
+      transactions: {
+        items: Array<{
+          timestamp: string;
+          data: PeriodSummaryData;
+        }>;
+        pageInfo: PageInfo;
+      };
     }>(GET_PERIOD_SUMMARIES_QUERY, {
-      vaultAddress,
+      vault_in: [vaultAddress],
       chainId,
+      first: 1000,
     });
 
     // Fetch vault data for current price per share
@@ -259,14 +263,21 @@ async function calculateSDKAPR(
     );
 
     // Graceful degradation if no data available
-    if (!periodSummariesData.periodSummaries?.length || !vaultData.vaultByAddress) {
+    if (!periodSummariesData.transactions?.items?.length || !vaultData.vaultByAddress) {
       return undefined;
     }
 
     const vault = vaultData.vaultByAddress;
 
+    // Extract PeriodSummary data from transaction items
+    const periodSummaries: PeriodSummary[] = periodSummariesData.transactions.items.map((tx) => ({
+      timestamp: tx.timestamp,
+      totalAssetsAtStart: tx.data.totalAssetsAtStart,
+      totalSupplyAtStart: tx.data.totalSupplyAtStart,
+    }));
+
     // Transform period summaries to APR historical data
-    const aprData = transformPeriodSummariesToAPRData(periodSummariesData.periodSummaries, vault);
+    const aprData = transformPeriodSummariesToAPRData(periodSummaries, vault);
 
     // Check if we have any APR data
     if (!aprData.thirtyDay && !aprData.inception) {

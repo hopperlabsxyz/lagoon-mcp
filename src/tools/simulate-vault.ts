@@ -146,15 +146,27 @@ export function createExecuteSimulateVault(
       if (includeAPRCalculations) {
         try {
           const periodSummariesData = await container.graphqlClient.request<{
-            periodSummaries: Array<{
-              timestamp: string;
-              totalAssetsAtStart: string;
-              totalSupplyAtStart: string;
-            }>;
-          }>(GET_PERIOD_SUMMARIES_QUERY, { vaultAddress, chainId });
+            transactions: {
+              items: Array<{
+                timestamp: string;
+                data: {
+                  totalAssetsAtStart: string;
+                  totalSupplyAtStart: string;
+                };
+              }>;
+              pageInfo: { hasNextPage: boolean; hasPreviousPage: boolean };
+            };
+          }>(GET_PERIOD_SUMMARIES_QUERY, { vault_in: [vaultAddress], chainId, first: 1000 });
 
-          if (periodSummariesData?.periodSummaries?.length > 0) {
-            aprData = transformPeriodSummariesToAPRData(periodSummariesData.periodSummaries, vault);
+          if (periodSummariesData?.transactions?.items?.length > 0) {
+            // Extract PeriodSummary data from transaction items
+            const periodSummaries = periodSummariesData.transactions.items.map((tx) => ({
+              timestamp: tx.timestamp,
+              totalAssetsAtStart: tx.data.totalAssetsAtStart,
+              totalSupplyAtStart: tx.data.totalSupplyAtStart,
+            }));
+
+            aprData = transformPeriodSummariesToAPRData(periodSummaries, vault);
           }
         } catch (error) {
           // Non-fatal: proceed without APR data

@@ -5,7 +5,7 @@
  * Supports exporting vaults, transactions, price history, and performance metrics.
  */
 
-import { VAULT_FRAGMENT } from '../fragments/index.js';
+import { VAULT_FRAGMENT, TRANSACTION_BASE_FRAGMENT } from '../fragments/index.js';
 
 /**
  * GraphQL query for vault data export
@@ -80,7 +80,7 @@ export const EXPORT_TRANSACTIONS_QUERY = `
       }
     }
   }
-  \${TRANSACTION_BASE_FRAGMENT}
+  ${TRANSACTION_BASE_FRAGMENT}
 `;
 
 /**

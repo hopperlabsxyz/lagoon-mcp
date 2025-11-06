@@ -5,6 +5,8 @@
  * Includes vault performance analysis and period summaries for APR calculations.
  */
 
+import { TRANSACTION_BASE_FRAGMENT, PAGEINFO_MINIMAL_FRAGMENT } from '../fragments/index.js';
+
 /**
  * Vault performance GraphQL query
  *
@@ -49,9 +51,12 @@ export const GET_VAULT_PERFORMANCE_QUERY = `
             totalAssets
           }
           ... on PeriodSummary {
-            tvl
-            deposits
-            withdrawals
+            duration
+            totalAssetsAtStart
+            totalAssetsAtEnd
+            totalSupplyAtStart
+            totalSupplyAtEnd
+            netTotalSupplyAtEnd
           }
         }
       }
@@ -60,8 +65,8 @@ export const GET_VAULT_PERFORMANCE_QUERY = `
       }
     }
   }
-  \${TRANSACTION_BASE_FRAGMENT}
-  \${PAGEINFO_MINIMAL_FRAGMENT}
+  ${TRANSACTION_BASE_FRAGMENT}
+  ${PAGEINFO_MINIMAL_FRAGMENT}
 `;
 
 /**
@@ -70,24 +75,54 @@ export const GET_VAULT_PERFORMANCE_QUERY = `
  * Period summaries contain historical snapshots of vault state at regular intervals.
  * Used by Lagoon SDK to calculate accurate APR from price per share changes over time.
  *
+ * Note: The GraphQL API doesn't have a direct 'periodSummaries' query. PeriodSummary data
+ * is fetched through the transactions query with type filtering.
+ *
  * Used by: get_vault_performance tool (via calculateSDKAPR function)
  *
  * Usage:
  * ```typescript
- * const data = await graphqlClient.request<{ periodSummaries: PeriodSummary[] }>(
+ * const data = await graphqlClient.request<{ transactions: { items: Transaction[] } }>(
  *   GET_PERIOD_SUMMARIES_QUERY,
- *   { vaultAddress: '0x...', chainId: 1 }
+ *   { vault_in: ['0x...'], chainId: 1, first: 1000 }
  * );
  * ```
  *
- * @returns Array of period summaries with timestamp and vault state
+ * @returns Transactions containing PeriodSummary data with timestamp and vault state
  */
 export const GET_PERIOD_SUMMARIES_QUERY = `
-  query GetPeriodSummaries($vaultAddress: String!, $chainId: Int!) {
-    periodSummaries(vaultAddress: $vaultAddress, chainId: $chainId) {
-      timestamp
-      totalAssetsAtStart
-      totalSupplyAtStart
+  query GetPeriodSummaries(
+    $vault_in: [Address!]!,
+    $chainId: Int!,
+    $first: Int!
+  ) {
+    transactions(
+      where: {
+        vault_in: $vault_in,
+        chainId_eq: $chainId,
+        type_in: ["PeriodSummary"]
+      },
+      orderBy: "timestamp",
+      orderDirection: "asc",
+      first: $first
+    ) {
+      items {
+        timestamp
+        data {
+          ... on PeriodSummary {
+            duration
+            totalAssetsAtStart
+            totalAssetsAtEnd
+            totalSupplyAtStart
+            totalSupplyAtEnd
+            netTotalSupplyAtEnd
+          }
+        }
+      }
+      pageInfo {
+        ...PageInfoMinimalFragment
+      }
     }
   }
+  ${PAGEINFO_MINIMAL_FRAGMENT}
 `;

@@ -5,6 +5,8 @@
  * Supports advanced filtering, pagination, and sorting.
  */
 
+import { VAULT_FRAGMENT, PAGEINFO_MINIMAL_FRAGMENT } from '../fragments/index.js';
+
 /**
  * Search vaults GraphQL query
  *
@@ -64,6 +66,6 @@ export const SEARCH_VAULTS_QUERY = `
       }
     }
   }
-  \${VAULT_FRAGMENT}
-  \${PAGEINFO_MINIMAL_FRAGMENT}
+  ${VAULT_FRAGMENT}
+  ${PAGEINFO_MINIMAL_FRAGMENT}
 `;
