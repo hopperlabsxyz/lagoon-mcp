@@ -31,31 +31,35 @@ import { VAULT_FRAGMENT } from '../fragments/index.js';
  * ```
  */
 export const RISK_ANALYSIS_QUERY = `
-  query RiskAnalysis($vaultAddress: Address!, $chainId: Int!) {
-    vault(address: $vaultAddress, chainId: $chainId) {
+  query RiskAnalysis($vaultAddress: Address!, $chainId: Int!, $curatorId: String!) {
+    vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
       ...VaultFragment
       createdAt
       curatorId
     }
 
     # Get all vaults for concentration risk calculation
-    allVaults: vaults(where: { chainId: $chainId, isVisible_eq: true }) {
-      state {
-        totalAssetsUsd
+    allVaults: vaults(where: { chainId_eq: $chainId, isVisible_eq: true }) {
+      items {
+        state {
+          totalAssetsUsd
+        }
       }
     }
 
     # Get curator's other vaults for reputation analysis
-    curatorVaults: vaults(where: { chainId: $chainId, curatorIds_contains: [$curatorId] }) {
-      address
-      state {
-        totalAssetsUsd
+    curatorVaults: vaults(where: { chainId_eq: $chainId, curatorIds_contains: [$curatorId] }) {
+      items {
+        address
+        state {
+          totalAssetsUsd
+        }
       }
     }
 
     # Get price history for volatility analysis
     priceHistory: transactions(
-      where: { vault_eq: $vaultAddress, type: "TotalAssetsUpdated" },
+      where: { vault_in: [$vaultAddress], type_in: ["TotalAssetsUpdated"] },
       orderBy: "timestamp",
       orderDirection: "asc",
       first: 100

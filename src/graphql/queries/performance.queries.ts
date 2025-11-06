@@ -30,13 +30,11 @@ import { TRANSACTION_BASE_FRAGMENT, PAGEINFO_MINIMAL_FRAGMENT } from '../fragmen
 export const GET_VAULT_PERFORMANCE_QUERY = `
   query GetVaultPerformance(
     $vault_in: [Address!]!,
-    $timestamp_gte: BigInt!,
     $first: Int!
   ) {
     transactions(
       where: {
         vault_in: $vault_in,
-        timestamp_gte: $timestamp_gte,
         type_in: ["TotalAssetsUpdated", "PeriodSummary"]
       },
       orderBy: "timestamp",

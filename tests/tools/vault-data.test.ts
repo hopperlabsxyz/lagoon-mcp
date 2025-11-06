@@ -14,9 +14,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createExecuteGetVaultData } from '../../src/tools/vault-data';
-import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheKeys, cacheTTL } from '../../src/cache';
+import { createMockContainer } from '../helpers/test-container';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -257,12 +257,7 @@ describe('get_vault_data Tool', () => {
     cache.flushAll();
 
     // Create mock container and initialize executor
-    const mockContainer: ServiceContainer = {
-      graphqlClient: graphqlClientModule.graphqlClient,
-      cache,
-      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
-      riskService: {} as any,
-    };
+    const mockContainer = createMockContainer();
     executeGetVaultData = createExecuteGetVaultData(mockContainer);
   });
 

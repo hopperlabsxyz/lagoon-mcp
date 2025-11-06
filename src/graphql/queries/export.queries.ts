@@ -24,7 +24,7 @@ import { VAULT_FRAGMENT, TRANSACTION_BASE_FRAGMENT } from '../fragments/index.js
  */
 export const EXPORT_VAULTS_QUERY = `
   query ExportVaults($addresses: [Address!]!, $chainId: Int!) {
-    vaults(where: { address_in: $addresses, chainId: $chainId }) {
+    vaults(where: { address_in: $addresses, chainId_eq: $chainId }) {
       ...VaultFragment
     }
   }
@@ -50,7 +50,7 @@ export const EXPORT_VAULTS_QUERY = `
 export const EXPORT_TRANSACTIONS_QUERY = `
   query ExportTransactions($vault_in: [Address!]!, $chainId: Int!, $first: Int!) {
     transactions(
-      where: { vault_in: $vault_in, chainId: $chainId },
+      where: { vault_in: $vault_in, chainId_eq: $chainId },
       orderBy: "timestamp",
       orderDirection: "desc",
       first: $first
@@ -101,7 +101,7 @@ export const EXPORT_TRANSACTIONS_QUERY = `
 export const EXPORT_PRICE_HISTORY_QUERY = `
   query ExportPriceHistory($vault_in: [Address!]!, $first: Int!) {
     transactions(
-      where: { vault_in: $vault_in, type: "TotalAssetsUpdated" },
+      where: { vault_in: $vault_in, type_in: ["TotalAssetsUpdated"] },
       orderBy: "timestamp",
       orderDirection: "asc",
       first: $first
@@ -137,7 +137,7 @@ export const EXPORT_PRICE_HISTORY_QUERY = `
 export const EXPORT_PERFORMANCE_QUERY = `
   query ExportPerformance($vault_in: [Address!]!, $first: Int!) {
     transactions(
-      where: { vault_in: $vault_in, type: "TotalAssetsUpdated" },
+      where: { vault_in: $vault_in, type_in: ["TotalAssetsUpdated"] },
       orderBy: "timestamp",
       orderDirection: "asc",
       first: $first

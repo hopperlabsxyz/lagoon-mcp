@@ -12,9 +12,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createExecuteGetUserPortfolio } from '../../src/tools/user-portfolio';
-import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheKeys } from '../../src/cache';
+import { createMockContainer } from '../helpers/test-container';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -168,12 +168,7 @@ describe('get_user_portfolio Tool', () => {
     cache.flushAll();
 
     // Create mock container and initialize executor
-    const mockContainer: ServiceContainer = {
-      graphqlClient: graphqlClientModule.graphqlClient,
-      cache,
-      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
-      riskService: {} as any,
-    };
+    const mockContainer = createMockContainer();
     executeGetUserPortfolio = createExecuteGetUserPortfolio(mockContainer);
   });
 
@@ -213,7 +208,7 @@ describe('get_user_portfolio Tool', () => {
       const cachedData = cache.get(cacheKey);
       expect(cachedData).toBeDefined();
       expect(cachedData).toHaveProperty('users');
-      expect(cachedData.users).toHaveProperty('items');
+      expect((cachedData as any).users).toHaveProperty('items');
     });
 
     it('should return cached data without querying GraphQL', async () => {

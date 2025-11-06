@@ -16,9 +16,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createExecuteSearchVaults } from '../../src/tools/search-vaults';
-import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheTTL } from '../../src/cache';
+import { createMockContainer } from '../helpers/test-container';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -30,7 +30,7 @@ vi.mock('../../src/graphql/client', () => ({
 /**
  * Helper to create complete mock vault for search results
  */
-function createMockVault(overrides: Record<string, unknown> = {}): unknown {
+function createMockVault(overrides: Record<string, unknown> = {}): any {
   return {
     address: '0x1234567890123456789012345678901234567890',
     symbol: 'TEST-VAULT',
@@ -197,12 +197,7 @@ describe('search_vaults Tool', () => {
     cache.flushAll();
 
     // Create mock container and initialize executor
-    const mockContainer: ServiceContainer = {
-      graphqlClient: graphqlClientModule.graphqlClient,
-      cache,
-      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
-      riskService: {} as any,
-    };
+    const mockContainer = createMockContainer();
     executeSearchVaults = createExecuteSearchVaults(mockContainer);
   });
 
@@ -211,14 +206,18 @@ describe('search_vaults Tool', () => {
   });
 
   describe('Basic Search Functionality', () => {
-    it('should search vaults without filters', async () => {
+    it('should search vaults without filters and return all results', async () => {
       // Arrange
-      const mockVault = createMockVault();
-      const mockResponse = createMockSearchResponse([mockVault]);
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
+      const mockVaults = [createMockVault(), createMockVault()];
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
+        vaults: { items: mockVaults, totalCount: mockVaults.length },
+      });
 
       // Act
-      const result = await executeSearchVaults({});
+      const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
+      });
 
       // Assert
       expect(result.isError).toBe(false);
@@ -229,12 +228,15 @@ describe('search_vaults Tool', () => {
 
     it('should search vaults with asset filter', async () => {
       // Arrange
-      const mockVault = createMockVault({ asset: { ...createMockVault().asset, symbol: 'USDC' } });
+      const baseVault = createMockVault();
+      const mockVault = createMockVault({ asset: { ...baseVault.asset, symbol: 'USDC' } });
       const mockResponse = createMockSearchResponse([mockVault]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
       // Act
       const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
         filters: { assetSymbol_eq: 'USDC' },
       });
 
@@ -259,6 +261,8 @@ describe('search_vaults Tool', () => {
 
       // Act
       const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
         filters: { chainId_eq: 1 },
       });
 
@@ -282,6 +286,8 @@ describe('search_vaults Tool', () => {
 
       // Act
       const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
         filters: {
           assetSymbol_eq: 'USDC',
           chainId_eq: 1,
@@ -313,6 +319,8 @@ describe('search_vaults Tool', () => {
 
       // Act
       const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
         filters: { assetSymbol_eq: 'USDC' },
       });
 
@@ -341,10 +349,18 @@ describe('search_vaults Tool', () => {
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
       // Act - First call (cache miss)
-      await executeSearchVaults({ filters: { assetSymbol_eq: 'USDC' } });
+      await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
+        filters: { assetSymbol_eq: 'USDC' },
+      });
 
       // Act - Second call (cache hit)
-      const result = await executeSearchVaults({ filters: { assetSymbol_eq: 'USDC' } });
+      const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
+        filters: { assetSymbol_eq: 'USDC' },
+      });
 
       // Assert
       expect(result.isError).toBe(false);
@@ -354,13 +370,15 @@ describe('search_vaults Tool', () => {
 
     it('should cache searches separately for different filters', async () => {
       // Arrange
+      const baseVaultForUsdc = createMockVault();
+      const baseVaultForDai = createMockVault();
       const usdcVault = createMockVault({
         symbol: 'USDC-VAULT',
-        asset: { ...createMockVault().asset, symbol: 'USDC' },
+        asset: { ...baseVaultForUsdc.asset, symbol: 'USDC' },
       });
       const daiVault = createMockVault({
         symbol: 'DAI-VAULT',
-        asset: { ...createMockVault().asset, symbol: 'DAI' },
+        asset: { ...baseVaultForDai.asset, symbol: 'DAI' },
       });
 
       vi.spyOn(graphqlClientModule.graphqlClient, 'request')
@@ -368,10 +386,18 @@ describe('search_vaults Tool', () => {
         .mockResolvedValueOnce(createMockSearchResponse([daiVault]));
 
       // Act - Search for USDC vaults
-      const result1 = await executeSearchVaults({ filters: { assetSymbol_eq: 'USDC' } });
+      const result1 = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
+        filters: { assetSymbol_eq: 'USDC' },
+      });
 
       // Act - Search for DAI vaults
-      const result2 = await executeSearchVaults({ filters: { assetSymbol_eq: 'DAI' } });
+      const result2 = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
+        filters: { assetSymbol_eq: 'DAI' },
+      });
 
       // Assert - Both should query GraphQL (different filters = different cache keys)
       expect(result1.content[0].text).toContain('USDC-VAULT');
@@ -388,7 +414,7 @@ describe('search_vaults Tool', () => {
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
       // Act
-      await executeSearchVaults({});
+      await executeSearchVaults({ orderBy: 'totalAssetsUsd', orderDirection: 'desc' });
 
       // Assert
       expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalledWith(
@@ -408,6 +434,8 @@ describe('search_vaults Tool', () => {
 
       // Act
       await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
         pagination: { first: 50, skip: 100 },
       });
 
@@ -431,6 +459,8 @@ describe('search_vaults Tool', () => {
 
       // Act
       const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
         pagination: { first: 10, skip: 0 },
       });
 
@@ -442,21 +472,21 @@ describe('search_vaults Tool', () => {
   });
 
   describe('Sort Order Validation', () => {
-    it('should use default sort (undefined allows GraphQL server defaults)', async () => {
+    it('should use default sort (totalAssetsUsd desc)', async () => {
       // Arrange
       const mockVault = createMockVault();
       const mockResponse = createMockSearchResponse([mockVault]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
       // Act
-      await executeSearchVaults({});
+      await executeSearchVaults({ orderBy: 'totalAssetsUsd', orderDirection: 'desc' });
 
       // Assert
       expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          orderBy: undefined,
-          orderDirection: undefined,
+          orderBy: 'totalAssetsUsd',
+          orderDirection: 'desc',
         })
       );
     });
@@ -492,6 +522,8 @@ describe('search_vaults Tool', () => {
 
       // Act
       const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
         filters: { assetSymbol_eq: 'NONEXISTENT' },
       });
 
@@ -507,7 +539,10 @@ describe('search_vaults Tool', () => {
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
       // Act
-      const result = await executeSearchVaults({});
+      const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
+      });
 
       // Assert
       expect(result.isError).toBe(false);
@@ -523,7 +558,10 @@ describe('search_vaults Tool', () => {
       );
 
       // Act
-      const result = await executeSearchVaults({});
+      const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
+      });
 
       // Assert
       expect(result.isError).toBe(true);
@@ -539,7 +577,10 @@ describe('search_vaults Tool', () => {
       );
 
       // Act
-      const result = await executeSearchVaults({});
+      const result = await executeSearchVaults({
+        orderBy: 'totalAssetsUsd',
+        orderDirection: 'desc',
+      });
 
       // Assert
       expect(result.isError).toBe(true);

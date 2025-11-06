@@ -71,7 +71,7 @@ export const GET_VAULT_FOR_APR_QUERY = `
  */
 export const COMPARE_VAULTS_QUERY = `
   query CompareVaults($addresses: [Address!]!, $chainId: Int!) {
-    vaults(where: { address_in: $addresses, chainId: $chainId }) {
+    vaults(where: { address_in: $addresses, chainId_eq: $chainId }) {
       ...VaultFragment
     }
   }

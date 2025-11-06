@@ -47,28 +47,82 @@ export const GET_USER_PORTFOLIO_QUERY = `
 `;
 
 /**
- * GraphQL query for portfolio optimization data
+ * GraphQL query for single vault optimization data
  *
- * Fetches vault data with historical price and performance metrics
- * for portfolio optimization calculations.
+ * Fetches one vault with its historical price and performance metrics
+ * for portfolio optimization calculations. Used in parallel queries.
  *
- * Used by: optimize_portfolio tool
+ * Used by: optimize_portfolio tool (per-vault queries)
  *
  * Usage:
  * ```typescript
- * const data = await graphqlClient.request<PortfolioOptimizationResponse>(
- *   PORTFOLIO_OPTIMIZATION_QUERY,
- *   {
- *     vaultAddresses: ['0x...', '0x...'],
- *     chainId: 1,
- *     timestamp_gte: '1234567890'
- *   }
+ * const data = await graphqlClient.request<SingleVaultOptimizationResponse>(
+ *   SINGLE_VAULT_OPTIMIZATION_QUERY,
+ *   { vaultAddress: '0x...', chainId: 1 }
  * );
  * ```
  */
+export const SINGLE_VAULT_OPTIMIZATION_QUERY = `
+  query SingleVaultOptimization($vaultAddress: Address!, $chainId: Int!) {
+    vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
+      ...VaultFragment
+    }
+
+    # Get price history for volatility calculation
+    priceHistory: transactions(
+      where: {
+        vault_in: [$vaultAddress],
+        type_in: ["TotalAssetsUpdated"]
+      },
+      orderBy: "timestamp",
+      orderDirection: "asc",
+      first: 1000
+    ) {
+      items {
+        timestamp
+        data {
+          ... on TotalAssetsUpdated {
+            pricePerShareUsd
+          }
+        }
+      }
+    }
+
+    # Get APY data for return estimation
+    performanceData: transactions(
+      where: {
+        vault_in: [$vaultAddress],
+        type_in: ["PeriodSummary"]
+      },
+      orderBy: "timestamp",
+      orderDirection: "asc",
+      first: 1000
+    ) {
+      items {
+        timestamp
+        data {
+          ... on PeriodSummary {
+            linearNetApr
+          }
+        }
+      }
+    }
+  }
+  ${VAULT_FRAGMENT}
+`;
+
+/**
+ * GraphQL query for portfolio optimization data (DEPRECATED)
+ *
+ * This query is deprecated in favor of SINGLE_VAULT_OPTIMIZATION_QUERY
+ * executed in parallel for each vault. Multi-vault queries cannot
+ * distinguish which transactions belong to which vault.
+ *
+ * @deprecated Use SINGLE_VAULT_OPTIMIZATION_QUERY with Promise.all instead
+ */
 export const PORTFOLIO_OPTIMIZATION_QUERY = `
-  query PortfolioOptimization($vaultAddresses: [Address!]!, $chainId: Int!, $timestamp_gte: BigInt!) {
-    vaults(where: { address_in: $vaultAddresses, chainId: $chainId }) {
+  query PortfolioOptimization($vaultAddresses: [Address!]!, $chainId: Int!) {
+    vaults(where: { address_in: $vaultAddresses, chainId_eq: $chainId }) {
       items {
         ...VaultFragment
       }
@@ -78,15 +132,13 @@ export const PORTFOLIO_OPTIMIZATION_QUERY = `
     priceHistory: transactions(
       where: {
         vault_in: $vaultAddresses,
-        timestamp_gte: $timestamp_gte,
-        type: "TotalAssetsUpdated"
+        type_in: ["TotalAssetsUpdated"]
       },
       orderBy: "timestamp",
       orderDirection: "asc",
       first: 1000
     ) {
       items {
-        vault
         timestamp
         data {
           ... on TotalAssetsUpdated {
@@ -100,19 +152,17 @@ export const PORTFOLIO_OPTIMIZATION_QUERY = `
     performanceData: transactions(
       where: {
         vault_in: $vaultAddresses,
-        timestamp_gte: $timestamp_gte,
-        type: "PeriodSummary"
+        type_in: ["PeriodSummary"]
       },
       orderBy: "timestamp",
       orderDirection: "asc",
       first: 1000
     ) {
       items {
-        vault
         timestamp
         data {
           ... on PeriodSummary {
-            apy
+            linearNetApr
           }
         }
       }

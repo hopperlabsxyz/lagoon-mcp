@@ -30,17 +30,16 @@ import { VAULT_FRAGMENT } from '../fragments/index.js';
  * ```
  */
 export const YIELD_PREDICTION_QUERY = `
-  query YieldPrediction($vaultAddress: Address!, $chainId: Int!, $timestamp_gte: BigInt!) {
-    vault(address: $vaultAddress, chainId: $chainId) {
+  query YieldPrediction($vaultAddress: Address!, $chainId: Int!) {
+    vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
       ...VaultFragment
     }
 
     # Get historical performance data
     performanceHistory: transactions(
       where: {
-        vault_eq: $vaultAddress,
-        timestamp_gte: $timestamp_gte,
-        type: "PeriodSummary"
+        vault_in: [$vaultAddress],
+        type_in: ["PeriodSummary"]
       },
       orderBy: "timestamp",
       orderDirection: "asc",
@@ -50,8 +49,8 @@ export const YIELD_PREDICTION_QUERY = `
         timestamp
         data {
           ... on PeriodSummary {
-            apy
-            totalAssetsUsd
+            linearNetApr
+            totalAssetsAtEnd
           }
         }
       }
@@ -60,9 +59,8 @@ export const YIELD_PREDICTION_QUERY = `
     # Get recent total assets updates for TVL tracking
     tvlHistory: transactions(
       where: {
-        vault_eq: $vaultAddress,
-        timestamp_gte: $timestamp_gte,
-        type: "TotalAssetsUpdated"
+        vault_in: [$vaultAddress],
+        type_in: ["TotalAssetsUpdated"]
       },
       orderBy: "timestamp",
       orderDirection: "asc",

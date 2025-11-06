@@ -219,7 +219,6 @@ function calculateStatistics(ohlcvData: OHLCVDataPoint[]): PriceStatistics {
 interface PriceHistoryVariables {
   vault_in: string[];
   first: number;
-  timestamp_gte?: string;
 }
 
 /**
@@ -231,12 +230,18 @@ interface PriceHistoryOutput {
 
 /**
  * Transform raw GraphQL response into markdown-formatted output
- * Uses closure to capture input values and page info
+ * Uses closure to capture input values and timestamp filter
  */
-function createTransformPriceHistoryData(input: PriceHistoryInput) {
+function createTransformPriceHistoryData(input: PriceHistoryInput, timestampGte: number) {
   return (data: PriceHistoryResponse): PriceHistoryOutput => {
+    // Filter transactions by timestamp client-side (since API doesn't support timestamp filtering)
+    const filteredItems =
+      timestampGte > 0
+        ? data.transactions.items.filter((item) => parseInt(item.timestamp) >= timestampGte)
+        : data.transactions.items;
+
     // Aggregate into OHLCV time-series
-    const ohlcvData = aggregateOHLCV(data.transactions.items);
+    const ohlcvData = aggregateOHLCV(filteredItems);
 
     // Calculate statistics
     const statistics = calculateStatistics(ohlcvData);
@@ -290,13 +295,8 @@ export function createExecuteGetPriceHistory(
     // Build query variables
     const variables: PriceHistoryVariables = {
       vault_in: [input.vaultAddress],
-      first: 2000, // Maximum data points
+      first: 5000, // Increased to fetch more data for client-side filtering
     };
-
-    // Only add timestamp filter if not 'all'
-    if (timestampGte > 0) {
-      variables.timestamp_gte = timestampGte.toString();
-    }
 
     const executor = executeToolWithCache<
       PriceHistoryInput,
@@ -317,7 +317,7 @@ export function createExecuteGetPriceHistory(
             ? undefined
             : `No price history data found for vault ${input.vaultAddress} on chain ${input.chainId} in the ${input.timeRange} time range.`,
       }),
-      transformResult: createTransformPriceHistoryData(input),
+      transformResult: createTransformPriceHistoryData(input, timestampGte),
       toolName: 'get_price_history',
     });
 

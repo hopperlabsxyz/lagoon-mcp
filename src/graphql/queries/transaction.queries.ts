@@ -122,11 +122,13 @@ export const TRANSACTIONS_QUERY = `
             requestId
           }
           ... on RatesUpdated {
-            newPerformanceFeeRate
-            newManagementFeeRate
+            newRates {
+              performanceRate
+              managementRate
+            }
           }
           ... on StateUpdated {
-            newState
+            state
           }
         }
       }
@@ -162,14 +164,12 @@ export const TRANSACTIONS_QUERY = `
 export const PRICE_HISTORY_QUERY = `
   query GetPriceHistory(
     $vault_in: [Address!]!,
-    $timestamp_gte: BigInt,
     $first: Int!
   ) {
     transactions(
       where: {
         vault_in: $vault_in,
-        timestamp_gte: $timestamp_gte,
-        type: "TotalAssetsUpdated"
+        type_in: ["TotalAssetsUpdated"]
       },
       orderBy: "timestamp",
       orderDirection: "asc",

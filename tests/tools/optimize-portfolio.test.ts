@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createExecuteOptimizePortfolio } from '../../src/tools/optimize-portfolio.js';
 import { createMockContainer } from '../helpers/test-container.js';
+import type { ServiceContainer } from '../../src/core/container.js';
 
 // Mock GraphQL client
 vi.mock('../../src/graphql/client.js', () => ({
@@ -45,7 +46,7 @@ describe('optimize_portfolio', () => {
     mockCacheGet.mockReturnValue(undefined);
 
     // Create mock container and initialize executor
-    const mockContainer = createMockContainer();
+    const mockContainer: ServiceContainer = createMockContainer();
     executeOptimizePortfolio = createExecuteOptimizePortfolio(mockContainer);
   });
 
@@ -65,116 +66,75 @@ describe('optimize_portfolio', () => {
     rebalanceThreshold: 5.0,
   };
 
-  const mockVaultData = {
-    vaults: {
-      items: [
-        {
-          address: '0x1234567890123456789012345678901234567890',
-          name: 'Vault A',
-          chain: { id: 42161, name: 'Arbitrum' },
-          symbol: 'lgVaultA',
-          assetSymbol: 'USDC',
-          state: { totalAssetsUsd: 1000000, sharePrice: 1.05 },
-        },
-        {
-          address: '0x2345678901234567890123456789012345678901',
-          name: 'Vault B',
-          chain: { id: 42161, name: 'Arbitrum' },
-          symbol: 'lgVaultB',
-          assetSymbol: 'USDT',
-          state: { totalAssetsUsd: 500000, sharePrice: 1.02 },
-        },
-        {
-          address: '0x3456789012345678901234567890123456789012',
-          name: 'Vault C',
-          chain: { id: 42161, name: 'Arbitrum' },
-          symbol: 'lgVaultC',
-          assetSymbol: 'DAI',
-          state: { totalAssetsUsd: 250000, sharePrice: 1.08 },
-        },
-      ],
+  // Mock data for individual vault queries (new implementation uses parallel queries)
+  const mockVaultDataA = {
+    vault: {
+      address: '0x1234567890123456789012345678901234567890',
+      name: 'Vault A',
+      chain: { id: 42161, name: 'Arbitrum' },
+      symbol: 'lgVaultA',
+      assetSymbol: 'USDC',
+      state: { totalAssetsUsd: 1000000, sharePrice: 1.05 },
     },
     priceHistory: {
       items: [
-        {
-          vault: '0x1234567890123456789012345678901234567890',
-          timestamp: '1704067200',
-          data: { pricePerShareUsd: 1.0 },
-        },
-        {
-          vault: '0x1234567890123456789012345678901234567890',
-          timestamp: '1704153600',
-          data: { pricePerShareUsd: 1.02 },
-        },
-        {
-          vault: '0x1234567890123456789012345678901234567890',
-          timestamp: '1704240000',
-          data: { pricePerShareUsd: 1.05 },
-        },
-        {
-          vault: '0x2345678901234567890123456789012345678901',
-          timestamp: '1704067200',
-          data: { pricePerShareUsd: 1.0 },
-        },
-        {
-          vault: '0x2345678901234567890123456789012345678901',
-          timestamp: '1704153600',
-          data: { pricePerShareUsd: 1.01 },
-        },
-        {
-          vault: '0x2345678901234567890123456789012345678901',
-          timestamp: '1704240000',
-          data: { pricePerShareUsd: 1.02 },
-        },
-        {
-          vault: '0x3456789012345678901234567890123456789012',
-          timestamp: '1704067200',
-          data: { pricePerShareUsd: 1.0 },
-        },
-        {
-          vault: '0x3456789012345678901234567890123456789012',
-          timestamp: '1704153600',
-          data: { pricePerShareUsd: 1.04 },
-        },
-        {
-          vault: '0x3456789012345678901234567890123456789012',
-          timestamp: '1704240000',
-          data: { pricePerShareUsd: 1.08 },
-        },
+        { timestamp: '1704067200', data: { pricePerShareUsd: 1.0 } },
+        { timestamp: '1704153600', data: { pricePerShareUsd: 1.02 } },
+        { timestamp: '1704240000', data: { pricePerShareUsd: 1.05 } },
       ],
     },
     performanceData: {
       items: [
-        {
-          vault: '0x1234567890123456789012345678901234567890',
-          timestamp: '1704067200',
-          data: { apy: 5.0 },
-        },
-        {
-          vault: '0x1234567890123456789012345678901234567890',
-          timestamp: '1704153600',
-          data: { apy: 5.2 },
-        },
-        {
-          vault: '0x2345678901234567890123456789012345678901',
-          timestamp: '1704067200',
-          data: { apy: 4.0 },
-        },
-        {
-          vault: '0x2345678901234567890123456789012345678901',
-          timestamp: '1704153600',
-          data: { apy: 4.1 },
-        },
-        {
-          vault: '0x3456789012345678901234567890123456789012',
-          timestamp: '1704067200',
-          data: { apy: 8.0 },
-        },
-        {
-          vault: '0x3456789012345678901234567890123456789012',
-          timestamp: '1704153600',
-          data: { apy: 8.5 },
-        },
+        { timestamp: '1704067200', data: { linearNetApr: 0.05 } },
+        { timestamp: '1704153600', data: { linearNetApr: 0.052 } },
+      ],
+    },
+  };
+
+  const mockVaultDataB = {
+    vault: {
+      address: '0x2345678901234567890123456789012345678901',
+      name: 'Vault B',
+      chain: { id: 42161, name: 'Arbitrum' },
+      symbol: 'lgVaultB',
+      assetSymbol: 'USDT',
+      state: { totalAssetsUsd: 500000, sharePrice: 1.02 },
+    },
+    priceHistory: {
+      items: [
+        { timestamp: '1704067200', data: { pricePerShareUsd: 1.0 } },
+        { timestamp: '1704153600', data: { pricePerShareUsd: 1.01 } },
+        { timestamp: '1704240000', data: { pricePerShareUsd: 1.02 } },
+      ],
+    },
+    performanceData: {
+      items: [
+        { timestamp: '1704067200', data: { linearNetApr: 0.04 } },
+        { timestamp: '1704153600', data: { linearNetApr: 0.041 } },
+      ],
+    },
+  };
+
+  const mockVaultDataC = {
+    vault: {
+      address: '0x3456789012345678901234567890123456789012',
+      name: 'Vault C',
+      chain: { id: 42161, name: 'Arbitrum' },
+      symbol: 'lgVaultC',
+      assetSymbol: 'DAI',
+      state: { totalAssetsUsd: 250000, sharePrice: 1.08 },
+    },
+    priceHistory: {
+      items: [
+        { timestamp: '1704067200', data: { pricePerShareUsd: 1.0 } },
+        { timestamp: '1704153600', data: { pricePerShareUsd: 1.04 } },
+        { timestamp: '1704240000', data: { pricePerShareUsd: 1.08 } },
+      ],
+    },
+    performanceData: {
+      items: [
+        { timestamp: '1704067200', data: { linearNetApr: 0.08 } },
+        { timestamp: '1704153600', data: { linearNetApr: 0.085 } },
       ],
     },
   };
@@ -184,7 +144,10 @@ describe('optimize_portfolio', () => {
 
   describe('Strategy: max_sharpe', () => {
     it('should optimize portfolio using maximum Sharpe ratio strategy', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -201,7 +164,10 @@ describe('optimize_portfolio', () => {
     });
 
     it('should calculate correct target allocations for high Sharpe ratio vaults', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -210,14 +176,10 @@ describe('optimize_portfolio', () => {
 
       // Vault C has highest APY (8.25%) so should get higher allocation
       expect(text).toContain('Vault C');
-      // Cache stores raw GraphQL response, not transformed data
+      // Cache stores the final markdown text now
       expect(mockCacheSet).toHaveBeenCalledWith(
         expect.stringContaining('portfolio_optimization'),
-        expect.objectContaining({
-          vaults: expect.any(Object),
-          performanceData: expect.any(Object),
-          priceHistory: expect.any(Object),
-        }),
+        expect.stringContaining('Portfolio Optimization'),
         expect.any(Number)
       );
     });
@@ -225,7 +187,10 @@ describe('optimize_portfolio', () => {
 
   describe('Strategy: equal_weight', () => {
     it('should distribute portfolio equally across all vaults', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const input = { ...baseInput, strategy: 'equal_weight' as const };
       const result = await executeOptimizePortfolio(input);
@@ -240,7 +205,10 @@ describe('optimize_portfolio', () => {
 
   describe('Strategy: risk_parity', () => {
     it('should allocate based on inverse risk scores', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const input = { ...baseInput, strategy: 'risk_parity' as const };
       const result = await executeOptimizePortfolio(input);
@@ -255,7 +223,10 @@ describe('optimize_portfolio', () => {
 
   describe('Strategy: min_variance', () => {
     it('should minimize portfolio volatility', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const input = { ...baseInput, strategy: 'min_variance' as const };
       const result = await executeOptimizePortfolio(input);
@@ -270,7 +241,10 @@ describe('optimize_portfolio', () => {
 
   describe('Rebalancing Logic', () => {
     it('should identify rebalancing needs when drift exceeds threshold', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const unbalancedInput = {
         ...baseInput,
@@ -293,7 +267,10 @@ describe('optimize_portfolio', () => {
     });
 
     it('should not recommend rebalancing when within threshold', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const balancedInput = {
         ...baseInput,
@@ -315,7 +292,10 @@ describe('optimize_portfolio', () => {
     });
 
     it('should calculate exact rebalancing amounts', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -329,7 +309,10 @@ describe('optimize_portfolio', () => {
 
   describe('Portfolio Metrics', () => {
     it('should calculate expected return', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -340,7 +323,10 @@ describe('optimize_portfolio', () => {
     });
 
     it('should calculate portfolio risk (volatility)', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -351,7 +337,10 @@ describe('optimize_portfolio', () => {
     });
 
     it('should calculate Sharpe ratio', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -362,7 +351,10 @@ describe('optimize_portfolio', () => {
     });
 
     it('should calculate diversification score', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -375,7 +367,10 @@ describe('optimize_portfolio', () => {
 
   describe('Recommendations', () => {
     it('should generate strategy-specific recommendations', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -387,7 +382,10 @@ describe('optimize_portfolio', () => {
     });
 
     it('should provide insights on diversification level', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -400,56 +398,64 @@ describe('optimize_portfolio', () => {
 
   describe('Caching', () => {
     it('should cache optimization results', async () => {
-      mockGraphqlRequest.mockResolvedValue(mockVaultData);
+      mockGraphqlRequest
+        .mockResolvedValueOnce(mockVaultDataA)
+        .mockResolvedValueOnce(mockVaultDataB)
+        .mockResolvedValueOnce(mockVaultDataC);
 
       await executeOptimizePortfolio(baseInput);
 
-      // Cache stores raw GraphQL response, not transformed data
+      // Cache stores the final markdown text now
       expect(mockCacheSet).toHaveBeenCalledWith(
         expect.stringContaining('portfolio_optimization'),
-        expect.objectContaining({
-          vaults: expect.any(Object),
-          performanceData: expect.any(Object),
-          priceHistory: expect.any(Object),
-        }),
+        expect.stringContaining('Portfolio Optimization'),
         300 // Cache TTL from config
       );
     });
 
     it('should return cached results when available', async () => {
-      // Cache raw GraphQL response, not transformed data
-      const cachedGraphQLResponse = mockVaultData;
-      mockCacheGet.mockReturnValue(cachedGraphQLResponse);
+      // Cache stores markdown text directly
+      const cachedMarkdown = '## Portfolio Optimization\n\n**Sharpe Ratio**: 1.5';
+      mockCacheGet.mockReturnValue(cachedMarkdown);
 
       const result = await executeOptimizePortfolio(baseInput);
 
       expect(result.isError).toBe(false);
       expect(mockGraphqlRequest).not.toHaveBeenCalled();
-      // Result should still be properly formatted after transformation
-      expect((result.content[0] as { text: string }).text).toContain('Sharpe');
+      expect((result.content[0] as { text: string }).text).toBe(cachedMarkdown);
     });
   });
 
   describe('Edge Cases', () => {
     it('should handle vaults not found', async () => {
-      mockGraphqlRequest.mockResolvedValue({
-        vaults: { items: [] },
-        priceHistory: { items: [] },
-        performanceData: { items: [] },
-      });
+      mockGraphqlRequest
+        .mockResolvedValueOnce({
+          vault: null,
+          priceHistory: { items: [] },
+          performanceData: { items: [] },
+        })
+        .mockResolvedValueOnce({
+          vault: null,
+          priceHistory: { items: [] },
+          performanceData: { items: [] },
+        })
+        .mockResolvedValueOnce({
+          vault: null,
+          priceHistory: { items: [] },
+          performanceData: { items: [] },
+        });
 
       const result = await executeOptimizePortfolio(baseInput);
 
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       expect((result.content[0] as { text: string }).text).toContain('No vaults found');
     });
 
     it('should handle missing price history gracefully', async () => {
-      const dataWithoutPrices = {
-        ...mockVaultData,
-        priceHistory: { items: [] },
-      };
-      mockGraphqlRequest.mockResolvedValue(dataWithoutPrices);
+      mockGraphqlRequest
+        .mockResolvedValueOnce({ ...mockVaultDataA, priceHistory: { items: [] } })
+        .mockResolvedValueOnce({ ...mockVaultDataB, priceHistory: { items: [] } })
+        .mockResolvedValueOnce({ ...mockVaultDataC, priceHistory: { items: [] } });
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -458,11 +464,10 @@ describe('optimize_portfolio', () => {
     });
 
     it('should handle missing performance data gracefully', async () => {
-      const dataWithoutPerformance = {
-        ...mockVaultData,
-        performanceData: { items: [] },
-      };
-      mockGraphqlRequest.mockResolvedValue(dataWithoutPerformance);
+      mockGraphqlRequest
+        .mockResolvedValueOnce({ ...mockVaultDataA, performanceData: { items: [] } })
+        .mockResolvedValueOnce({ ...mockVaultDataB, performanceData: { items: [] } })
+        .mockResolvedValueOnce({ ...mockVaultDataC, performanceData: { items: [] } });
 
       const result = await executeOptimizePortfolio(baseInput);
 

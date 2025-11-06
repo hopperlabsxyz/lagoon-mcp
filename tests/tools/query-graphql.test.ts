@@ -11,9 +11,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createExecuteQueryGraphQL } from '../../src/tools/query-graphql';
-import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
-import { cache } from '../../src/cache';
+import { createMockContainer } from '../helpers/test-container';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -30,12 +29,7 @@ describe('query_graphql Tool', () => {
     vi.clearAllMocks();
 
     // Create mock container and initialize executor
-    const mockContainer: ServiceContainer = {
-      graphqlClient: graphqlClientModule.graphqlClient,
-      cache,
-      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
-      riskService: {} as any,
-    };
+    const mockContainer = createMockContainer();
     executeQueryGraphQL = createExecuteQueryGraphQL(mockContainer);
   });
 

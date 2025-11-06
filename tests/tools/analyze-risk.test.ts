@@ -7,6 +7,7 @@ import { createExecuteAnalyzeRisk } from '../../src/tools/analyze-risk.js';
 import { graphqlClient } from '../../src/graphql/client.js';
 import { clearCache } from '../../src/cache/index.js';
 import { createMockContainer } from '../helpers/test-container.js';
+import type { ServiceContainer } from '../../src/core/container.js';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client.js', () => ({
@@ -40,7 +41,7 @@ describe('analyze_risk Tool', () => {
     clearCache();
 
     // Create mock container and initialize executor
-    const mockContainer = createMockContainer();
+    const mockContainer: ServiceContainer = createMockContainer();
     executeAnalyzeRisk = createExecuteAnalyzeRisk(mockContainer);
   });
 

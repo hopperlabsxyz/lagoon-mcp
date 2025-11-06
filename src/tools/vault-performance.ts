@@ -337,21 +337,25 @@ async function calculateSDKAPR(
  */
 interface GetVaultPerformanceVariables {
   vault_in: string[];
-  timestamp_gte: string;
   first: number;
 }
 
 /**
  * Transform raw GraphQL response into performance output
- * Uses closure to capture input values
+ * Uses closure to capture input values and timestamp filter
  */
-function createTransformPerformanceData(input: GetVaultPerformanceInput) {
+function createTransformPerformanceData(input: GetVaultPerformanceInput, timestampGte: number) {
   return (data: VaultPerformanceResponse): VaultPerformanceOutput => {
-    // Aggregate metrics from transactions
-    const metrics = aggregateMetrics(data.transactions.items);
+    // Filter transactions by timestamp client-side (since API doesn't support timestamp filtering)
+    const filteredItems = data.transactions.items.filter(
+      (item) => parseInt(item.timestamp) >= timestampGte
+    );
+
+    // Aggregate metrics from filtered transactions
+    const metrics = aggregateMetrics(filteredItems);
 
     // Calculate summary statistics
-    const summary = calculateSummary(metrics, data.transactions.items);
+    const summary = calculateSummary(metrics, filteredItems);
 
     // Build output
     return {
@@ -394,8 +398,7 @@ export function createExecuteGetVaultPerformance(
       query: GET_VAULT_PERFORMANCE_QUERY,
       variables: (input) => ({
         vault_in: [input.vaultAddress],
-        timestamp_gte: timestampGte.toString(),
-        first: 1000, // Maximum transactions to fetch
+        first: 5000, // Increased to fetch more transactions for client-side filtering
       }),
       validateResult: (data) => ({
         valid: !!(data.transactions && data.transactions.items.length > 0),
@@ -404,7 +407,7 @@ export function createExecuteGetVaultPerformance(
             ? undefined
             : `No transaction data found for vault ${input.vaultAddress} on chain ${input.chainId} in the ${input.timeRange} time range.`,
       }),
-      transformResult: createTransformPerformanceData(input),
+      transformResult: createTransformPerformanceData(input, timestampGte),
       toolName: 'get_vault_performance',
     });
 

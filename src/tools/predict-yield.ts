@@ -45,7 +45,7 @@ interface YieldPredictionResponse {
   performanceHistory: {
     items: Array<{
       timestamp: string;
-      data: { apy: number; totalAssetsUsd: number };
+      data: { linearNetApr: number; totalAssetsAtEnd: number };
     }>;
   };
   tvlHistory: {
@@ -62,7 +62,6 @@ interface YieldPredictionResponse {
 interface YieldPredictionVariables {
   vaultAddress: string;
   chainId: number;
-  timestamp_gte: string;
 }
 
 /**
@@ -186,19 +185,22 @@ This prediction uses:
  * Transform raw GraphQL response into yield prediction markdown output
  * Uses closure to capture input values
  */
-function createTransformYieldPredictionData(input: PredictYieldInput) {
+function createTransformYieldPredictionData(input: PredictYieldInput, timestampThreshold: number) {
   return (data: YieldPredictionResponse): YieldPredictionOutput => {
     // Prepare historical data points
     const historicalData: YieldDataPoint[] = [];
 
-    // Add performance history data points
+    // Add performance history data points with client-side timestamp filtering
     if (data.performanceHistory && data.performanceHistory.items.length > 0) {
       for (const item of data.performanceHistory.items) {
-        historicalData.push({
-          timestamp: parseInt(item.timestamp, 10),
-          apy: item.data.apy,
-          tvl: item.data.totalAssetsUsd,
-        });
+        const timestamp = parseInt(item.timestamp, 10);
+        if (timestamp >= timestampThreshold) {
+          historicalData.push({
+            timestamp,
+            apy: item.data.linearNetApr * 100, // Convert APR to APY approximation
+            tvl: item.data.totalAssetsAtEnd,
+          });
+        }
       }
     }
 
@@ -264,7 +266,6 @@ export function createExecutePredictYield(
       variables: () => ({
         vaultAddress: input.vaultAddress,
         chainId: input.chainId,
-        timestamp_gte: String(timestampThreshold),
       }),
       validateResult: (data) => ({
         valid: !!data.vault,
@@ -272,7 +273,7 @@ export function createExecutePredictYield(
           ? undefined
           : `No vault found at address ${input.vaultAddress} on chain ${input.chainId}`,
       }),
-      transformResult: createTransformYieldPredictionData(input),
+      transformResult: createTransformYieldPredictionData(input, timestampThreshold),
       toolName: 'predict_yield',
     });
 

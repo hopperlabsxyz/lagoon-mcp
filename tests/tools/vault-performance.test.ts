@@ -15,9 +15,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createExecuteGetVaultPerformance } from '../../src/tools/vault-performance';
-import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheKeys, cacheTTL } from '../../src/cache';
+import { createMockContainer } from '../helpers/test-container';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -99,12 +99,7 @@ describe('get_vault_performance Tool', () => {
     cache.flushAll();
 
     // Create mock container and initialize executor
-    const mockContainer: ServiceContainer = {
-      graphqlClient: graphqlClientModule.graphqlClient,
-      cache,
-      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
-      riskService: {} as any,
-    };
+    const mockContainer = createMockContainer();
     executeGetVaultPerformance = createExecuteGetVaultPerformance(mockContainer);
   });
 
@@ -113,101 +108,97 @@ describe('get_vault_performance Tool', () => {
   });
 
   describe('Time Range Calculations', () => {
-    it('should calculate correct timestamp for 7d range', async () => {
+    it('should filter transactions by 7d range client-side', async () => {
       // Arrange
+      const now = Math.floor(Date.now() / 1000);
       const mockResponse = createMockPerformanceResponse([
-        createMockTotalAssetsUpdated(Date.now() / 1000 - 3600, 1000000),
+        createMockTotalAssetsUpdated(now - 3600, 1000000), // Within 7d
+        createMockTotalAssetsUpdated(now - 8 * 24 * 60 * 60, 900000), // Outside 7d
       ]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
       // Act
-      await executeGetVaultPerformance({
+      const result = await executeGetVaultPerformance({
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
-      // Assert
-      const callArgs = (graphqlClientModule.graphqlClient.request as never).mock.calls[0][1] as {
-        timestamp_gte: string;
-      };
-      const timestampGte = parseInt(callArgs.timestamp_gte);
-      const expectedTimestamp = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-
-      // Allow 5 second tolerance for test execution time
-      expect(Math.abs(timestampGte - expectedTimestamp)).toBeLessThan(5);
+      // Assert - The filtering should happen client-side, so only transactions within 7d should be included
+      expect(result.isError).toBe(false);
+      const data = JSON.parse(result.content[0].text as string);
+      expect(data.metrics).toHaveLength(1); // Only one transaction within 7d range
+      expect(data.metrics[0].totalAssetsUsd).toBe(1000000);
     });
 
-    it('should calculate correct timestamp for 30d range', async () => {
+    it('should filter transactions by 30d range client-side', async () => {
       // Arrange
+      const now = Math.floor(Date.now() / 1000);
       const mockResponse = createMockPerformanceResponse([
-        createMockTotalAssetsUpdated(Date.now() / 1000 - 3600, 1000000),
+        createMockTotalAssetsUpdated(now - 3600, 1000000), // Within 30d
+        createMockTotalAssetsUpdated(now - 31 * 24 * 60 * 60, 900000), // Outside 30d
       ]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
       // Act
-      await executeGetVaultPerformance({
+      const result = await executeGetVaultPerformance({
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '30d',
+        includeSDKCalculations: false,
       });
 
       // Assert
-      const callArgs = (graphqlClientModule.graphqlClient.request as never).mock.calls[0][1] as {
-        timestamp_gte: string;
-      };
-      const timestampGte = parseInt(callArgs.timestamp_gte);
-      const expectedTimestamp = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
-
-      expect(Math.abs(timestampGte - expectedTimestamp)).toBeLessThan(5);
+      expect(result.isError).toBe(false);
+      const data = JSON.parse(result.content[0].text as string);
+      expect(data.metrics).toHaveLength(1); // Only one transaction within 30d range
     });
 
-    it('should calculate correct timestamp for 90d range', async () => {
+    it('should filter transactions by 90d range client-side', async () => {
       // Arrange
+      const now = Math.floor(Date.now() / 1000);
       const mockResponse = createMockPerformanceResponse([
-        createMockTotalAssetsUpdated(Date.now() / 1000 - 3600, 1000000),
+        createMockTotalAssetsUpdated(now - 3600, 1000000), // Within 90d
+        createMockTotalAssetsUpdated(now - 91 * 24 * 60 * 60, 900000), // Outside 90d
       ]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
       // Act
-      await executeGetVaultPerformance({
+      const result = await executeGetVaultPerformance({
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '90d',
+        includeSDKCalculations: false,
       });
 
       // Assert
-      const callArgs = (graphqlClientModule.graphqlClient.request as never).mock.calls[0][1] as {
-        timestamp_gte: string;
-      };
-      const timestampGte = parseInt(callArgs.timestamp_gte);
-      const expectedTimestamp = Math.floor(Date.now() / 1000) - 90 * 24 * 60 * 60;
-
-      expect(Math.abs(timestampGte - expectedTimestamp)).toBeLessThan(5);
+      expect(result.isError).toBe(false);
+      const data = JSON.parse(result.content[0].text as string);
+      expect(data.metrics).toHaveLength(1); // Only one transaction within 90d range
     });
 
-    it('should calculate correct timestamp for 1y range', async () => {
+    it('should filter transactions by 1y range client-side', async () => {
       // Arrange
+      const now = Math.floor(Date.now() / 1000);
       const mockResponse = createMockPerformanceResponse([
-        createMockTotalAssetsUpdated(Date.now() / 1000 - 3600, 1000000),
+        createMockTotalAssetsUpdated(now - 3600, 1000000), // Within 1y
+        createMockTotalAssetsUpdated(now - 366 * 24 * 60 * 60, 900000), // Outside 1y
       ]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
       // Act
-      await executeGetVaultPerformance({
+      const result = await executeGetVaultPerformance({
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '1y',
+        includeSDKCalculations: false,
       });
 
       // Assert
-      const callArgs = (graphqlClientModule.graphqlClient.request as never).mock.calls[0][1] as {
-        timestamp_gte: string;
-      };
-      const timestampGte = parseInt(callArgs.timestamp_gte);
-      const expectedTimestamp = Math.floor(Date.now() / 1000) - 365 * 24 * 60 * 60;
-
-      expect(Math.abs(timestampGte - expectedTimestamp)).toBeLessThan(5);
+      expect(result.isError).toBe(false);
+      const data = JSON.parse(result.content[0].text as string);
+      expect(data.metrics).toHaveLength(1); // Only one transaction within 1y range
     });
   });
 
@@ -227,6 +218,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -252,6 +244,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -277,6 +270,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -302,6 +296,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -326,6 +321,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -348,6 +344,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -374,6 +371,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -396,6 +394,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -476,6 +475,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -493,6 +493,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -513,6 +514,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -537,6 +539,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -569,6 +572,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: false,
       });
 
       // Assert
@@ -668,7 +672,7 @@ describe('get_vault_performance Tool', () => {
       ]);
 
       const mockPeriodSummariesResponse = {
-        periodSummaries: [],
+        transactions: { items: [] },
       };
 
       vi.spyOn(graphqlClientModule.graphqlClient, 'request')
@@ -680,6 +684,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: true,
       });
 
       // Assert
@@ -704,6 +709,7 @@ describe('get_vault_performance Tool', () => {
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
         timeRange: '7d',
+        includeSDKCalculations: true,
       });
 
       // Assert - Main response should still succeed

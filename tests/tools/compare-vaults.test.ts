@@ -18,9 +18,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createExecuteCompareVaults } from '../../src/tools/compare-vaults';
-import type { ServiceContainer } from '../../src/core/container';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache } from '../../src/cache';
+import { createMockContainer } from '../helpers/test-container';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -186,7 +186,7 @@ function createMockVault(
 }
 
 describe('compare_vaults Tool', () => {
-  const graphqlClient = graphqlClientModule.graphqlClient as { request: ReturnType<typeof vi.fn> };
+  const graphqlClient = vi.mocked(graphqlClientModule.graphqlClient);
 
   // Executor function created from factory with mock container
   let executeCompareVaults: ReturnType<typeof createExecuteCompareVaults>;
@@ -196,12 +196,7 @@ describe('compare_vaults Tool', () => {
     cache.flushAll();
 
     // Create mock container and initialize executor
-    const mockContainer: ServiceContainer = {
-      graphqlClient: graphqlClientModule.graphqlClient,
-      cache,
-      cacheInvalidator: { register: vi.fn(), invalidate: vi.fn() },
-      riskService: {} as any,
-    };
+    const mockContainer = createMockContainer();
     executeCompareVaults = createExecuteCompareVaults(mockContainer);
   });
 
@@ -792,10 +787,10 @@ describe('compare_vaults Tool', () => {
 
     it('should fall back to monthly APR when weekly is not available', async () => {
       const mockVault = {
-        ...createMockVault({
+        ...(createMockVault({
           address: '0x1111111111111111111111111111111111111111',
           monthlyApr: 0.12,
-        }),
+        }) as any),
         state: {
           ...(createMockVault({ monthlyApr: 0.12 }) as any).state,
           weeklyApr: null,
@@ -823,7 +818,7 @@ describe('compare_vaults Tool', () => {
 
     it('should use 0% APY when both weekly and monthly are unavailable', async () => {
       const mockVault = {
-        ...createMockVault({ address: '0x1111111111111111111111111111111111111111' }),
+        ...(createMockVault({ address: '0x1111111111111111111111111111111111111111' }) as any),
         state: {
           ...(createMockVault() as any).state,
           weeklyApr: null,

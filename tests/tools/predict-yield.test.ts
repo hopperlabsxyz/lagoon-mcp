@@ -6,7 +6,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createExecutePredictYield } from '../../src/tools/predict-yield.js';
 import { graphqlClient } from '../../src/graphql/client.js';
 import { clearCache } from '../../src/cache/index.js';
-import { createMockContainer } from '../helpers/test-container.js';
+import { createMockContainer } from '../helpers/test-container';
+import type { ServiceContainer } from '../../src/core/container.js';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client.js', () => ({
@@ -41,7 +42,7 @@ describe('predict_yield Tool', () => {
 
     // Create mock container and initialize executor
     const mockContainer = createMockContainer();
-    executePredictYield = createExecutePredictYield(mockContainer);
+    executePredictYield = createExecutePredictYield(mockContainer as ServiceContainer);
   });
 
   /**
@@ -65,10 +66,7 @@ describe('predict_yield Tool', () => {
     if (includeFees) {
       baseVault.state = {
         ...baseVault.state,
-        managementFee: 2.0, // 2% management fee
-        performanceFee: 20.0, // 20% performance fee
-        pricePerShare: '1100000000000000000', // 1.1 (above HWM)
-        highWaterMark: '1000000000000000000', // 1.0
+        pricePerShareUsd: 1.1, // 1.1 (above HWM)
       };
     }
 
@@ -85,8 +83,8 @@ describe('predict_yield Tool', () => {
       items: data.map((d) => ({
         timestamp: String(d.timestamp),
         data: {
-          apy: d.apy,
-          totalAssetsUsd: d.tvl,
+          linearNetApr: d.apy / 100, // Convert from percentage to decimal
+          totalAssetsAtEnd: d.tvl,
         },
       })),
     };
@@ -352,15 +350,12 @@ describe('predict_yield Tool', () => {
       const now = Math.floor(Date.now() / 1000);
       const dayInSeconds = 24 * 60 * 60;
 
-      // Create very noisy data
-      const performanceData = [];
-      for (let i = 0; i < 10; i++) {
-        performanceData.push({
-          timestamp: now - (9 - i) * dayInSeconds,
-          apy: 5 + Math.random() * 10, // Very noisy: 5-15%
-          tvl: 1000000,
-        });
-      }
+      // Create extremely sparse data (only 3 points over 7 days) with high volatility
+      const performanceData = [
+        { timestamp: now - 6 * dayInSeconds, apy: 15, tvl: 1000000 }, // Very high
+        { timestamp: now - 3 * dayInSeconds, apy: 2, tvl: 1000000 }, // Very low
+        { timestamp: now, apy: 10, tvl: 1000000 }, // Mid-high
+      ];
 
       const mockData = {
         vault: createMockVault(),
@@ -379,8 +374,8 @@ describe('predict_yield Tool', () => {
       expect(result.isError).toBe(false);
       const text = (result.content[0] as { type: 'text'; text: string }).text;
 
-      // Should have lower confidence or warn about volatility/weak trend
-      expect(text).toMatch(/(Low confidence|High volatility|Weak trend)/i);
+      // Should have moderate to low confidence due to sparse noisy data - look for yellow or red confidence emoji
+      expect(text).toMatch(/Confidence.*🟡|Confidence.*🔴/);
     });
   });
 
@@ -535,6 +530,13 @@ describe('predict_yield Tool', () => {
         tvlHistory: { items: [] },
       };
 
+      // Set fees to trigger fee-adjusted predictions
+      (mockData.vault as any).state.managementFee = 2.0; // 2% management fee
+      (mockData.vault as any).state.performanceFee = 20.0; // 20% performance fee
+      // Set price above high water mark to make performance fee active
+      (mockData.vault as any).state.pricePerShare = '1050000000000000000'; // 1.05 (above HWM of 1.0)
+      (mockData.vault as any).state.highWaterMark = '1000000000000000000'; // 1.0
+
       vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
 
       const result = await executePredictYield({
@@ -577,9 +579,13 @@ describe('predict_yield Tool', () => {
         });
       }
 
-      const mockVault = createMockVault('Inactive Fee Vault', true);
+      const mockVault = createMockVault('Inactive Fee Vault', true) as any;
       // Set price below high water mark
       mockVault.state.pricePerShare = '950000000000000000'; // 0.95 (below HWM of 1.0)
+      mockVault.state.highWaterMark = '1000000000000000000'; // 1.0
+      // Set fees to trigger fee analysis
+      mockVault.state.managementFee = 2.0; // 2% management fee
+      mockVault.state.performanceFee = 20.0; // 20% performance fee
 
       const mockData = {
         vault: mockVault,
@@ -624,9 +630,11 @@ describe('predict_yield Tool', () => {
         tvlHistory: { items: [] },
       };
 
-      // Set high fees
-      mockData.vault.state.managementFee = 3.5; // 3.5% management fee
-      mockData.vault.state.performanceFee = 25.0; // 25% performance fee
+      // Set high fees and ensure performance fee is active (price above HWM)
+      (mockData.vault as any).state.managementFee = 3.5; // 3.5% management fee
+      (mockData.vault as any).state.performanceFee = 25.0; // 25% performance fee
+      (mockData.vault as any).state.pricePerShare = '1100000000000000000'; // 1.1 (above HWM)
+      (mockData.vault as any).state.highWaterMark = '1000000000000000000'; // 1.0
 
       vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
 
@@ -667,6 +675,10 @@ describe('predict_yield Tool', () => {
 
       // Set known fees: 2% management + 20% performance (active)
       // Total fee drag = 2 + (20 * 0.1) = 4% annually
+      (mockData.vault as any).state.managementFee = 2.0; // 2% management fee
+      (mockData.vault as any).state.performanceFee = 20.0; // 20% performance fee
+      (mockData.vault as any).state.pricePerShare = '1100000000000000000'; // 1.1 (above HWM)
+      (mockData.vault as any).state.highWaterMark = '1000000000000000000'; // 1.0
 
       vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
 

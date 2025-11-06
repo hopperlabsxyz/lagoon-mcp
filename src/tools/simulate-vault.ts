@@ -94,8 +94,8 @@ export function createExecuteSimulateVault(
 
       // 1. Fetch vault data
       const vaultQuery = `
-      query GetVault($vaultAddress: String!, $chainId: Int!) {
-        vault(address: $vaultAddress, chainId: $chainId) {
+      query GetVault($vaultAddress: Address!, $chainId: Int!) {
+        vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
           address
           name
           symbol

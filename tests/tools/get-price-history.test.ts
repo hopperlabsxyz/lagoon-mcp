@@ -17,6 +17,7 @@ import { graphqlClient } from '../../src/graphql/client.js';
 import { cache } from '../../src/cache/index.js';
 import { createExecuteGetPriceHistory } from '../../src/tools/get-price-history.js';
 import { createMockContainer } from '../helpers/test-container.js';
+import type { ServiceContainer } from '../../src/core/container.js';
 
 // Mock dependencies
 vi.mock('../../src/graphql/client.js', () => ({
@@ -65,7 +66,7 @@ describe('get_price_history Tool', () => {
     cache.flushAll();
 
     // Create mock container and initialize executor
-    const mockContainer = createMockContainer();
+    const mockContainer: ServiceContainer = createMockContainer();
     executeGetPriceHistory = createExecuteGetPriceHistory(mockContainer);
   });
 
@@ -79,7 +80,7 @@ describe('get_price_history Tool', () => {
         transactions.push(createMockPriceTransaction(dayTimestamp, 1.0 + i * 0.01, 1000000));
       }
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -111,7 +112,7 @@ describe('get_price_history Tool', () => {
         transactions.push(createMockPriceTransaction(dayTimestamp, 1.0 + Math.random() * 0.1));
       }
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -138,7 +139,7 @@ describe('get_price_history Tool', () => {
         transactions.push(createMockPriceTransaction(dayTimestamp, 1.0 + i * 0.001));
       }
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -165,7 +166,7 @@ describe('get_price_history Tool', () => {
         transactions.push(createMockPriceTransaction(dayTimestamp, 1.0 + Math.sin(i / 10) * 0.2));
       }
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -191,7 +192,7 @@ describe('get_price_history Tool', () => {
         transactions.push(createMockPriceTransaction(dayTimestamp, 1.0));
       }
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -223,7 +224,7 @@ describe('get_price_history Tool', () => {
         createMockPriceTransaction(dayStart + 4000, 1.02), // Close
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -261,7 +262,7 @@ describe('get_price_history Tool', () => {
         transactions.push(createMockPriceTransaction(now - 2 * 86400 + i * 1000, 1.1));
       }
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -291,7 +292,7 @@ describe('get_price_history Tool', () => {
         createMockPriceTransaction(now - 2 * 86400, 1.2),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -328,7 +329,7 @@ describe('get_price_history Tool', () => {
         createMockPriceTransaction(now - 86400, 1.2),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -353,7 +354,7 @@ describe('get_price_history Tool', () => {
         createMockPriceTransaction(now - 86400, 1.2),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -378,7 +379,7 @@ describe('get_price_history Tool', () => {
       const now = Math.floor(Date.now() / 1000);
       const transactions = [createMockPriceTransaction(now, 1.0)];
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -410,7 +411,7 @@ describe('get_price_history Tool', () => {
       const now = Math.floor(Date.now() / 1000);
       const transactions = [createMockPriceTransaction(now, 1.0)];
 
-      graphqlClient.request.mockResolvedValue({
+      vi.mocked(graphqlClient).request.mockResolvedValue({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -436,7 +437,7 @@ describe('get_price_history Tool', () => {
       const now = Math.floor(Date.now() / 1000);
       const transactions = [createMockPriceTransaction(now, 1.0)];
 
-      graphqlClient.request.mockResolvedValue({
+      vi.mocked(graphqlClient).request.mockResolvedValue({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -461,7 +462,7 @@ describe('get_price_history Tool', () => {
 
   describe('Empty Results Handling', () => {
     it('should handle no price data found', async () => {
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: [],
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -481,7 +482,7 @@ describe('get_price_history Tool', () => {
     });
 
     it('should handle null transactions response', async () => {
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: null,
       });
 
@@ -502,7 +503,7 @@ describe('get_price_history Tool', () => {
 
   describe('Error Handling', () => {
     it('should handle GraphQL network errors', async () => {
-      graphqlClient.request.mockRejectedValueOnce(new Error('Network error'));
+      vi.mocked(graphqlClient).request.mockRejectedValueOnce(new Error('Network error'));
 
       const result = await executeGetPriceHistory({
         vaultAddress: '0x1111111111111111111111111111111111111111',
@@ -516,7 +517,7 @@ describe('get_price_history Tool', () => {
     });
 
     it('should handle GraphQL timeout errors', async () => {
-      graphqlClient.request.mockRejectedValueOnce(new Error('Request timeout'));
+      vi.mocked(graphqlClient).request.mockRejectedValueOnce(new Error('Request timeout'));
 
       const result = await executeGetPriceHistory({
         vaultAddress: '0x1111111111111111111111111111111111111111',
@@ -538,7 +539,7 @@ describe('get_price_history Tool', () => {
         createMockPriceTransaction(now - 86400, 1.1),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -572,7 +573,7 @@ describe('get_price_history Tool', () => {
       const now = Math.floor(Date.now() / 1000);
       const transactions = [createMockPriceTransaction(now, 1.0)];
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: false, hasPreviousPage: false },
@@ -594,7 +595,7 @@ describe('get_price_history Tool', () => {
       const now = Math.floor(Date.now() / 1000);
       const transactions = [createMockPriceTransaction(now, 1.0)];
 
-      graphqlClient.request.mockResolvedValueOnce({
+      vi.mocked(graphqlClient).request.mockResolvedValueOnce({
         transactions: {
           items: transactions,
           pageInfo: { hasNextPage: true, hasPreviousPage: false },

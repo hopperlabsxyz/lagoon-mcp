@@ -19,7 +19,11 @@ export { TRANSACTIONS_QUERY, PRICE_HISTORY_QUERY } from './transaction.queries.j
 export { GET_VAULT_PERFORMANCE_QUERY, GET_PERIOD_SUMMARIES_QUERY } from './performance.queries.js';
 
 // Portfolio Queries
-export { GET_USER_PORTFOLIO_QUERY, PORTFOLIO_OPTIMIZATION_QUERY } from './portfolio.queries.js';
+export {
+  GET_USER_PORTFOLIO_QUERY,
+  SINGLE_VAULT_OPTIMIZATION_QUERY,
+  PORTFOLIO_OPTIMIZATION_QUERY,
+} from './portfolio.queries.js';
 
 // Risk Queries
 export { RISK_ANALYSIS_QUERY } from './risk.queries.js';

@@ -1,15 +1,22 @@
 /**
  * optimize_portfolio Tool
  *
- * Portfolio optimization with rebalancing recommendations.
- * Analyzes current holdings and provides optimal allocation strategy.
+ * Portfolio optimization with rebalancing recommendations using parallel vault queries.
+ * Analyzes current holdings and provides optimal allocation strategy based on
+ * per-vault historical data (price history and performance metrics).
+ *
+ * Implementation:
+ * - Executes N parallel GraphQL queries (one per vault) using Promise.all
+ * - Each vault gets up to 1000 transactions of historical data
+ * - Processes per-vault price history for accurate volatility calculation
+ * - Uses per-vault performance data for expected APY estimation
  *
  * Use cases:
  * - Portfolio rebalancing and optimization
- * - Risk-adjusted allocation strategies
+ * - Risk-adjusted allocation strategies (equal_weight, risk_parity, max_sharpe, min_variance)
  * - Diversification improvement
  * - Performance enhancement through optimal weighting
- * - Performance: ~600-800 tokens per optimization
+ * - Performance: ~800-1200 tokens per optimization (scales with vault count)
  *
  * Cache strategy:
  * - 30-minute TTL (balances freshness with stability)
@@ -21,47 +28,33 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { OptimizePortfolioInput } from '../utils/validators.js';
 import { VaultData } from '../graphql/fragments/index.js';
-import { PORTFOLIO_OPTIMIZATION_QUERY } from '../graphql/queries/index.js';
+import { SINGLE_VAULT_OPTIMIZATION_QUERY } from '../graphql/queries/index.js';
 import {
   optimizePortfolio,
   VaultForOptimization,
   PortfolioOptimization,
 } from '../utils/portfolio-optimization.js';
-import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheTTL } from '../cache/index.js';
 
 /**
- * GraphQL response type
+ * GraphQL response type for single vault query
  */
-interface PortfolioOptimizationResponse {
-  vaults: {
-    items: VaultData[];
-  };
+interface SingleVaultOptimizationResponse {
+  vault: VaultData | null;
   priceHistory: {
     items: Array<{
-      vault: string;
       timestamp: string;
       data: { pricePerShareUsd: number };
     }>;
   };
   performanceData: {
     items: Array<{
-      vault: string;
       timestamp: string;
-      data: { apy: number };
+      data: { linearNetApr: number };
     }>;
   };
-}
-
-/**
- * GraphQL variables type for PORTFOLIO_OPTIMIZATION_QUERY
- */
-interface PortfolioOptimizationVariables {
-  vaultAddresses: string[];
-  chainId: number;
-  timestamp_gte: string;
 }
 
 /**
@@ -234,80 +227,103 @@ ${
 }
 
 /**
- * Transform raw GraphQL response into portfolio optimization markdown output
- * Uses closure to capture input values and current positions
+ * Combined data from all vault queries
  */
-function createTransformOptimizationData(input: OptimizePortfolioInput) {
-  return (data: PortfolioOptimizationResponse): PortfolioOptimizationOutput => {
-    // Build current positions map from input
-    const currentPositions = new Map<string, number>();
-    for (const position of input.currentPositions) {
-      currentPositions.set(position.vaultAddress.toLowerCase(), position.valueUsd);
-    }
+interface CombinedVaultData {
+  vaults: VaultData[];
+  priceHistoryByVault: Map<string, number[]>;
+  performanceByVault: Map<string, number[]>;
+}
 
-    // Group price history by vault
-    const priceHistoryByVault = new Map<string, number[]>();
-    if (data.priceHistory && data.priceHistory.items) {
-      for (const item of data.priceHistory.items) {
-        const vaultAddress = item.vault.toLowerCase();
-        if (!priceHistoryByVault.has(vaultAddress)) {
-          priceHistoryByVault.set(vaultAddress, []);
-        }
-        priceHistoryByVault.get(vaultAddress)!.push(item.data.pricePerShareUsd);
+/**
+ * Process single vault response and extract historical data
+ */
+function processSingleVaultData(
+  data: SingleVaultOptimizationResponse,
+  timestampThreshold: number
+): { vault: VaultData; prices: number[]; performance: number[] } | null {
+  if (!data.vault) {
+    return null;
+  }
+
+  // Extract price history with timestamp filtering
+  const prices: number[] = [];
+  if (data.priceHistory && data.priceHistory.items) {
+    for (const item of data.priceHistory.items) {
+      if (parseInt(item.timestamp) >= timestampThreshold) {
+        prices.push(item.data.pricePerShareUsd);
       }
     }
+  }
 
-    // Group performance data by vault
-    const performanceByVault = new Map<string, number[]>();
-    if (data.performanceData && data.performanceData.items) {
-      for (const item of data.performanceData.items) {
-        const vaultAddress = item.vault.toLowerCase();
-        if (!performanceByVault.has(vaultAddress)) {
-          performanceByVault.set(vaultAddress, []);
-        }
-        performanceByVault.get(vaultAddress)!.push(item.data.apy);
+  // Extract performance data with timestamp filtering
+  const performance: number[] = [];
+  if (data.performanceData && data.performanceData.items) {
+    for (const item of data.performanceData.items) {
+      if (parseInt(item.timestamp) >= timestampThreshold) {
+        performance.push(item.data.linearNetApr * 100); // Convert APR to APY approximation
       }
     }
+  }
 
-    // Prepare vaults for optimization
-    const vaultsForOptimization: VaultForOptimization[] = data.vaults.items.map((vault) => {
-      const vaultAddress = vault.address.toLowerCase();
-      const currentValueUsd = currentPositions.get(vaultAddress) || 0;
-
-      // Calculate volatility from price history
-      const priceHistory = priceHistoryByVault.get(vaultAddress) || [];
-      const volatility = calculateVolatility(priceHistory);
-
-      // Calculate expected APY from performance data
-      const apyHistory = performanceByVault.get(vaultAddress) || [];
-      const expectedApy = calculateAverageAPY(apyHistory);
-
-      // Use simplified risk score (based on volatility)
-      const riskScore = Math.min(1, volatility / 0.2); // Normalize to 0-1
-
-      return {
-        address: vault.address,
-        name: vault.name || 'Unknown Vault',
-        chainId: vault.chain.id,
-        currentValueUsd,
-        expectedApy,
-        volatility,
-        riskScore,
-      };
-    });
-
-    // Perform portfolio optimization
-    const optimization = optimizePortfolio(
-      vaultsForOptimization,
-      input.strategy,
-      input.rebalanceThreshold
-    );
-
-    // Format optimization as markdown
-    const markdown = formatPortfolioOptimization(optimization);
-
-    return { markdown };
+  return {
+    vault: data.vault,
+    prices,
+    performance,
   };
+}
+
+/**
+ * Transform combined vault data into portfolio optimization markdown output
+ */
+function transformOptimizationData(
+  input: OptimizePortfolioInput,
+  combinedData: CombinedVaultData
+): PortfolioOptimizationOutput {
+  // Build current positions map from input
+  const currentPositions = new Map<string, number>();
+  for (const position of input.currentPositions) {
+    currentPositions.set(position.vaultAddress.toLowerCase(), position.valueUsd);
+  }
+
+  // Prepare vaults for optimization with per-vault historical data
+  const vaultsForOptimization: VaultForOptimization[] = combinedData.vaults.map((vault) => {
+    const vaultAddress = vault.address.toLowerCase();
+    const currentValueUsd = currentPositions.get(vaultAddress) || 0;
+
+    // Get vault-specific price history and calculate volatility
+    const priceHistory = combinedData.priceHistoryByVault.get(vaultAddress) || [];
+    const volatility = calculateVolatility(priceHistory);
+
+    // Get vault-specific performance data and calculate expected APY
+    const apyHistory = combinedData.performanceByVault.get(vaultAddress) || [];
+    const expectedApy = calculateAverageAPY(apyHistory);
+
+    // Use simplified risk score (based on volatility)
+    const riskScore = Math.min(1, volatility / 0.2); // Normalize to 0-1
+
+    return {
+      address: vault.address,
+      name: vault.name || 'Unknown Vault',
+      chainId: vault.chain.id,
+      currentValueUsd,
+      expectedApy,
+      volatility,
+      riskScore,
+    };
+  });
+
+  // Perform portfolio optimization
+  const optimization = optimizePortfolio(
+    vaultsForOptimization,
+    input.strategy,
+    input.rebalanceThreshold
+  );
+
+  // Format optimization as markdown
+  const markdown = formatPortfolioOptimization(optimization);
+
+  return { markdown };
 }
 
 /**
@@ -320,58 +336,90 @@ export function createExecuteOptimizePortfolio(
   container: ServiceContainer
 ): (input: OptimizePortfolioInput) => Promise<CallToolResult> {
   return async (input: OptimizePortfolioInput): Promise<CallToolResult> => {
-    // Calculate timestamp threshold for 90-day lookback
-    const nowTimestamp = Math.floor(Date.now() / 1000);
-    const lookbackSeconds = 90 * 24 * 60 * 60; // 90 days
-    const timestampThreshold = nowTimestamp - lookbackSeconds;
+    try {
+      // Calculate timestamp threshold for 90-day lookback
+      const nowTimestamp = Math.floor(Date.now() / 1000);
+      const lookbackSeconds = 90 * 24 * 60 * 60; // 90 days
+      const timestampThreshold = nowTimestamp - lookbackSeconds;
 
-    const executor = executeToolWithCache<
-      OptimizePortfolioInput,
-      PortfolioOptimizationResponse,
-      PortfolioOptimizationVariables,
-      PortfolioOptimizationOutput
-    >({
-      container,
-      cacheKey: (input) => {
-        const vaultAddressesKey = input.vaultAddresses.sort().join(',');
-        return `portfolio_optimization:${input.chainId}:${vaultAddressesKey}:${input.strategy}`;
-      },
-      cacheTTL: cacheTTL.portfolioOptimization,
-      query: PORTFOLIO_OPTIMIZATION_QUERY,
-      variables: () => ({
-        vaultAddresses: input.vaultAddresses,
-        chainId: input.chainId,
-        timestamp_gte: String(timestampThreshold),
-      }),
-      validateResult: (data) => ({
-        valid: !!(data.vaults && data.vaults.items.length > 0),
-        message:
-          data.vaults && data.vaults.items.length > 0
-            ? undefined
-            : `No vaults found for the provided addresses on chain ${input.chainId}`,
-      }),
-      transformResult: createTransformOptimizationData(input),
-      toolName: 'optimize_portfolio',
-    });
+      // Check cache first
+      const vaultAddressesKey = input.vaultAddresses.sort().join(',');
+      const cacheKey = `portfolio_optimization:${input.chainId}:${vaultAddressesKey}:${input.strategy}`;
 
-    // Register cache tags for invalidation
-    const vaultAddressesKey = input.vaultAddresses.sort().join(',');
-    const cacheKey = `portfolio_optimization:${input.chainId}:${vaultAddressesKey}:${input.strategy}`;
-    container.cacheInvalidator.register(cacheKey, [CacheTag.PORTFOLIO, CacheTag.ANALYTICS]);
-
-    // Execute and get result
-    const result = await executor(input);
-
-    // Transform JSON output to markdown text format
-    if (!result.isError && result.content[0]?.type === 'text') {
-      try {
-        const output = JSON.parse(result.content[0].text) as PortfolioOptimizationOutput;
-        result.content[0].text = output.markdown;
-      } catch (error) {
-        console.error('Failed to parse optimization output:', error);
+      const cachedResult = container.cache.get<string>(cacheKey);
+      if (cachedResult) {
+        return {
+          content: [{ type: 'text', text: cachedResult }],
+          isError: false,
+        };
       }
-    }
 
-    return result;
+      // Execute parallel queries for each vault
+      const vaultQueries = input.vaultAddresses.map((vaultAddress) =>
+        container.graphqlClient.request<SingleVaultOptimizationResponse>(
+          SINGLE_VAULT_OPTIMIZATION_QUERY,
+          {
+            vaultAddress,
+            chainId: input.chainId,
+          }
+        )
+      );
+
+      const results = await Promise.all(vaultQueries);
+
+      // Process each vault's data
+      const vaults: VaultData[] = [];
+      const priceHistoryByVault = new Map<string, number[]>();
+      const performanceByVault = new Map<string, number[]>();
+
+      for (const result of results) {
+        const processed = processSingleVaultData(result, timestampThreshold);
+        if (processed) {
+          vaults.push(processed.vault);
+          priceHistoryByVault.set(processed.vault.address.toLowerCase(), processed.prices);
+          performanceByVault.set(processed.vault.address.toLowerCase(), processed.performance);
+        }
+      }
+
+      // Validate we got data for all vaults
+      if (vaults.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `No vaults found for the provided addresses on chain ${input.chainId}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Transform combined data into optimization output
+      const combinedData: CombinedVaultData = {
+        vaults,
+        priceHistoryByVault,
+        performanceByVault,
+      };
+
+      const output = transformOptimizationData(input, combinedData);
+
+      // Cache the result
+      container.cache.set(cacheKey, output.markdown, cacheTTL.portfolioOptimization);
+
+      // Register cache tags for invalidation
+      container.cacheInvalidator.register(cacheKey, [CacheTag.PORTFOLIO, CacheTag.ANALYTICS]);
+
+      return {
+        content: [{ type: 'text', text: output.markdown }],
+        isError: false,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error during portfolio optimization';
+      return {
+        content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+        isError: true,
+      };
+    }
   };
 }
