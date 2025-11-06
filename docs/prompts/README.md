@@ -36,6 +36,119 @@ Comprehensive framework for analyzing DeFi vaults, portfolios, and yield strateg
 
 **Related Tools**: All 13 tools documented in [`/docs/tools/`](/docs/tools/)
 
+---
+
+### Curator Performance Intelligence
+**File**: [`curator-performance-intelligence.md`](./curator-performance-intelligence.md)
+
+Comprehensive framework for evaluating curator performance, reputation, and vault management capabilities.
+
+**Key Features:**
+- **Performance Metrics** - Weighted APY, Sharpe ratio, risk-adjusted returns
+- **Reputation Scoring** - 0-100 composite score across 6 trust factors
+- **Comparative Rankings** - Percentile rankings and peer comparisons
+- **Trust Signals** - Positive indicators and warning signs framework
+- **Decision Framework** - Curator selection checklists and use case matching
+
+**Use Cases:**
+- Data-driven curator selection for new investments
+- Ongoing curator performance monitoring
+- Identifying top-performing vs underperforming curators
+- Risk assessment of curator relationships
+
+**Related Tools**: `query_graphql`, `search_vaults`, `get_vault_data`, `get_vault_performance`, `compare_vaults`, `analyze_risk`
+
+---
+
+### Competitor Comparison Framework
+**File**: [`competitor-comparison-framework.md`](./competitor-comparison-framework.md)
+
+Objective comparison of Lagoon Protocol against major competitors (Gauntlet, Veda, Ether.fi).
+
+**Key Features:**
+- **Financial Comparison** - TVL, APY, fee structures, cost-adjusted returns
+- **Platform Scale** - Vault diversity, network support, user base analysis
+- **Features Matrix** - Risk management, discovery tools, automation capabilities
+- **Security Analysis** - Audit coverage, incident history, trust indicators
+- **Composite Scoring** - Weighted category scores for platform ranking
+
+**Use Cases:**
+- Platform evaluation before committing capital
+- Competitive positioning analysis
+- Migration decision support (moving between platforms)
+- Scenario-based platform recommendations
+
+**Related Tools**: `query_graphql`, `search_vaults`, `get_vault_performance`, `compare_vaults`, `analyze_risk`
+
+---
+
+### Onboarding Guide: First Vault Selection
+**File**: [`onboarding-first-vault.md`](./onboarding-first-vault.md)
+
+Structured guidance for new users making their first vault deposit with confidence.
+
+**Key Features:**
+- **Profile Assessment** - Risk tolerance, timeline, amount, and goals questionnaire
+- **5-Step Selection Process** - Discovery, risk analysis, performance validation, curator check, projection
+- **Decision Framework** - Scoring system for vault evaluation (0-40 scale)
+- **Best Practices** - Common beginner mistakes and recommended approaches
+- **Monitoring Guide** - Post-selection tracking and exit signals
+
+**Use Cases:**
+- New DeFi user onboarding workflows
+- First-time vault deposit guidance
+- Risk-appropriate vault selection
+- Building confidence in investment decisions
+
+**Related Tools**: `search_vaults`, `analyze_risk`, `get_vault_performance`, `query_graphql`, `simulate_vault`
+
+---
+
+### Protocol Overview & KPI Dashboard
+**File**: [`protocol-overview-kpi-dashboard.md`](./protocol-overview-kpi-dashboard.md)
+
+Real-time protocol health insights and competitive positioning for informed platform usage decisions.
+
+**Key Features:**
+- **Core KPIs** - TVL, vault count, user growth, volume metrics
+- **Ecosystem Health** - Curator metrics, security track record, risk distribution
+- **Competitive Analysis** - Market positioning vs Gauntlet, Veda, Ether.fi
+- **Health Scoring** - 0-100 composite protocol health score
+- **Growth Trends** - 7d, 30d, 90d trend analysis with visualizations
+
+**Use Cases:**
+- Platform health evaluation before depositing funds
+- Monitoring protocol growth and adoption trends
+- Competitive intelligence and market positioning
+- Risk assessment through ecosystem health indicators
+
+**Related Tools**: `query_graphql`, `search_vaults`, `get_vault_performance`, `compare_vaults`, `analyze_risk`
+
+---
+
+### Portfolio Optimization Engine
+**File**: [`portfolio-optimization-engine.md`](./portfolio-optimization-engine.md)
+
+AI-powered portfolio optimization based on modern portfolio theory for maximizing risk-adjusted returns.
+
+**Key Features:**
+- **Multiple Optimization Strategies** - Maximum Sharpe, Risk Parity, Minimum Variance, Maximum Return, Maximum Diversification
+- **Modern Portfolio Theory** - Expected returns, volatility, Sharpe ratios, efficient frontier
+- **Correlation Analysis** - Vault return correlations and diversification metrics
+- **Rebalancing Recommendations** - Systematic allocation adjustments with cost-benefit analysis
+- **Scenario Analysis** - Best/expected/worst case projections with risk metrics
+
+**Use Cases:**
+- Systematic portfolio rebalancing for $10K+ portfolios
+- Maximizing risk-adjusted returns through optimization
+- Diversification analysis and improvement
+- Transaction cost vs benefit analysis
+- Quarterly portfolio optimization reviews
+
+**Related Tools**: `user_portfolio`, `compare_vaults`, `analyze_risk`, `vault_performance`, `simulate_vault`
+
+---
+
 ### Advanced Analysis Patterns
 **File**: [`analysis-patterns.md`](./analysis-patterns.md)
 
