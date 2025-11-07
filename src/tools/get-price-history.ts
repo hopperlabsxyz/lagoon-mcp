@@ -251,8 +251,10 @@ function createTransformPriceHistoryData(input: PriceHistoryInput, timestampGte:
     // Calculate statistics
     const statistics = calculateStatistics(ohlcvData);
 
-    // Format output as markdown
-    const markdown =
+    // Format output as markdown based on responseFormat
+    const responseFormat = input.responseFormat || 'summary';
+
+    let markdown =
       `# Price History: ${input.vaultAddress}\n\n` +
       `**Chain ID**: ${input.chainId}\n` +
       `**Time Range**: ${input.timeRange}\n` +
@@ -265,18 +267,24 @@ function createTransformPriceHistoryData(input: PriceHistoryInput, timestampGte:
       `- **Average Price**: $${statistics.averagePrice.toFixed(6)}\n` +
       `- **Change**: ${statistics.percentChange > 0 ? '+' : ''}${statistics.percentChange.toFixed(2)}%\n` +
       `- **Volatility (σ)**: $${statistics.volatility.toFixed(6)}\n` +
-      `- **Total Volume**: $${(statistics.totalVolume / 1000000).toFixed(2)}M\n\n` +
-      `## OHLCV Data (Daily)\n\n` +
-      `| Date | Open | High | Low | Close | Volume |\n` +
-      `|------|------|------|-----|-------|--------|\n` +
-      ohlcvData
-        .map((d) => {
-          const date = new Date(d.timestamp * 1000).toISOString().split('T')[0];
-          return `| ${date} | $${d.open.toFixed(6)} | $${d.high.toFixed(6)} | $${d.low.toFixed(6)} | $${d.close.toFixed(6)} | $${(d.volume / 1000000).toFixed(2)}M |`;
-        })
-        .join('\n') +
-      `\n\n` +
-      `**Data Completeness**: ${data.transactions.pageInfo.hasNextPage ? 'More data available (truncated at 2000 points)' : 'Complete'}\n`;
+      `- **Total Volume**: $${(statistics.totalVolume / 1000000).toFixed(2)}M\n\n`;
+
+    // Include OHLCV table for 'summary' and 'detailed' formats
+    if (responseFormat === 'summary' || responseFormat === 'detailed') {
+      markdown +=
+        `## OHLCV Data (Daily)\n\n` +
+        `| Date | Open | High | Low | Close | Volume |\n` +
+        `|------|------|------|-----|-------|--------|\n` +
+        ohlcvData
+          .map((d) => {
+            const date = new Date(d.timestamp * 1000).toISOString().split('T')[0];
+            return `| ${date} | $${d.open.toFixed(6)} | $${d.high.toFixed(6)} | $${d.low.toFixed(6)} | $${d.close.toFixed(6)} | $${(d.volume / 1000000).toFixed(2)}M |`;
+          })
+          .join('\n') +
+        `\n\n`;
+    }
+
+    markdown += `**Data Completeness**: ${data.transactions.pageInfo.hasNextPage ? 'More data available (truncated at 2000 points)' : 'Complete'}\n`;
 
     return { markdown };
   };
@@ -316,7 +324,7 @@ export function createExecuteGetPriceHistory(
     >({
       container,
       cacheKey: (input) =>
-        cacheKeys.priceHistory(input.vaultAddress, input.chainId, input.timeRange),
+        `${cacheKeys.priceHistory(input.vaultAddress, input.chainId, input.timeRange)}:${input.responseFormat || 'summary'}`,
       cacheTTL: cacheTTL.priceHistory,
       query: PRICE_HISTORY_QUERY,
       variables: () => variables,

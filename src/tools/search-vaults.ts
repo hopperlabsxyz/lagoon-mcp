@@ -23,11 +23,15 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createHash } from 'crypto';
 import { SearchVaultsInput } from '../utils/validators.js';
 import { VaultData } from '../graphql/fragments/index.js';
-import { SEARCH_VAULTS_QUERY } from '../graphql/queries/index.js';
+import {
+  createSearchVaultsQuery,
+  type SearchVaultsResponseFormat,
+} from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheKeys, cacheTTL } from '../cache/index.js';
+import { generateCacheKey } from '../cache/index.js';
 
 // Query now imported from ../graphql/queries/index.js
 
@@ -140,11 +144,14 @@ interface SearchVaultsVariables {
 /**
  * Create the executeSearchVaults function with DI container
  *
- * This factory function demonstrates the moderate complexity pattern:
+ * This factory function demonstrates the moderate complexity pattern with optimizations:
  * 1. Custom cache key generation with MD5 hashing
  * 2. Complex variable mapping with filter transformation
  * 3. Custom validation for empty results
  * 4. Cache tag registration for invalidation
+ * 5. NEW: Dynamic fragment selection based on responseFormat
+ * 6. NEW: Fragment-level caching for individual vaults (enables data reuse)
+ * 7. NEW: maxResults override for pagination.first
  *
  * @param container - Service container with dependencies
  * @returns Configured tool executor function
@@ -152,46 +159,84 @@ interface SearchVaultsVariables {
 export function createExecuteSearchVaults(
   container: ServiceContainer
 ): (input: SearchVaultsInput) => Promise<CallToolResult> {
-  const executor = executeToolWithCache<
-    SearchVaultsInput,
-    SearchVaultsResponse,
-    SearchVaultsVariables
-  >({
-    container,
-    cacheKey: (input) => {
-      const pagination = input.pagination || { first: 100, skip: 0 };
-      const filterHash = hashFilters(input.filters);
-      return `${cacheKeys.searchVaults({ filterHash })}:${pagination.first}:${pagination.skip}:${input.orderBy}:${input.orderDirection}`;
-    },
-    cacheTTL: cacheTTL.searchResults,
-    query: SEARCH_VAULTS_QUERY,
-    variables: (input) => {
-      const pagination = input.pagination || { first: 100, skip: 0 };
-      const whereClause = buildGraphQLFilters(input.filters);
-      return {
-        first: pagination.first,
-        skip: pagination.skip,
-        orderBy: input.orderBy,
-        orderDirection: input.orderDirection,
-        where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
-      };
-    },
-    validateResult: (data) => ({
-      valid: !!(data.vaults && data.vaults.items.length > 0),
-      message:
-        data.vaults && data.vaults.items.length > 0
-          ? undefined
-          : 'No vaults found matching the specified criteria.',
-    }),
-    toolName: 'search_vaults',
-  });
+  return async (input: SearchVaultsInput): Promise<CallToolResult> => {
+    // Apply maxResults to pagination.first (overrides user-provided pagination.first)
+    const effectiveFirst = input.maxResults || input.pagination?.first || 100;
+    const pagination = {
+      first: Math.min(effectiveFirst, 100), // Enforce max 100
+      skip: input.pagination?.skip || 0,
+    };
 
-  // Register cache tags for invalidation
-  return (input: SearchVaultsInput) => {
-    const pagination = input.pagination || { first: 100, skip: 0 };
+    // Determine response format
+    const responseFormat: SearchVaultsResponseFormat = input.responseFormat || 'list';
+
+    // Generate cache key including responseFormat
     const filterHash = hashFilters(input.filters);
-    const cacheKey = `${cacheKeys.searchVaults({ filterHash })}:${pagination.first}:${pagination.skip}:${input.orderBy}:${input.orderDirection}`;
+    const cacheKey = `${cacheKeys.searchVaults({ filterHash })}:${pagination.first}:${pagination.skip}:${input.orderBy}:${input.orderDirection}:${responseFormat}`;
+
+    // Register cache tags for invalidation
     container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT]);
-    return executor(input);
+
+    // Create executor with dynamic query based on responseFormat
+    const query = createSearchVaultsQuery(responseFormat);
+
+    const executor = executeToolWithCache<
+      SearchVaultsInput,
+      SearchVaultsResponse,
+      SearchVaultsVariables
+    >({
+      container,
+      cacheKey: () => cacheKey,
+      cacheTTL: cacheTTL.searchResults,
+      query,
+      variables: () => {
+        const whereClause = buildGraphQLFilters(input.filters);
+        return {
+          first: pagination.first,
+          skip: pagination.skip,
+          orderBy: input.orderBy,
+          orderDirection: input.orderDirection,
+          where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+        };
+      },
+      validateResult: (data) => ({
+        valid: !!(data.vaults && data.vaults.items.length > 0),
+        message:
+          data.vaults && data.vaults.items.length > 0
+            ? undefined
+            : 'No vaults found matching the specified criteria.',
+      }),
+      toolName: 'search_vaults',
+    });
+
+    // Execute query
+    const result = await executor(input);
+
+    // NEW: Fragment-level caching - cache each vault individually for reuse
+    // This enables vault_data tool to reuse vaults from search results
+    if (!result.isError && result.content[0]?.type === 'text') {
+      try {
+        const responseData = JSON.parse(result.content[0].text) as {
+          vaults?: { items?: VaultData[] };
+        };
+        if (responseData.vaults?.items) {
+          // Cache each vault individually with vault-specific key
+          responseData.vaults.items.forEach((vault: VaultData & { chain: { id: number } }) => {
+            if (vault.address && vault.chain?.id) {
+              const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
+                address: vault.address,
+                chainId: vault.chain.id,
+              });
+              container.cache.set(vaultCacheKey, vault, cacheTTL.vaultData);
+            }
+          });
+        }
+      } catch (error) {
+        // If parsing fails, just return the result without fragment caching
+        // This is a non-critical optimization
+      }
+    }
+
+    return result;
   };
 }

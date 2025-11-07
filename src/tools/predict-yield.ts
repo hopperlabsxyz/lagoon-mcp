@@ -21,7 +21,10 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { PredictYieldInput } from '../utils/validators.js';
 import { VaultData } from '../graphql/fragments/index.js';
-import { YIELD_PREDICTION_QUERY } from '../graphql/queries/index.js';
+import {
+  createYieldPredictionQuery,
+  type PredictionResponseFormat,
+} from '../graphql/queries/index.js';
 import { predictYield, YieldDataPoint, YieldPrediction } from '../utils/yield-prediction.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
@@ -301,6 +304,12 @@ export function createExecutePredictYield(
     const timeRangeSeconds = TIME_RANGES[input.timeRange];
     const timestampThreshold = nowTimestamp - timeRangeSeconds;
 
+    // Determine response format (default to 'quick')
+    const responseFormat: PredictionResponseFormat = input.responseFormat || 'quick';
+
+    // Create dynamic query based on responseFormat
+    const query = createYieldPredictionQuery(responseFormat);
+
     const executor = executeToolWithCache<
       PredictYieldInput,
       YieldPredictionResponse,
@@ -309,9 +318,9 @@ export function createExecutePredictYield(
     >({
       container,
       cacheKey: (input) =>
-        `yield_prediction:${input.chainId}:${input.vaultAddress}:${input.timeRange}`,
+        `yield_prediction:${input.chainId}:${input.vaultAddress}:${input.timeRange}:${input.responseFormat || 'quick'}`,
       cacheTTL: cacheTTL.yieldPrediction,
-      query: YIELD_PREDICTION_QUERY,
+      query,
       variables: () => ({
         vaultAddress: input.vaultAddress,
         chainId: input.chainId,
@@ -327,7 +336,7 @@ export function createExecutePredictYield(
     });
 
     // Register cache tags for invalidation
-    const cacheKey = `yield_prediction:${input.chainId}:${input.vaultAddress}:${input.timeRange}`;
+    const cacheKey = `yield_prediction:${input.chainId}:${input.vaultAddress}:${input.timeRange}:${input.responseFormat || 'quick'}`;
     container.cacheInvalidator.register(cacheKey, [
       CacheTag.VAULT,
       CacheTag.APR,

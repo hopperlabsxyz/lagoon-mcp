@@ -20,5 +20,7 @@ export { PAGEINFO_MINIMAL_FRAGMENT, PAGEINFO_FULL_FRAGMENT } from './pageinfo.fr
 // Transaction Base Fragment
 export { TRANSACTION_BASE_FRAGMENT } from './transaction-base.fragment.js';
 
-// Vault Fragment (depends on other fragments)
+// Vault Fragments (depends on other fragments)
 export { VAULT_FRAGMENT, type VaultData } from './vault.fragment.js';
+export { VAULT_LIST_FRAGMENT, type VaultListData } from './vault-list.fragment.js';
+export { VAULT_SUMMARY_FRAGMENT, type VaultSummaryData } from './vault-summary.fragment.js';

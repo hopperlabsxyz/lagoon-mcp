@@ -131,6 +131,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -153,6 +154,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -176,6 +178,7 @@ describe('get_transactions tool', () => {
         transactionTypes: ['SettleDeposit'],
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -203,6 +206,7 @@ describe('get_transactions tool', () => {
         transactionTypes: ['SettleDeposit', 'SettleRedeem'],
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -226,6 +230,7 @@ describe('get_transactions tool', () => {
         transactionTypes: TRANSACTION_TYPES as GetTransactionsInput['transactionTypes'],
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -256,6 +261,7 @@ describe('get_transactions tool', () => {
         },
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -289,6 +295,7 @@ describe('get_transactions tool', () => {
         },
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -311,6 +318,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       await executeGetTransactions(input);
@@ -340,6 +348,7 @@ describe('get_transactions tool', () => {
         },
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -365,6 +374,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -394,6 +404,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'timestamp',
         orderDirection: 'asc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -422,6 +433,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'asc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -443,6 +455,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       // First call - cache miss
@@ -463,6 +476,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       // Call 1: No filter
@@ -493,6 +507,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       // Call 1: Page 1
@@ -513,6 +528,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       // Verify TTL is set to 5 minutes (300 seconds)
@@ -532,6 +548,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       });
 
       // Call with lowercase address - should hit cache
@@ -540,6 +557,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       });
 
       expect(mockRequest).toHaveBeenCalledOnce();
@@ -564,6 +582,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -596,6 +615,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -621,6 +641,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -650,6 +671,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -678,6 +700,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -704,6 +727,7 @@ describe('get_transactions tool', () => {
         pagination: { first: 10, skip: 0 },
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -725,6 +749,7 @@ describe('get_transactions tool', () => {
         pagination: { first: 10, skip: 20 },
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -747,6 +772,7 @@ describe('get_transactions tool', () => {
         pagination: { first: 10, skip: 90 },
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -766,6 +792,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -782,6 +809,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -802,6 +830,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -819,6 +848,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -839,6 +869,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -862,6 +893,7 @@ describe('get_transactions tool', () => {
         pagination: { first: 1000, skip: 0 },
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -891,6 +923,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -909,6 +942,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);
@@ -928,6 +962,7 @@ describe('get_transactions tool', () => {
         chainId: 42161,
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       // Make 3 concurrent requests
@@ -980,6 +1015,7 @@ describe('get_transactions tool', () => {
         pagination: { first: 3, skip: 10 },
         orderBy: 'blockNumber',
         orderDirection: 'desc',
+        responseFormat: 'detailed',
       };
 
       const result = await executeGetTransactions(input);

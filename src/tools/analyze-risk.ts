@@ -42,8 +42,9 @@ export function createExecuteAnalyzeRisk(
 
   return async (input: AnalyzeRiskInput): Promise<CallToolResult> => {
     try {
-      // Generate cache key
-      const cacheKey = `risk:${input.chainId}:${input.vaultAddress}`;
+      // Generate cache key including responseFormat
+      const responseFormat = input.responseFormat || 'detailed';
+      const cacheKey = `risk:${input.chainId}:${input.vaultAddress}:${responseFormat}`;
 
       // Register cache tags for invalidation
       container.cacheInvalidator.register(cacheKey, [
@@ -59,7 +60,7 @@ export function createExecuteAnalyzeRisk(
           content: [
             {
               type: 'text',
-              text: `${riskService.formatRiskBreakdown(cached)}\n\n_Cached result from ${new Date().toISOString()}_`,
+              text: `${riskService.formatRiskBreakdown(cached, responseFormat)}\n\n_Cached result from ${new Date().toISOString()}_`,
             },
           ],
           isError: false,
@@ -89,7 +90,7 @@ export function createExecuteAnalyzeRisk(
         content: [
           {
             type: 'text',
-            text: riskService.formatRiskBreakdown(riskBreakdown),
+            text: riskService.formatRiskBreakdown(riskBreakdown, responseFormat),
           },
         ],
         isError: false,

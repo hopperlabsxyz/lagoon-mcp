@@ -138,7 +138,10 @@ export class RiskService extends BaseService {
   /**
    * Format risk breakdown as markdown table
    */
-  formatRiskBreakdown(breakdown: RiskScoreBreakdown): string {
+  formatRiskBreakdown(
+    breakdown: RiskScoreBreakdown,
+    responseFormat: 'score' | 'summary' | 'detailed' = 'summary'
+  ): string {
     const scoreToEmoji = (score: number): string => {
       if (score < 0.3) return '🟢';
       if (score < 0.6) return '🟡';
@@ -164,6 +167,32 @@ export class RiskService extends BaseService {
           return level;
       }
     };
+
+    // Score format: Just the overall risk score (~30 tokens)
+    if (responseFormat === 'score') {
+      return `# Risk Score: ${scoreToPercentage(breakdown.overallRisk)} | ${riskLevelToEmoji(breakdown.riskLevel)}`;
+    }
+
+    // Summary format: Risk score with key metrics (~200 tokens)
+    if (responseFormat === 'summary') {
+      return `
+## Risk Analysis
+
+**Overall Risk**: ${scoreToPercentage(breakdown.overallRisk)} ${scoreToEmoji(breakdown.overallRisk)} | **Level**: ${riskLevelToEmoji(breakdown.riskLevel)}
+
+### Key Risk Factors
+
+| Factor | Score | Status |
+|--------|-------|--------|
+| TVL Risk | ${scoreToPercentage(breakdown.tvlRisk)} | ${scoreToEmoji(breakdown.tvlRisk)} |
+| Concentration Risk | ${scoreToPercentage(breakdown.concentrationRisk)} | ${scoreToEmoji(breakdown.concentrationRisk)} |
+| Volatility Risk | ${scoreToPercentage(breakdown.volatilityRisk)} | ${scoreToEmoji(breakdown.volatilityRisk)} |
+| Age Risk | ${scoreToPercentage(breakdown.ageRisk)} | ${scoreToEmoji(breakdown.ageRisk)} |
+| Curator Risk | ${scoreToPercentage(breakdown.curatorRisk)} | ${scoreToEmoji(breakdown.curatorRisk)} |
+| Fee Risk | ${scoreToPercentage(breakdown.feeRisk)} | ${scoreToEmoji(breakdown.feeRisk)} |
+| Liquidity Risk | ${scoreToPercentage(breakdown.liquidityRisk)} | ${scoreToEmoji(breakdown.liquidityRisk)} |
+`;
+    }
 
     return `
 ## Risk Analysis Breakdown

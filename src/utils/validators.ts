@@ -55,6 +55,12 @@ export const getVaultDataInputSchema = z.object({
 // get_user_portfolio input
 export const getUserPortfolioInputSchema = z.object({
   userAddress: ethereumAddressSchema,
+  responseFormat: z
+    .enum(['list', 'summary', 'full'])
+    .default('summary')
+    .describe(
+      'Response detail level: list (~60 tokens/vault), summary (~170 tokens/vault), full (~600 tokens/vault). Default: summary'
+    ),
 });
 
 // search_vaults input
@@ -99,6 +105,22 @@ export const searchVaultsInputSchema = z.object({
     .optional(),
   orderBy: z.string().default('totalAssetsUsd'),
   orderDirection: z.enum(['asc', 'desc']).default('desc'),
+  // NEW: Response format for token optimization
+  responseFormat: z
+    .enum(['list', 'summary', 'full'])
+    .default('list')
+    .describe(
+      'Response detail level: list (~60 tokens/vault), summary (~170 tokens/vault), full (~600 tokens/vault)'
+    ),
+  // NEW: Maximum results for token budget control
+  maxResults: z
+    .number()
+    .int()
+    .positive()
+    .min(1)
+    .max(50)
+    .default(20)
+    .describe('Maximum number of results to return (default: 20, max: 50)'),
 });
 
 // get_vault_performance input
@@ -109,6 +131,12 @@ export const getVaultPerformanceInputSchema = z.object({
     errorMap: () => ({ message: 'Time range must be one of: 7d, 30d, 90d, 1y' }),
   }),
   includeSDKCalculations: z.boolean().optional().default(true),
+  responseFormat: z
+    .enum(['summary', 'detailed'])
+    .default('summary')
+    .describe(
+      'Response detail level: summary (key metrics only), detailed (full metrics table). Default: summary'
+    ),
 });
 
 // get_transactions input
@@ -140,6 +168,12 @@ export const getTransactionsInputSchema = z.object({
     .optional(),
   orderBy: z.enum(['blockNumber', 'timestamp', 'id', 'chainId']).default('blockNumber'),
   orderDirection: z.enum(['asc', 'desc']).default('desc'),
+  responseFormat: z
+    .enum(['summary', 'list', 'detailed'])
+    .default('list')
+    .describe(
+      'Response detail level: summary (aggregates only ~50 tokens), list (transaction IDs and types ~100-200 tokens), detailed (full transaction data ~300-800 tokens). Default: list'
+    ),
 });
 
 // compare_vaults input
@@ -149,6 +183,12 @@ export const compareVaultsInputSchema = z.object({
     .min(2, 'At least 2 vault addresses are required for comparison')
     .max(10, 'Maximum 10 vaults can be compared at once'),
   chainId: chainIdSchema,
+  responseFormat: z
+    .enum(['summary', 'full'])
+    .default('summary')
+    .describe(
+      'Response detail level: summary (~170 tokens/vault), full (~600 tokens/vault). Default: summary'
+    ),
 });
 
 // get_price_history input
@@ -158,6 +198,12 @@ export const priceHistoryInputSchema = z.object({
   timeRange: z.enum(['7d', '30d', '90d', '1y', 'all'], {
     errorMap: () => ({ message: 'Time range must be one of: 7d, 30d, 90d, 1y, all' }),
   }),
+  responseFormat: z
+    .enum(['summary', 'detailed'])
+    .default('summary')
+    .describe(
+      'Response detail level: summary (key metrics only), detailed (full OHLCV table). Default: summary'
+    ),
 });
 
 // export_data input
@@ -178,6 +224,12 @@ export const exportDataInputSchema = z.object({
 export const analyzeRiskInputSchema = z.object({
   vaultAddress: ethereumAddressSchema,
   chainId: chainIdSchema,
+  responseFormat: z
+    .enum(['score', 'summary', 'detailed'])
+    .default('summary')
+    .describe(
+      'Response detail level: score (risk score only ~30 tokens), summary (risk score with key metrics ~200 tokens), detailed (comprehensive risk analysis ~400-600 tokens). Default: summary'
+    ),
 });
 
 // predict_yield input
@@ -187,6 +239,12 @@ export const predictYieldInputSchema = z.object({
   timeRange: z.enum(['7d', '30d', '90d'], {
     errorMap: () => ({ message: 'Time range must be one of: 7d, 30d, 90d' }),
   }),
+  responseFormat: z
+    .enum(['quick', 'detailed'])
+    .default('quick')
+    .describe(
+      'Response detail level: quick (prediction only), detailed (with confidence intervals and analysis). Default: quick'
+    ),
 });
 
 // optimize_portfolio input
@@ -214,6 +272,12 @@ export const optimizePortfolioInputSchema = z.object({
     .positive('Rebalance threshold must be positive')
     .max(50, 'Rebalance threshold cannot exceed 50%')
     .default(5.0),
+  responseFormat: z
+    .enum(['quick', 'balanced', 'detailed'])
+    .default('balanced')
+    .describe(
+      'Response detail level: quick (rebalance status and top actions ~300-400 tokens), balanced (standard output ~800 tokens), detailed (extended insights ~1200 tokens). Default: balanced'
+    ),
 });
 
 /**

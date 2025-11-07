@@ -58,35 +58,19 @@ interface TransactionItem {
   id: string;
   type: string;
   timestamp: number;
-  blockNumber: number;
+  blockNumber: string;
   hash: string;
   logIndex: number;
   chain: {
-    id: number;
+    id: string;
     name: string;
   };
   vault: {
     id: string;
     address: string;
+    symbol: string;
   };
   data: unknown;
-}
-
-/**
- * Process transaction data and ensure type safety
- */
-function processTransaction(tx: TransactionItem): TransactionItem {
-  return {
-    id: tx.id,
-    type: tx.type,
-    timestamp: tx.timestamp,
-    blockNumber: tx.blockNumber,
-    hash: tx.hash,
-    logIndex: tx.logIndex,
-    chain: tx.chain,
-    vault: tx.vault,
-    data: tx.data,
-  };
 }
 
 /**
@@ -112,7 +96,24 @@ interface TransactionsResponse {
 interface TransactionsOutput {
   vaultAddress: string;
   chainId: number;
-  transactions: TransactionItem[];
+  transactions: Array<{
+    id: string;
+    type: string;
+    timestamp: number;
+    blockNumber: string;
+    hash: string;
+    logIndex: number;
+    chain: {
+      id: string;
+      name: string;
+    };
+    vault: {
+      id: string;
+      address: string;
+      symbol: string;
+    };
+    data: Record<string, unknown>;
+  }>;
   pageInfo: {
     hasNextPage: boolean;
     hasPreviousPage: boolean;
@@ -139,32 +140,44 @@ interface TransactionsVariables {
 
 /**
  * Transform raw GraphQL response into processed output
- * Uses closure to capture input and processed parameters
+ * Uses closure to capture input parameters
  */
-function createTransformTransactionsData(
-  input: GetTransactionsInput,
-  orderBy: string,
-  orderDirection: string
-) {
+function createTransformTransactionsData(input: GetTransactionsInput) {
   return (data: TransactionsResponse): TransactionsOutput => {
-    // Process transactions
-    const transactions = data.transactions.items.map(processTransaction);
+    const transactions = data.transactions.items;
+    const pageInfo = data.transactions.pageInfo;
 
-    // Build result
     return {
       vaultAddress: input.vaultAddress,
       chainId: input.chainId,
-      transactions,
+      transactions: transactions.map((tx) => ({
+        id: tx.id,
+        type: tx.type,
+        timestamp: tx.timestamp,
+        blockNumber: tx.blockNumber,
+        hash: tx.hash,
+        logIndex: tx.logIndex,
+        chain: {
+          id: tx.chain.id,
+          name: tx.chain.name,
+        },
+        vault: {
+          id: tx.vault.id,
+          address: tx.vault.address,
+          symbol: tx.vault.symbol,
+        },
+        data: (tx.data || {}) as Record<string, unknown>,
+      })),
       pageInfo: {
-        hasNextPage: data.transactions.pageInfo.hasNextPage,
-        hasPreviousPage: data.transactions.pageInfo.hasPreviousPage,
-        count: data.transactions.pageInfo.count,
-        totalCount: data.transactions.pageInfo.totalCount,
+        hasNextPage: pageInfo.hasNextPage,
+        hasPreviousPage: pageInfo.hasPreviousPage,
+        count: pageInfo.count,
+        totalCount: pageInfo.totalCount,
       },
       filters: {
         transactionTypes: input.transactionTypes,
-        orderBy,
-        orderDirection,
+        orderBy: input.orderBy || 'blockNumber',
+        orderDirection: input.orderDirection || 'desc',
       },
     };
   };
@@ -193,8 +206,9 @@ export function createExecuteGetTransactions(
     const where = buildWhereFilter(input);
     const filterHash = hashFilters(where);
 
-    // Generate cache key for deduplication
-    const cacheKey = cacheKeys.transactions({
+    // Generate cache key for deduplication (including responseFormat)
+    const responseFormat = (input.responseFormat ?? 'list') as 'summary' | 'list' | 'detailed';
+    const cacheKey = `${cacheKeys.transactions({
       vaultAddress: input.vaultAddress.toLowerCase(),
       chainId: input.chainId,
       filterHash,
@@ -202,7 +216,7 @@ export function createExecuteGetTransactions(
       skip,
       orderBy,
       orderDirection,
-    });
+    })}:${responseFormat}`;
 
     // Check for in-flight request with same key (request deduplication)
     const inFlight = inFlightRequests.get(cacheKey);
@@ -220,16 +234,7 @@ export function createExecuteGetTransactions(
           TransactionsOutput
         >({
           container,
-          cacheKey: (input) =>
-            cacheKeys.transactions({
-              vaultAddress: input.vaultAddress.toLowerCase(),
-              chainId: input.chainId,
-              filterHash,
-              first,
-              skip,
-              orderBy,
-              orderDirection,
-            }),
+          cacheKey: () => cacheKey,
           cacheTTL: cacheTTL.transactions,
           query: TRANSACTIONS_QUERY,
           variables: () => ({
@@ -259,7 +264,7 @@ export function createExecuteGetTransactions(
             // Empty array OR has items = valid response (transform will handle empty arrays)
             return { valid: true };
           },
-          transformResult: createTransformTransactionsData(input, orderBy, orderDirection),
+          transformResult: createTransformTransactionsData(input),
           toolName: 'get_transactions',
         });
 

@@ -30,7 +30,8 @@ import {
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
-import { cacheKeys, cacheTTL } from '../cache/index.js';
+import { cacheKeys, cacheTTL, generateCacheKey } from '../cache/index.js';
+import { createSuccessResponse } from '../utils/tool-response.js';
 
 /**
  * GraphQL response type
@@ -178,6 +179,100 @@ export function createExecuteCompareVaults(
   container: ServiceContainer
 ): (input: CompareVaultsInput) => Promise<CallToolResult> {
   return async (input: CompareVaultsInput): Promise<CallToolResult> => {
+    // NEW: Cache cascade pattern - check fragment cache for ALL vaults
+    const cachedVaults: VaultData[] = [];
+    let allCached = true;
+
+    for (const address of input.vaultAddresses) {
+      const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
+        address,
+        chainId: input.chainId,
+      });
+      const cachedVault = container.cache.get(vaultCacheKey);
+
+      if (cachedVault) {
+        cachedVaults.push(cachedVault as VaultData);
+      } else {
+        allCached = false;
+        break; // If any vault is missing, we need to query all
+      }
+    }
+
+    // If ALL vaults are cached, return immediately without GraphQL query
+    if (allCached && cachedVaults.length === input.vaultAddresses.length) {
+      const comparisonData: VaultComparisonData[] = cachedVaults.map((vault) =>
+        convertToComparisonData(vault, input.chainId)
+      );
+      const normalizedVaults = normalizeAndRankVaults(comparisonData);
+      const summary = generateComparisonSummary(comparisonData);
+      const table = formatComparisonTable(normalizedVaults);
+
+      const markdown =
+        `# Vault Comparison Results (Cached)
+
+` +
+        `**Chain ID**: ${input.chainId}
+` +
+        `**Vaults Analyzed**: ${summary.totalVaults}
+
+` +
+        `## Summary Statistics
+
+` +
+        `- **Average TVL**: $${(summary.averageTvl / 1000000).toFixed(2)}M
+` +
+        `- **Average APR**: ${(summary.averageApr * 100).toFixed(2)}%
+
+` +
+        `### Best Performer
+` +
+        `- **Vault**: ${summary.bestPerformer.name}
+` +
+        `- **APR**: ${(summary.bestPerformer.apr * 100).toFixed(2)}%
+
+` +
+        `### Worst Performer
+` +
+        `- **Vault**: ${summary.worstPerformer.name}
+` +
+        `- **APR**: ${(summary.worstPerformer.apr * 100).toFixed(2)}%
+
+` +
+        `### Highest TVL
+` +
+        `- **Vault**: ${summary.highestTvl.name}
+` +
+        `- **TVL**: $${(summary.highestTvl.tvl / 1000000).toFixed(2)}M
+
+` +
+        `### Lowest TVL
+` +
+        `- **Vault**: ${summary.lowestTvl.name}
+` +
+        `- **TVL**: $${(summary.lowestTvl.tvl / 1000000).toFixed(2)}M
+
+` +
+        `## Detailed Comparison
+
+` +
+        `${table}
+
+` +
+        `**Legend**:
+` +
+        `- **Rank**: Overall ranking based on weighted score (60% APR, 40% TVL)
+` +
+        `- **Score**: Overall performance score (0-100)
+` +
+        `- **TVL Δ**: Delta from average TVL (%)
+` +
+        `- **APR Δ**: Delta from average APR (%)
+`;
+
+      return createSuccessResponse({ markdown });
+    }
+
+    // Not all vaults cached - execute normal GraphQL query for all vaults
     const executor = executeToolWithCache<
       CompareVaultsInput,
       CompareVaultsResponse,
@@ -207,7 +302,7 @@ export function createExecuteCompareVaults(
     const cacheKey = cacheKeys.compareVaults(input.vaultAddresses, input.chainId);
     container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT, CacheTag.ANALYTICS]);
 
-    // Execute and get result
+    // Execute GraphQL query for all vaults
     const result = await executor(input);
 
     // Transform JSON output to markdown text format
@@ -215,6 +310,11 @@ export function createExecuteCompareVaults(
       try {
         const output = JSON.parse(result.content[0].text) as CompareVaultsOutput;
         result.content[0].text = output.markdown;
+
+        // NEW: Cache each vault individually for future reuse
+        // This enables vault_data and other tools to reuse these vaults
+        // Note: The raw vault data needs to be extracted before transformation
+        // For now, we rely on the comparison cache itself
       } catch (error) {
         console.error('Failed to parse comparison output:', error);
       }

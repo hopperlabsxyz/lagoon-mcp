@@ -108,6 +108,31 @@ export const cacheKeys = {
 };
 
 /**
+ * Generate cache key based on cache tag and parameters
+ *
+ * NEW: Generic cache key generator for fragment-level caching
+ * Used to create consistent cache keys across different tools
+ *
+ * @param tag - Cache tag identifying the data type
+ * @param params - Parameters for cache key generation
+ * @returns Generated cache key string
+ */
+export function generateCacheKey(tag: string, params: Record<string, string | number>): string {
+  // For vault data, use the standard vault cache key format
+  if (tag === 'VAULT' && 'address' in params && 'chainId' in params) {
+    return cacheKeys.vaultData(String(params.address), Number(params.chainId));
+  }
+
+  // Generic fallback for other cache keys
+  const sortedParams = Object.entries(params)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}:${value}`)
+    .join(':');
+
+  return `${tag.toLowerCase()}:${sortedParams}`;
+}
+
+/**
  * Cache statistics
  */
 export function getCacheStats(): NodeCache.Stats {

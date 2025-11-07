@@ -21,6 +21,8 @@ export { GET_VAULT_PERFORMANCE_QUERY, GET_PERIOD_SUMMARIES_QUERY } from './perfo
 // Portfolio Queries
 export {
   GET_USER_PORTFOLIO_QUERY,
+  createGetUserPortfolioQuery,
+  type PortfolioResponseFormat,
   SINGLE_VAULT_OPTIMIZATION_QUERY,
   PORTFOLIO_OPTIMIZATION_QUERY,
 } from './portfolio.queries.js';
@@ -29,7 +31,11 @@ export {
 export { RISK_ANALYSIS_QUERY } from './risk.queries.js';
 
 // Prediction Queries
-export { YIELD_PREDICTION_QUERY } from './prediction.queries.js';
+export {
+  YIELD_PREDICTION_QUERY,
+  createYieldPredictionQuery,
+  type PredictionResponseFormat,
+} from './prediction.queries.js';
 
 // Export Queries
 export {
@@ -40,4 +46,8 @@ export {
 } from './export.queries.js';
 
 // Search Queries
-export { SEARCH_VAULTS_QUERY } from './search.queries.js';
+export {
+  SEARCH_VAULTS_QUERY,
+  createSearchVaultsQuery,
+  type SearchVaultsResponseFormat,
+} from './search.queries.js';

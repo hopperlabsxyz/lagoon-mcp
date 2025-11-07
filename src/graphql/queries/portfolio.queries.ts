@@ -5,46 +5,100 @@
  * Includes user portfolio data and portfolio optimization queries.
  */
 
-import { VAULT_FRAGMENT } from '../fragments/index.js';
+import { VAULT_FRAGMENT, VAULT_LIST_FRAGMENT, VAULT_SUMMARY_FRAGMENT } from '../fragments/index.js';
 
 /**
- * User portfolio GraphQL query for all chains
+ * Response format type for user portfolio query
+ */
+export type PortfolioResponseFormat = 'list' | 'summary' | 'full';
+
+/**
+ * Get fragment and fragment name based on response format for portfolio queries
+ */
+function getFragmentForPortfolioResponseFormat(responseFormat: PortfolioResponseFormat): {
+  fragment: string;
+  fragmentName: string;
+} {
+  switch (responseFormat) {
+    case 'list':
+      return { fragment: VAULT_LIST_FRAGMENT, fragmentName: 'VaultListFragment' };
+    case 'summary':
+      return { fragment: VAULT_SUMMARY_FRAGMENT, fragmentName: 'VaultSummaryFragment' };
+    case 'full':
+      return { fragment: VAULT_FRAGMENT, fragmentName: 'VaultFragment' };
+    default:
+      return { fragment: VAULT_SUMMARY_FRAGMENT, fragmentName: 'VaultSummaryFragment' };
+  }
+}
+
+/**
+ * Create user portfolio GraphQL query with dynamic fragment selection
  *
  * Fetches complete user portfolio with vault positions and metadata.
- * Includes all vault data via VaultFragment for comprehensive analysis.
+ * Fragment selection optimizes token usage based on required detail level.
  *
  * Used by: get_user_portfolio tool
  *
+ * @param responseFormat - Detail level: 'list' (~60 tokens/vault), 'summary' (~170 tokens/vault), 'full' (~600 tokens/vault)
+ * @returns GraphQL query string with appropriate fragment
+ *
  * Usage:
  * ```typescript
+ * const query = createGetUserPortfolioQuery('summary'); // Balanced data
  * const data = await graphqlClient.request<UserPortfolioResponse>(
- *   GET_USER_PORTFOLIO_QUERY,
+ *   query,
  *   { where: { user_eq: '0x...' } }
  * );
  * ```
+ *
+ * Token optimization:
+ * - list: ~60 tokens/position (minimal vault data)
+ * - summary: ~170 tokens/position (balanced - includes curators, descriptions)
+ * - full: ~600 tokens/position (complete vault data)
+ *
+ * For a user with 10 positions:
+ * - list: 600 tokens (90% reduction)
+ * - summary: 1,700 tokens (72% reduction)
+ * - full: 6,000 tokens (current behavior)
  */
-export const GET_USER_PORTFOLIO_QUERY = `
-  query GetUserPortfolio($where: UserFilterInput) {
-    users(where: $where) {
-      items {
-        state {
-          totalSharesUsd
-        }
-        vaultPositions {
-          vault {
-            ...VaultFragment
-          }
+export function createGetUserPortfolioQuery(
+  responseFormat: PortfolioResponseFormat = 'summary'
+): string {
+  const { fragment, fragmentName } = getFragmentForPortfolioResponseFormat(responseFormat);
+
+  return `
+    query GetUserPortfolio($where: UserFilterInput) {
+      users(where: $where) {
+        items {
           state {
-            assets
-            shares
-            sharesUsd
+            totalSharesUsd
+          }
+          vaultPositions {
+            vault {
+              ...${fragmentName}
+            }
+            state {
+              assets
+              shares
+              sharesUsd
+            }
           }
         }
       }
     }
-  }
-  ${VAULT_FRAGMENT}
-`;
+    ${fragment}
+  `;
+}
+
+/**
+ * User portfolio GraphQL query (legacy - uses full fragment)
+ *
+ * @deprecated Use createGetUserPortfolioQuery('full') instead for explicit fragment selection
+ *
+ * This maintains backward compatibility for existing code.
+ * Consider migrating to createGetUserPortfolioQuery() for better token efficiency.
+ */
+export const GET_USER_PORTFOLIO_QUERY = createGetUserPortfolioQuery('full');
 
 /**
  * GraphQL query for single vault optimization data

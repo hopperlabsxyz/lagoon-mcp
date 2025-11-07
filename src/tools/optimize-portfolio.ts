@@ -105,7 +105,10 @@ function calculateAverageAPR(aprValues: number[]): number {
 /**
  * Format portfolio optimization as markdown
  */
-function formatPortfolioOptimization(optimization: PortfolioOptimization): string {
+function formatPortfolioOptimization(
+  optimization: PortfolioOptimization,
+  responseFormat: 'quick' | 'balanced' | 'detailed' = 'balanced'
+): string {
   const strategyNames = {
     equal_weight: 'Equal Weight',
     risk_parity: 'Risk Parity',
@@ -118,6 +121,39 @@ function formatPortfolioOptimization(optimization: PortfolioOptimization): strin
     : '✅ Well-Balanced';
   const rebalanceEmoji = optimization.rebalanceNeeded ? '⚠️' : '✅';
 
+  // Quick format: Only show rebalance status and top 3 actions
+  if (responseFormat === 'quick') {
+    const topActions = optimization.positions
+      .sort(
+        (a, b) =>
+          Math.abs(b.targetAllocation - b.currentAllocation) -
+          Math.abs(a.targetAllocation - a.currentAllocation)
+      )
+      .slice(0, 3);
+
+    return `
+## ${rebalanceEmoji} Portfolio: ${rebalanceStatus}
+
+**Total Value**: $${optimization.totalValueUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | **Positions**: ${optimization.positions.length} | **Strategy**: ${strategyNames[optimization.strategy]}
+
+${
+  optimization.rebalanceNeeded
+    ? `### Top Rebalancing Actions
+
+${topActions
+  .map((pos) => {
+    const drift = pos.targetAllocation - pos.currentAllocation;
+    const action = Math.abs(drift) <= 1 ? 'Hold' : drift > 0 ? 'Buy' : 'Sell';
+    const actionEmoji = action === 'Hold' ? '➡️' : action === 'Buy' ? '🟢' : '🔴';
+    return `${actionEmoji} **${pos.vaultName}**: ${action} $${Math.abs(pos.rebalanceAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${drift > 0 ? '+' : ''}${drift.toFixed(1)}% drift)`;
+  })
+  .join('\n')}`
+    : '✅ **No action needed** - portfolio is well-balanced'
+}
+`;
+  }
+
+  // Balanced and detailed formats use full output
   return `
 ## Portfolio Optimization: ${strategyNames[optimization.strategy]}
 
@@ -330,7 +366,8 @@ function transformOptimizationData(
   );
 
   // Format optimization as markdown
-  const markdown = formatPortfolioOptimization(optimization);
+  const responseFormat = input.responseFormat || 'balanced';
+  const markdown = formatPortfolioOptimization(optimization, responseFormat);
 
   return { markdown };
 }
@@ -353,7 +390,7 @@ export function createExecuteOptimizePortfolio(
 
       // Check cache first
       const vaultAddressesKey = input.vaultAddresses.sort().join(',');
-      const cacheKey = `portfolio_optimization:${input.chainId}:${vaultAddressesKey}:${input.strategy}`;
+      const cacheKey = `portfolio_optimization:${input.chainId}:${vaultAddressesKey}:${input.strategy}:${input.responseFormat || 'balanced'}`;
 
       const cachedResult = container.cache.get<string>(cacheKey);
       if (cachedResult) {

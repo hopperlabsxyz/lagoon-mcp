@@ -21,11 +21,14 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetUserPortfolioInput } from '../utils/validators.js';
 import { VaultData } from '../graphql/fragments/index.js';
-import { GET_USER_PORTFOLIO_QUERY } from '../graphql/queries/index.js';
+import {
+  createGetUserPortfolioQuery,
+  type PortfolioResponseFormat,
+} from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
-import { cacheKeys, cacheTTL } from '../cache/index.js';
+import { cacheKeys, cacheTTL, generateCacheKey } from '../cache/index.js';
 
 /**
  * User portfolio response type using shared types
@@ -151,7 +154,16 @@ function createTransformPortfolioData(userAddress: string) {
 export function createExecuteGetUserPortfolio(
   container: ServiceContainer
 ): (input: GetUserPortfolioInput) => Promise<CallToolResult> {
-  return (input: GetUserPortfolioInput) => {
+  return async (input: GetUserPortfolioInput): Promise<CallToolResult> => {
+    // Determine response format (default to 'summary' for balanced performance)
+    const responseFormat: PortfolioResponseFormat = input.responseFormat || 'summary';
+
+    // Generate cache key (responseFormat doesn't affect caching since fragments are structural)
+    const cacheKey = cacheKeys.userPortfolio(input.userAddress);
+
+    // Create dynamic query based on responseFormat
+    const query = createGetUserPortfolioQuery(responseFormat);
+
     const executor = executeToolWithCache<
       GetUserPortfolioInput,
       UserPortfolioResponse,
@@ -159,9 +171,9 @@ export function createExecuteGetUserPortfolio(
       AggregatedPortfolio
     >({
       container,
-      cacheKey: (input) => cacheKeys.userPortfolio(input.userAddress),
+      cacheKey: () => cacheKey,
       cacheTTL: cacheTTL.userPortfolio,
-      query: GET_USER_PORTFOLIO_QUERY,
+      query,
       variables: (input) => ({
         where: {
           user_eq: input.userAddress,
@@ -179,9 +191,36 @@ export function createExecuteGetUserPortfolio(
     });
 
     // Register cache tags for invalidation
-    const cacheKey = cacheKeys.userPortfolio(input.userAddress);
     container.cacheInvalidator.register(cacheKey, [CacheTag.PORTFOLIO]);
 
-    return executor(input);
+    // Execute query
+    const result = await executor(input);
+
+    // NEW: Fragment-level caching - cache each vault from positions for reuse
+    // This enables vault_data tool to reuse vaults from portfolio results
+    if (!result.isError && result.content[0]?.type === 'text') {
+      try {
+        const responseData = JSON.parse(result.content[0].text) as {
+          positions?: PortfolioPosition[];
+        };
+        if (responseData.positions) {
+          // Cache each vault from positions individually with vault-specific key
+          responseData.positions.forEach((position: PortfolioPosition) => {
+            if (position.vault && position.vault.address && position.vault.chain?.id) {
+              const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
+                address: position.vault.address,
+                chainId: position.vault.chain.id,
+              });
+              container.cache.set(vaultCacheKey, position.vault, cacheTTL.vaultData);
+            }
+          });
+        }
+      } catch (error) {
+        // If parsing fails, just return the result without fragment caching
+        // This is a non-critical optimization
+      }
+    }
+
+    return result;
   };
 }

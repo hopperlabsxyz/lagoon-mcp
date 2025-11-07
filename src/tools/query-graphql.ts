@@ -22,7 +22,6 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { QueryGraphQLInput } from '../utils/validators.js';
 import { ServiceContainer } from '../core/container.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
-import { createSuccessResponse } from '../utils/tool-response.js';
 
 /**
  * Create the executeQueryGraphQL function with DI container
@@ -43,8 +42,16 @@ export function createExecuteQueryGraphQL(
       // Execute GraphQL query using injected client
       const data = await container.graphqlClient.request(input.query, input.variables);
 
-      // Return successful response
-      return createSuccessResponse(data);
+      // Return successful response with pretty-printed JSON
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(data, null, 2),
+          },
+        ],
+        isError: false,
+      };
     } catch (error) {
       return handleToolError(error, 'query_graphql');
     }

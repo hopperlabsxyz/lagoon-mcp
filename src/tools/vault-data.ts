@@ -25,6 +25,8 @@ import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheKeys, cacheTTL } from '../cache/index.js';
+import { generateCacheKey } from '../cache/index.js';
+import { createSuccessResponse } from '../utils/tool-response.js';
 
 /**
  * Vault data response type using shared VaultData type from fragments
@@ -50,32 +52,47 @@ interface GetVaultDataVariables {
 export function createExecuteGetVaultData(
   container: ServiceContainer
 ): (input: GetVaultDataInput) => Promise<CallToolResult> {
-  const executor = executeToolWithCache<
-    GetVaultDataInput,
-    VaultDataResponse,
-    GetVaultDataVariables
-  >({
-    container,
-    cacheKey: (input) => cacheKeys.vaultData(input.vaultAddress, input.chainId),
-    cacheTTL: cacheTTL.vaultData,
-    query: GET_VAULT_DATA_QUERY,
-    variables: (input) => ({
+  return async (input: GetVaultDataInput): Promise<CallToolResult> => {
+    // NEW: Check fragment-level cache first (vaults from search_vaults)
+    // This enables data reuse across tools without duplicate GraphQL queries
+    const fragmentCacheKey = generateCacheKey(CacheTag.VAULT, {
       address: input.vaultAddress,
       chainId: input.chainId,
-    }),
-    validateResult: (data) => ({
-      valid: !!data.vaultByAddress,
-      message: data.vaultByAddress
-        ? undefined
-        : `Vault not found: address ${String(data)} on requested chain`,
-    }),
-    toolName: 'get_vault_data',
-  });
+    });
 
-  // Register cache tags for invalidation
-  return (input: GetVaultDataInput) => {
+    const cachedVault = container.cache.get(fragmentCacheKey);
+    if (cachedVault) {
+      // Cache hit from search_vaults - return immediately without GraphQL query
+      return createSuccessResponse({ vaultByAddress: cachedVault });
+    }
+
+    // Cache miss - execute GraphQL query with standard caching
+    const executor = executeToolWithCache<
+      GetVaultDataInput,
+      VaultDataResponse,
+      GetVaultDataVariables
+    >({
+      container,
+      cacheKey: (input) => cacheKeys.vaultData(input.vaultAddress, input.chainId),
+      cacheTTL: cacheTTL.vaultData,
+      query: GET_VAULT_DATA_QUERY,
+      variables: (input) => ({
+        address: input.vaultAddress,
+        chainId: input.chainId,
+      }),
+      validateResult: (data) => ({
+        valid: !!data.vaultByAddress,
+        message: data.vaultByAddress
+          ? undefined
+          : `Vault not found: address ${String(data)} on requested chain`,
+      }),
+      toolName: 'get_vault_data',
+    });
+
+    // Register cache tags for invalidation
     const cacheKey = cacheKeys.vaultData(input.vaultAddress, input.chainId);
     container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT]);
+
     return executor(input);
   };
 }

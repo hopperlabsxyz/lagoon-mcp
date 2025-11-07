@@ -132,11 +132,11 @@ interface SDKCalculatedAPR {
  * Complete performance output
  */
 interface VaultPerformanceOutput {
+  metrics: MetricPoint[];
+  summary: PerformanceSummary;
   vaultAddress: string;
   chainId: number;
   timeRange: string;
-  metrics: MetricPoint[];
-  summary: PerformanceSummary;
   hasMoreData: boolean;
   sdkCalculatedAPR?: SDKCalculatedAPR;
 }
@@ -356,7 +356,7 @@ interface GetVaultPerformanceVariables {
  */
 function createTransformPerformanceData(input: GetVaultPerformanceInput, timestampGte: number) {
   return (data: VaultPerformanceResponse): VaultPerformanceOutput => {
-    // Filter transactions by timestamp client-side (since API doesn't support timestamp filtering)
+    // Filter transactions by timestamp client-side
     const filteredItems = data.transactions.items.filter(
       (item) => parseInt(item.timestamp) >= timestampGte
     );
@@ -367,13 +367,12 @@ function createTransformPerformanceData(input: GetVaultPerformanceInput, timesta
     // Calculate summary statistics
     const summary = calculateSummary(metrics, filteredItems);
 
-    // Build output
     return {
+      metrics,
+      summary,
       vaultAddress: input.vaultAddress,
       chainId: input.chainId,
       timeRange: input.timeRange,
-      metrics,
-      summary,
       hasMoreData: data.transactions.pageInfo.hasNextPage,
     };
   };
@@ -434,18 +433,20 @@ export function createExecuteGetVaultPerformance(
     const result = await executor(input);
 
     // Post-processing: Add SDK APR calculations if requested
-    // This happens outside executeToolWithCache because it requires additional async GraphQL calls
     if (input.includeSDKCalculations && !result.isError && result.content[0]?.type === 'text') {
       try {
-        const output = JSON.parse(result.content[0].text) as VaultPerformanceOutput;
         const sdkAPR = await calculateSDKAPR(container, input.vaultAddress, input.chainId);
         if (sdkAPR) {
+          // Parse existing JSON output
+          const output = JSON.parse(result.content[0].text) as VaultPerformanceOutput;
+
+          // Add SDK APR data to output
           output.sdkCalculatedAPR = sdkAPR;
-          // Update result with SDK APR data
+
+          // Update result with modified output
           result.content[0].text = JSON.stringify(output, null, 2);
         }
       } catch (error) {
-        // Log error but don't fail the entire request
         console.error('Failed to add SDK APR to response:', error);
       }
     }
