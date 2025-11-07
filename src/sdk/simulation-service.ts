@@ -13,7 +13,7 @@ import type {
   SimulationResult,
   VersionOrLatest,
 } from '@lagoon-protocol/v0-computation';
-import type { VaultData } from '../types/generated.js';
+import type { VaultData } from '../graphql/fragments/index.js';
 import type { APRHistoricalData } from './apr-service.js';
 
 /**

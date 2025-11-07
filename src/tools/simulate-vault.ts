@@ -31,7 +31,7 @@ import { simulateVaultManagement } from '../sdk/simulation-service.js';
 import { transformPeriodSummariesToAPRData } from '../sdk/apr-service.js';
 import { formatBigInt, safeBigIntStringify } from '../sdk/math-utils.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
-import type { VaultData } from '../types/generated.js';
+import type { VaultData } from '../graphql/fragments/index.js';
 import { GET_PERIOD_SUMMARIES_QUERY } from '../graphql/queries/index.js';
 import { ServiceContainer } from '../core/container.js';
 
@@ -232,8 +232,8 @@ export function createExecuteSimulateVault(
           totalAssetsFormatted: formatBigInt(currentTotalAssets, assetDecimals),
           totalSupply: vault.state.totalSupply,
           totalSupplyFormatted: formatBigInt(currentTotalSupply, vaultDecimals),
-          pricePerShare: currentPricePerShare.toString(),
-          pricePerShareFormatted: formatBigInt(currentPricePerShare, assetDecimals),
+          pricePerShare: (currentPricePerShare ?? BigInt(0)).toString(),
+          pricePerShareFormatted: formatBigInt(currentPricePerShare ?? BigInt(0), assetDecimals),
           managementFee: vault.state.managementFee,
           performanceFee: vault.state.performanceFee,
           highWaterMark: vault.state.highWaterMark,
@@ -243,8 +243,8 @@ export function createExecuteSimulateVault(
           totalAssetsFormatted: formatBigInt(simulationResult.totalAssets, assetDecimals),
           totalSupply: simulationResult.totalSupply.toString(),
           totalSupplyFormatted: formatBigInt(simulationResult.totalSupply, vaultDecimals),
-          pricePerShare: newPricePerShare.toString(),
-          pricePerShareFormatted: formatBigInt(newPricePerShare, assetDecimals),
+          pricePerShare: (newPricePerShare ?? BigInt(0)).toString(),
+          pricePerShareFormatted: formatBigInt(newPricePerShare ?? BigInt(0), assetDecimals),
           feesAccrued: {
             total: simulationResult.feesAccrued.toString(),
             totalFormatted: formatBigInt(simulationResult.feesAccrued, assetDecimals),
@@ -252,8 +252,8 @@ export function createExecuteSimulateVault(
             performance: 'Included in total',
           },
           sharePriceImpact: {
-            absolute: priceImpactAbsolute.toString(),
-            absoluteFormatted: formatBigInt(priceImpactAbsolute, assetDecimals),
+            absolute: (priceImpactAbsolute ?? BigInt(0)).toString(),
+            absoluteFormatted: formatBigInt(priceImpactAbsolute ?? BigInt(0), assetDecimals),
             percentage: priceImpactPercentage,
             direction:
               priceImpactAbsolute > 0n

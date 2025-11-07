@@ -305,7 +305,7 @@ export function createExecuteGetPriceHistory(
       },
       orderBy: 'timestamp',
       orderDirection: 'asc',
-      first: 5000, // Increased to fetch more data for client-side filtering
+      first: 1000, // GraphQL API limit: 1-1000
     };
 
     const executor = executeToolWithCache<

@@ -32,11 +32,5 @@ export const ASSET_INFO_FRAGMENT = `
       nativeToken
       logoUrl
     }
-    priceSources {
-      chainlinkPriceFeed {
-        address
-        chainId
-      }
-    }
   }
 `;

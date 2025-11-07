@@ -413,7 +413,7 @@ export function createExecuteGetVaultPerformance(
         },
         orderBy: 'timestamp',
         orderDirection: 'asc',
-        first: 5000, // Increased to fetch more transactions for client-side filtering
+        first: 1000, // GraphQL API limit: 1-1000
       }),
       validateResult: (data) => ({
         valid: !!(data.transactions && data.transactions.items.length > 0),

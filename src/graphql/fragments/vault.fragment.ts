@@ -60,12 +60,6 @@ export interface VaultData {
       nativeToken: string;
       logoUrl: string;
     };
-    priceSources: {
-      chainlinkPriceFeed: {
-        address: string;
-        chainId: number;
-      } | null;
-    };
   };
 
   // Vault state and financial metrics
@@ -91,6 +85,7 @@ export interface VaultData {
     pendingSettlement: {
       assets: string;
       assetsUsd: number;
+      shares: string;
     };
     pendingSiloBalances: {
       assets: string;
@@ -127,6 +122,7 @@ export interface VaultData {
     // State metadata
     highWaterMark: string;
     lastFeeTime: string;
+    version?: string;
   };
 
   // Curators (plural array)
@@ -217,6 +213,7 @@ export const VAULT_FRAGMENT = `
       pendingSettlement {
         assets
         assetsUsd
+        shares
       }
       inceptionApr {
         ...APRBreakdownFragment
