@@ -139,7 +139,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
     name: 'compare_vaults',
     description:
       'Compare multiple vaults side-by-side with normalized metrics and rankings (2-10 vaults). ' +
-      'Provides comprehensive comparison including TVL, APY, overall performance scores, and percentile rankings. ' +
+      'Provides comprehensive comparison including TVL, APR, overall performance scores, and percentile rankings. ' +
       'Calculates deltas from averages and identifies best/worst performers automatically. ' +
       'Returns formatted comparison table with summary statistics and individual vault rankings. ' +
       'Best for: evaluating investment opportunities, identifying top performers, risk-adjusted return analysis, portfolio construction. ' +
@@ -166,7 +166,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
     name: 'export_data',
     description:
       'Export vault data, transactions, price history, or performance metrics in CSV or JSON format for external analysis. ' +
-      'Supports multiple data types: vaults (vault info with TVL/APY), transactions (deposit/redeem history), ' +
+      'Supports multiple data types: vaults (vault info with TVL/APR), transactions (deposit/redeem history), ' +
       'price_history (OHLCV time-series), performance (TVL metrics over time). ' +
       'Formats: CSV (RFC 4180 compliant with proper escaping) or JSON (structured objects). ' +
       'Returns formatted data ready for import into spreadsheets, databases, or analytics tools. ' +
@@ -195,9 +195,9 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
     name: 'predict_yield',
     description:
       'Predict vault yield with ML-based forecasting using trend analysis and historical performance. ' +
-      'Analyzes APY trends using linear regression, exponential moving averages, and volatility analysis. ' +
+      'Analyzes APR trends using linear regression, exponential moving averages, and volatility analysis. ' +
       'Provides projected returns for multiple timeframes (7d, 30d, 90d, 1y) with confidence intervals. ' +
-      'Returns current APY, predicted APY, trend direction, confidence score, and detailed insights. ' +
+      'Returns current APR, predicted APR, trend direction, confidence score, and detailed insights. ' +
       'Best for: investment planning, yield farming optimization, return projections, performance trend analysis. ' +
       'Performance: ~400-600 tokens per prediction. ' +
       'Features 60-minute caching for prediction stability.',

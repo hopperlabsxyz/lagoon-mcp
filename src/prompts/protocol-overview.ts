@@ -23,7 +23,7 @@ Present executive summary:
 🏦 Active Vaults: XXX (+Y last month)
 👥 Total Users: X,XXX (+Y% 30d)
 💰 24h Volume: $XXM
-⭐ Average Vault APY: XX%
+⭐ Average Vault APR: XX%
 🛡️ Security Incidents: 0 (last 90 days)
 \`\`\`
 
@@ -70,17 +70,17 @@ $XXM ┼──╯
 └─ Other: XX% (XX vaults)
 \`\`\`
 
-**APY Statistics**:
+**APR Statistics**:
 \`\`\`
-├─ Median APY: XX%
-├─ Mean APY: XX%
+├─ Median APR: XX%
+├─ Mean APR: XX%
 ├─ Top Quartile: XX%+
 ├─ Bottom Quartile: XX%-
 └─ Volatility (CV): X.XX
 \`\`\`
 
 **Top 5 Performing Vaults** (30-day):
-| Rank | Vault Name | APY | TVL | Strategy |
+| Rank | Vault Name | APR | TVL | Strategy |
 |------|------------|-----|-----|----------|
 | 1-5  | ...        | ... | ... | ...      |
 
@@ -174,7 +174,7 @@ Interpretation: [Healthy / Moderate / Concentrated]
 | TVL | $XXM | $XXM | $XXM | $XXM |
 | Market Share | XX% | XX% | XX% | XX% |
 | Vaults | XXX | XXX | XXX | XXX |
-| Avg APY | XX% | XX% | XX% | XX% |
+| Avg APR | XX% | XX% | XX% | XX% |
 
 **Rank**: #X of Y major vault aggregators
 **Gap to Leader**: $XXM TVL (-XX%)
@@ -205,7 +205,7 @@ Interpretation: [Healthy / Moderate / Concentrated]
 │   └─ Curator Concentration: [Score]
 │
 ├─ Performance Quality (20%): XX/100
-│   ├─ Average APY: [Score]
+│   ├─ Average APR: [Score]
 │   └─ Consistency: [Score]
 │
 └─ Security & Risk (15%): XX/100
@@ -237,7 +237,7 @@ health_score = (
 - TVL growth 5-10% monthly
 - User retention 40-60% (30d)
 - Single curator >30% of AUM
-- APY volatility increasing
+- APR volatility increasing
 
 **🔴 Concern Signals**:
 - TVL declining or stagnant (<5% growth)
@@ -293,7 +293,7 @@ health_score = (
       items {
         id
         tvl
-        apy
+        apr
         createdAt
         curator { id name }
         chain { id name }
@@ -311,7 +311,7 @@ health_score = (
 Aggregate this data to calculate:
 - Total TVL (sum all vault TVLs)
 - Vault count (items.length)
-- Average APY (weighted by TVL)
+- Average APR (weighted by TVL)
 - Active curators (unique curator IDs)
 - Chain distribution
 - Growth trends (compare to historical data)

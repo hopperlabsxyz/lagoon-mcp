@@ -13,7 +13,7 @@ export interface VaultComparisonData {
   symbol: string;
   chainId: number;
   tvl: number;
-  apy: number;
+  apr: number;
   totalShares?: string;
   totalAssets?: string;
 }
@@ -24,8 +24,8 @@ export interface VaultComparisonData {
 export interface NormalizedVault extends VaultComparisonData {
   rank: number;
   tvlPercentile: number;
-  apyPercentile: number;
-  apyDelta: number; // Delta from average APY
+  aprPercentile: number;
+  aprDelta: number; // Delta from average APR
   tvlDelta: number; // Delta from average TVL
   overallScore: number; // Weighted score (0-100)
 }
@@ -36,16 +36,16 @@ export interface NormalizedVault extends VaultComparisonData {
 export interface ComparisonSummary {
   totalVaults: number;
   averageTvl: number;
-  averageApy: number;
+  averageApr: number;
   bestPerformer: {
     address: string;
     name: string;
-    apy: number;
+    apr: number;
   };
   worstPerformer: {
     address: string;
     name: string;
-    apy: number;
+    apr: number;
   };
   highestTvl: {
     address: string;
@@ -88,17 +88,17 @@ export function calculateDelta(value: number, average: number): number {
 
 /**
  * Calculate overall score based on weighted metrics
- * @param apyPercentile APY percentile (0-100)
+ * @param aprPercentile APR percentile (0-100)
  * @param tvlPercentile TVL percentile (0-100)
  * @param weights Optional weights for metrics
  * @returns Overall score (0-100)
  */
 export function calculateOverallScore(
-  apyPercentile: number,
+  aprPercentile: number,
   tvlPercentile: number,
-  weights: { apy: number; tvl: number } = { apy: 0.6, tvl: 0.4 }
+  weights: { apr: number; tvl: number } = { apr: 0.6, tvl: 0.4 }
 ): number {
-  const score = apyPercentile * weights.apy + tvlPercentile * weights.tvl;
+  const score = aprPercentile * weights.apr + tvlPercentile * weights.tvl;
   return Math.round(score * 100) / 100; // Round to 2 decimals
 }
 
@@ -112,26 +112,26 @@ export function normalizeAndRankVaults(vaults: VaultComparisonData[]): Normalize
 
   // Extract metrics
   const tvls = vaults.map((v) => v.tvl);
-  const apys = vaults.map((v) => v.apy);
+  const aprs = vaults.map((v) => v.apr);
 
   // Calculate averages
   const avgTvl = tvls.reduce((sum, val) => sum + val, 0) / tvls.length;
-  const avgApy = apys.reduce((sum, val) => sum + val, 0) / apys.length;
+  const avgApr = aprs.reduce((sum, val) => sum + val, 0) / aprs.length;
 
   // Normalize each vault
   const normalized: NormalizedVault[] = vaults.map((vault) => ({
     ...vault,
     rank: 0, // Will be set below
     tvlPercentile: calculatePercentile(vault.tvl, tvls),
-    apyPercentile: calculatePercentile(vault.apy, apys),
-    apyDelta: calculateDelta(vault.apy, avgApy),
+    aprPercentile: calculatePercentile(vault.apr, aprs),
+    aprDelta: calculateDelta(vault.apr, avgApr),
     tvlDelta: calculateDelta(vault.tvl, avgTvl),
     overallScore: 0, // Will be set below
   }));
 
   // Calculate overall scores
   normalized.forEach((vault) => {
-    vault.overallScore = calculateOverallScore(vault.apyPercentile, vault.tvlPercentile);
+    vault.overallScore = calculateOverallScore(vault.aprPercentile, vault.tvlPercentile);
   });
 
   // Sort by overall score (descending) and assign ranks
@@ -155,27 +155,27 @@ export function generateComparisonSummary(vaults: VaultComparisonData[]): Compar
 
   // Calculate averages
   const totalTvl = vaults.reduce((sum, v) => sum + v.tvl, 0);
-  const totalApy = vaults.reduce((sum, v) => sum + v.apy, 0);
+  const totalApr = vaults.reduce((sum, v) => sum + v.apr, 0);
   const averageTvl = totalTvl / vaults.length;
-  const averageApy = totalApy / vaults.length;
+  const averageApr = totalApr / vaults.length;
 
   // Find extremes
-  const sortedByApy = [...vaults].sort((a, b) => b.apy - a.apy);
+  const sortedByApr = [...vaults].sort((a, b) => b.apr - a.apr);
   const sortedByTvl = [...vaults].sort((a, b) => b.tvl - a.tvl);
 
   return {
     totalVaults: vaults.length,
     averageTvl,
-    averageApy,
+    averageApr,
     bestPerformer: {
-      address: sortedByApy[0].address,
-      name: sortedByApy[0].name,
-      apy: sortedByApy[0].apy,
+      address: sortedByApr[0].address,
+      name: sortedByApr[0].name,
+      apr: sortedByApr[0].apr,
     },
     worstPerformer: {
-      address: sortedByApy[sortedByApy.length - 1].address,
-      name: sortedByApy[sortedByApy.length - 1].name,
-      apy: sortedByApy[sortedByApy.length - 1].apy,
+      address: sortedByApr[sortedByApr.length - 1].address,
+      name: sortedByApr[sortedByApr.length - 1].name,
+      apr: sortedByApr[sortedByApr.length - 1].apr,
     },
     highestTvl: {
       address: sortedByTvl[0].address,
@@ -197,17 +197,17 @@ export function generateComparisonSummary(vaults: VaultComparisonData[]): Compar
  */
 export function formatComparisonTable(vaults: NormalizedVault[]): string {
   const header =
-    '| Rank | Vault | TVL | APY | Score | TVL Δ | APY Δ |\n|------|-------|-----|-----|-------|-------|-------|\n';
+    '| Rank | Vault | TVL | APR | Score | TVL Δ | APR Δ |\n|------|-------|-----|-----|-------|-------|-------|\n';
 
   const rows = vaults
     .map((v) => {
       const tvlFormatted = `$${(v.tvl / 1000000).toFixed(2)}M`;
-      const apyFormatted = `${(v.apy * 100).toFixed(2)}%`;
+      const aprFormatted = `${(v.apr * 100).toFixed(2)}%`;
       const scoreFormatted = v.overallScore.toFixed(1);
       const tvlDeltaFormatted = `${v.tvlDelta > 0 ? '+' : ''}${v.tvlDelta.toFixed(1)}%`;
-      const apyDeltaFormatted = `${v.apyDelta > 0 ? '+' : ''}${v.apyDelta.toFixed(1)}%`;
+      const aprDeltaFormatted = `${v.aprDelta > 0 ? '+' : ''}${v.aprDelta.toFixed(1)}%`;
 
-      return `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${apyFormatted} | ${scoreFormatted} | ${tvlDeltaFormatted} | ${apyDeltaFormatted} |`;
+      return `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${aprFormatted} | ${scoreFormatted} | ${tvlDeltaFormatted} | ${aprDeltaFormatted} |`;
     })
     .join('\n');
 

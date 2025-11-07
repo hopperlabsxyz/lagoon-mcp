@@ -40,17 +40,17 @@ guidance and education.
 ### Profile Mapping
 
 **Conservative Profile**:
-- Target APY: 5-12%
+- Target APR: 5-12%
 - Vault criteria: TVL >$5M, risk_score <30, established curators
 - Strategy: Pure lending, stablecoin focus
 
 **Moderate Profile**:
-- Target APY: 10-20%
+- Target APR: 10-20%
 - Vault criteria: TVL >$1M, risk_score 30-60, proven track record
 - Strategy: Leveraged lending, blue chip assets
 
 **Aggressive Profile**:
-- Target APY: 20%+
+- Target APR: 20%+
 - Vault criteria: TVL >$500K, risk_score 60-100, innovative strategies
 - Strategy: High leverage, newer opportunities
 
@@ -64,8 +64,8 @@ guidance and education.
 {
   strategy_types: ["lend"],
   min_tvl: 5_000_000,
-  min_apy: 0.05,
-  max_apy: 0.15,
+  min_apr: 0.05,
+  max_apr: 0.15,
   limit: 5
 }
 
@@ -73,8 +73,8 @@ guidance and education.
 {
   strategy_types: ["lend", "leverage"],
   min_tvl: 1_000_000,
-  min_apy: 0.10,
-  max_apy: 0.25,
+  min_apr: 0.10,
+  max_apr: 0.25,
   limit: 5
 }
 
@@ -82,13 +82,13 @@ guidance and education.
 {
   strategy_types: ["leverage", "derivatives"],
   min_tvl: 500_000,
-  min_apy: 0.20,
+  min_apr: 0.20,
   limit: 5
 }
 \`\`\`
 
 **Present Results**:
-| Vault Name | APY | TVL | Strategy | Risk | Quick Summary |
+| Vault Name | APR | TVL | Strategy | Risk | Quick Summary |
 |------------|-----|-----|----------|------|---------------|
 | ...        | ... | ... | ...      | ...  | ...           |
 
@@ -123,7 +123,7 @@ Factor Breakdown:
 \`\`\`
 30-Day Performance Review
 
-APY Trend:
+APR Trend:
 ├─ Current: [X]%
 ├─ 30d Average: [X]%
 ├─ Volatility (CV): [X] - [Interpretation]
@@ -157,9 +157,9 @@ Confidence Level: [HIGH / MEDIUM / LOW]
 Investment Projection: $[Amount] for [X] days
 
 Scenario Analysis:
-├─ Best Case: $[Amount] (+[X]% / [Y]% APY)
-├─ Expected:  $[Amount] (+[X]% / [Y]% APY)
-└─ Worst Case: $[Amount] (+[X]% / [Y]% APY)
+├─ Best Case: $[Amount] (+[X]% / [Y]% APR)
+├─ Expected:  $[Amount] (+[X]% / [Y]% APR)
+└─ Worst Case: $[Amount] (+[X]% / [Y]% APR)
 
 Risk Level: [Assessment]
 Confidence: [HIGH / MEDIUM / LOW]
@@ -184,7 +184,7 @@ Confidence: [HIGH / MEDIUM / LOW]
 
 ## Common Beginner Mistakes to Avoid
 
-1. ❌ Chasing highest APY without risk assessment
+1. ❌ Chasing highest APR without risk assessment
 2. ❌ Depositing entire portfolio in one vault
 3. ❌ Ignoring liquidity needs (lock-up periods)
 4. ❌ Skipping curator research
@@ -208,7 +208,7 @@ Confidence: [HIGH / MEDIUM / LOW]
 
 ### Key Phrases
 - "This vault aligns well with your [profile] approach because..."
-- "While the APY is attractive, let's check the risk factors..."
+- "While the APR is attractive, let's check the risk factors..."
 - "For your first deposit, I recommend starting with [X]% of your intended amount..."
 - "Here's what to watch for in your first 30 days..."
 
@@ -218,12 +218,12 @@ Confidence: [HIGH / MEDIUM / LOW]
 - Unverified or anonymous curator
 - TVL < $100K (insufficient liquidity)
 - Recent security incident or exploit
-- APY >50% without clear yield source
+- APR >50% without clear yield source
 
 ⚠️ **Proceed with Caution**:
 - Curator active <90 days (new, unproven)
 - TVL declining >30% in 30 days
-- High APY volatility (CV >0.30)
+- High APR volatility (CV >0.30)
 - Complex strategy without clear documentation
 
 ## Post-Selection Guidance
@@ -235,13 +235,13 @@ Confidence: [HIGH / MEDIUM / LOW]
 4. Start with 10-20% of intended amount to test
 
 ### Monitoring Schedule
-- **Week 1**: Check APY stability, verify deposit confirmed
+- **Week 1**: Check APR stability, verify deposit confirmed
 - **Week 2**: Review curator updates, check TVL trend
 - **Week 4**: Full performance review, rebalancing decision
 
 ### Exit Signals
 - Risk score increases >20 points
-- APY drops below user's minimum threshold
+- APR drops below user's minimum threshold
 - TVL declines >50%
 - Curator reputation issues emerge
 

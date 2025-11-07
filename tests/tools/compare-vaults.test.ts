@@ -293,7 +293,7 @@ describe('compare_vaults Tool', () => {
       expect(result.isError).toBe(false);
       const text = result.content[0].text as string;
       expect(text).toContain('Vaults Analyzed**: 5');
-      expect(text).toContain('| Rank | Vault | TVL | APY | Score | TVL Δ | APY Δ |');
+      expect(text).toContain('| Rank | Vault | TVL | APR | Score | TVL Δ | APR Δ |');
       // Check that all vaults are present
       expect(text).toContain('Vault A');
       expect(text).toContain('Vault E');
@@ -452,8 +452,8 @@ describe('compare_vaults Tool', () => {
       // Average TVL should be 2M
       expect(text).toContain('Average TVL**: $2.00M');
 
-      // Average APY should be 10%
-      expect(text).toContain('Average APY**: 10.00%');
+      // Average APR should be 10%
+      expect(text).toContain('Average APR**: 10.00%');
 
       // High should be the best performer
       expect(text).toContain('Best Performer');
@@ -485,22 +485,22 @@ describe('compare_vaults Tool', () => {
 
       // Should contain delta symbols
       expect(text).toContain('TVL Δ');
-      expect(text).toContain('APY Δ');
+      expect(text).toContain('APR Δ');
 
       // Should show positive and negative deltas
       expect(text).toMatch(/[+-]\d+\.\d+%/);
     });
 
-    it('should rank vaults by overall score (60% APY, 40% TVL)', async () => {
+    it('should rank vaults by overall score (60% APR, 40% TVL)', async () => {
       const mockVaults = [
-        // High TVL, low APY
+        // High TVL, low APR
         createMockVault({
           address: '0x1111111111111111111111111111111111111111',
           name: 'High TVL',
           tvl: 5000000,
           weeklyApr: 0.05,
         }),
-        // Low TVL, high APY
+        // Low TVL, high APR
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
           name: 'High APY',
@@ -518,7 +518,7 @@ describe('compare_vaults Tool', () => {
 
       const text = result.content[0].text as string;
 
-      // High APY vault should rank higher (60% weight on APY)
+      // High APR vault should rank higher (60% weight on APR)
       expect(text).toContain('| Rank |');
       expect(text).toContain('Score');
     });
@@ -712,7 +712,7 @@ describe('compare_vaults Tool', () => {
       expect(text).toMatch(/\$\d+\.\d{2}M/); // Format: $X.XXM
     });
 
-    it('should format APY values as percentages with 2 decimals', async () => {
+    it('should format APR values as percentages with 2 decimals', async () => {
       const mockVaults = [
         createMockVault({
           address: '0x1111111111111111111111111111111111111111',
@@ -751,13 +751,13 @@ describe('compare_vaults Tool', () => {
       const text = result.content[0].text as string;
       expect(text).toContain('**Legend**');
       expect(text).toContain('Overall ranking');
-      expect(text).toContain('60% APY, 40% TVL');
+      expect(text).toContain('60% APR, 40% TVL');
       expect(text).toContain('TVL Δ');
-      expect(text).toContain('APY Δ');
+      expect(text).toContain('APR Δ');
     });
   });
 
-  describe('APY Fallback Logic', () => {
+  describe('APR Fallback Logic', () => {
     it('should use weekly APR when available', async () => {
       const mockVault = createMockVault({
         address: '0x1111111111111111111111111111111111111111',
@@ -820,7 +820,7 @@ describe('compare_vaults Tool', () => {
       // Should complete successfully with monthly APR
     });
 
-    it('should use 0% APY when both weekly and monthly are unavailable', async () => {
+    it('should use 0% APR when both weekly and monthly are unavailable', async () => {
       const mockVault = {
         ...(createMockVault({ address: '0x1111111111111111111111111111111111111111' }) as any),
         state: {

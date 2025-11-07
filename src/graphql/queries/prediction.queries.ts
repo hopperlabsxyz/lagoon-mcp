@@ -12,7 +12,7 @@ import { VAULT_FRAGMENT } from '../fragments/index.js';
  *
  * Fetches historical performance and TVL data for ML-based yield forecasting:
  * - Vault data with current state
- * - Performance history (PeriodSummary) for APY trends
+ * - Performance history (PeriodSummary) for APR trends
  * - TVL history (TotalAssetsUpdated) for growth tracking
  *
  * Used by: predict_yield tool

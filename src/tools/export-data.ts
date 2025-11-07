@@ -50,7 +50,7 @@ import { ServiceContainer } from '../core/container.js';
 function convertVaultToCSV(vault: VaultData, chainId: number): VaultCSVData {
   const weeklyApr = vault.state?.weeklyApr?.linearNetApr;
   const monthlyApr = vault.state?.monthlyApr?.linearNetApr;
-  const apy =
+  const apr =
     typeof weeklyApr === 'number' ? weeklyApr : typeof monthlyApr === 'number' ? monthlyApr : 0;
 
   return {
@@ -59,7 +59,7 @@ function convertVaultToCSV(vault: VaultData, chainId: number): VaultCSVData {
     symbol: vault.symbol || 'N/A',
     chainId,
     tvl: vault.state?.totalAssetsUsd || 0,
-    apy,
+    apr,
     pricePerShare: vault.state?.pricePerShareUsd || 0,
     totalAssets: vault.state?.totalAssets || '0',
     totalShares: vault.state?.totalSupply || '0',

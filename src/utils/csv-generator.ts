@@ -64,7 +64,7 @@ export interface VaultCSVData extends Record<string, unknown> {
   symbol: string;
   chainId: number;
   tvl: number;
-  apy: number;
+  apr: number;
   pricePerShare: number;
   totalAssets: string;
   totalShares: string;
@@ -82,7 +82,7 @@ export function generateVaultCSV(vaults: VaultCSVData[]): string {
     'symbol',
     'chainId',
     'tvl',
-    'apy',
+    'apr',
     'pricePerShare',
     'totalAssets',
     'totalShares',

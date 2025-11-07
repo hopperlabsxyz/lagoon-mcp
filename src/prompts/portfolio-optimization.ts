@@ -22,7 +22,7 @@ rebalancing strategies to maximize risk-adjusted returns.
 Portfolio Summary
 ├─ Total Value: $XXX,XXX
 ├─ Number of Vaults: X
-├─ Weighted Avg APY: XX%
+├─ Weighted Avg APR: XX%
 ├─ Portfolio Risk Score: XX/100
 └─ Diversification: XX/100
 \`\`\`
@@ -37,13 +37,13 @@ Portfolio Summary
 
 **Holdings Table**:
 
-| Vault | Allocation | TVL Invested | APY | Risk | Performance |
+| Vault | Allocation | TVL Invested | APR | Risk | Performance |
 |-------|------------|--------------|-----|------|-------------|
 | A-C   | XX%        | $XXX,XXX     | XX% | LOW  | ⭐⭐⭐⭐⭐    |
 
 **Current Portfolio Metrics**:
 \`\`\`
-├─ Expected Return: XX% APY
+├─ Expected Return: XX% APR
 ├─ Volatility: XX% (annualized)
 ├─ Sharpe Ratio: X.XX
 ├─ Value at Risk (95%): $XXX (-XX%)
@@ -111,7 +111,7 @@ weight_i ∝ 1 / σ_i
 
 **Alternative Vault Candidates**:
 
-| Vault | APY | Risk | Sharpe | Correlation | Improvement Score |
+| Vault | APR | Risk | Sharpe | Correlation | Improvement Score |
 |-------|-----|------|--------|-------------|-------------------|
 | New A-E | ... | ...  | ...    | ...         | XX/100            |
 
@@ -129,7 +129,7 @@ New2 | 0.XX 0.XX 0.XX 0.XX 1.00
 
 **Current Portfolio**:
 \`\`\`
-├─ Expected Return: XX% APY
+├─ Expected Return: XX% APR
 ├─ Volatility: XX%
 ├─ Sharpe Ratio: X.XX
 └─ Diversification: X.XX
@@ -137,7 +137,7 @@ New2 | 0.XX 0.XX 0.XX 0.XX 1.00
 
 **Optimized Portfolio**:
 \`\`\`
-├─ Expected Return: XX% APY (+X.X%)
+├─ Expected Return: XX% APR (+X.X%)
 ├─ Volatility: XX% (-X.X%)
 ├─ Sharpe Ratio: X.XX (+X.XX)
 └─ Diversification: X.XX (+X.XX)
@@ -182,19 +182,19 @@ Expected benefit over 90 days: $XXX
 **Best Case** (95th percentile):
 \`\`\`
 Portfolio Value: $XXX,XXX (+XX%)
-Return: +XX% (XX% APY)
+Return: +XX% (XX% APR)
 \`\`\`
 
 **Expected Case** (50th percentile):
 \`\`\`
 Portfolio Value: $XXX,XXX (+XX%)
-Return: +XX% (XX% APY)
+Return: +XX% (XX% APR)
 \`\`\`
 
 **Worst Case** (5th percentile):
 \`\`\`
 Portfolio Value: $XXX,XXX (+/-XX%)
-Return: +/-XX% (XX% APY)
+Return: +/-XX% (XX% APR)
 \`\`\`
 
 **Risk Metrics**:
@@ -242,7 +242,7 @@ Return: +/-XX% (XX% APY)
 **Objective**: Highest return within risk limits
 
 **Typical Allocation**:
-- 50-70% High-APY vaults
+- 50-70% High-APR vaults
 - 20-30% Moderate-risk vaults
 - 10-20% Low-risk vaults (stability)
 
@@ -280,7 +280,7 @@ Return: +/-XX% (XX% APY)
 ### Efficient Frontier Visualization
 
 \`\`\`
-Expected Return (APY)
+Expected Return (APR)
 │
 XX% ┤           ●← Maximum Sharpe
     │         ●●

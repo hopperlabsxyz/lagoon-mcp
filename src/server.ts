@@ -147,7 +147,7 @@ export function createServer(): McpServer {
       title: 'Curator Performance Intelligence',
       description:
         'Comprehensive framework for evaluating curator performance, reputation, and vault management capabilities. ' +
-        'Includes metrics for weighted APY, Sharpe ratio, consistency analysis, and reputation scoring. ' +
+        'Includes metrics for weighted APR, Sharpe ratio, consistency analysis, and reputation scoring. ' +
         'Provides curator selection criteria, trust signals, and monitoring frameworks.',
       argsSchema: {},
     },

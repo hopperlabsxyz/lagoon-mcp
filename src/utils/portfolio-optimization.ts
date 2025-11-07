@@ -46,7 +46,7 @@ export interface VaultForOptimization {
   name: string;
   chainId: number;
   currentValueUsd: number;
-  expectedApy: number;
+  expectedApr: number;
   volatility: number; // Standard deviation of returns
   riskScore: number; // 0-1 scale
 }
@@ -125,7 +125,7 @@ export function calculateMaxSharpe(
 ): PortfolioPosition[] {
   // Calculate Sharpe ratios for each vault
   const sharpeRatios = vaults.map((v) => {
-    const excessReturn = v.expectedApy - riskFreeRate;
+    const excessReturn = v.expectedApr - riskFreeRate;
     return excessReturn / (v.volatility + 0.01); // Add epsilon to avoid division by zero
   });
 
@@ -210,7 +210,7 @@ export function calculatePortfolioMetrics(
   // Calculate expected return (weighted average of vault APYs)
   const expectedReturn = vaults.reduce((sum, vault, index) => {
     const weight = positions[index].targetAllocation / 100;
-    return sum + vault.expectedApy * weight;
+    return sum + vault.expectedApr * weight;
   }, 0);
 
   // Calculate portfolio risk (simplified - weighted average volatility)

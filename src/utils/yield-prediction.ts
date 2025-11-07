@@ -2,7 +2,7 @@
  * Yield Prediction Utility
  *
  * Trend analysis and forecasting algorithms for vault yield prediction.
- * Provides APY projections based on historical performance data.
+ * Provides APR projections based on historical performance data.
  */
 
 /**
@@ -151,7 +151,7 @@ function calculateVolatility(values: number[]): number {
  * 3. Volatility analysis for confidence intervals
  * 4. Fee-adjusted predictions (optional) - net returns after management and performance fees
  *
- * @param historicalData - Historical APY and TVL data points
+ * @param historicalData - Historical APR and TVL data points
  * @param feeParams - Optional fee parameters for calculating net returns
  * @returns Yield prediction with confidence intervals and insights
  */
@@ -253,7 +253,7 @@ export function predictYield(
       : 0;
     const totalAnnualFeeDrag = feeParams.managementFee + performanceFeeDrag;
 
-    // Calculate fee-adjusted APY (gross APY - fees)
+    // Calculate fee-adjusted APR (gross APR - fees)
     feeAdjustedAPY = Math.max(0, predictedAPY - totalAnnualFeeDrag);
 
     // Calculate fee-adjusted projected returns
@@ -348,14 +348,14 @@ function generateInsights(params: {
 
   if (params.trend === 'increasing') {
     insights.push(
-      `Upward trend detected: APY expected to increase by ${changePercent}% (${apyChange.toFixed(2)}%)`
+      `Upward trend detected: APR expected to increase by ${changePercent}% (${apyChange.toFixed(2)}%)`
     );
   } else if (params.trend === 'decreasing') {
     insights.push(
-      `Downward trend detected: APY expected to decrease by ${Math.abs(parseFloat(changePercent))}% (${Math.abs(apyChange).toFixed(2)}%)`
+      `Downward trend detected: APR expected to decrease by ${Math.abs(parseFloat(changePercent))}% (${Math.abs(apyChange).toFixed(2)}%)`
     );
   } else {
-    insights.push('Stable performance: APY expected to remain relatively constant');
+    insights.push('Stable performance: APR expected to remain relatively constant');
   }
 
   // Volatility insight

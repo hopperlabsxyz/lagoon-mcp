@@ -44,7 +44,7 @@ Comprehensive framework for analyzing DeFi vaults, portfolios, and yield strateg
 Comprehensive framework for evaluating curator performance, reputation, and vault management capabilities.
 
 **Key Features:**
-- **Performance Metrics** - Weighted APY, Sharpe ratio, risk-adjusted returns
+- **Performance Metrics** - Weighted APR, Sharpe ratio, risk-adjusted returns
 - **Reputation Scoring** - 0-100 composite score across 6 trust factors
 - **Comparative Rankings** - Percentile rankings and peer comparisons
 - **Trust Signals** - Positive indicators and warning signs framework
@@ -66,7 +66,7 @@ Comprehensive framework for evaluating curator performance, reputation, and vaul
 Objective comparison of Lagoon Protocol against major competitors (Gauntlet, Veda, Ether.fi).
 
 **Key Features:**
-- **Financial Comparison** - TVL, APY, fee structures, cost-adjusted returns
+- **Financial Comparison** - TVL, APR, fee structures, cost-adjusted returns
 - **Platform Scale** - Vault diversity, network support, user base analysis
 - **Features Matrix** - Risk management, discovery tools, automation capabilities
 - **Security Analysis** - Audit coverage, incident history, trust indicators

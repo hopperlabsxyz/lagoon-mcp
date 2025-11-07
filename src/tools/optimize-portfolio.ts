@@ -9,7 +9,7 @@
  * - Executes N parallel GraphQL queries (one per vault) using Promise.all
  * - Each vault gets up to 1000 transactions of historical data
  * - Processes per-vault price history for accurate volatility calculation
- * - Uses per-vault performance data for expected APY estimation
+ * - Uses per-vault performance data for expected APR estimation
  *
  * Use cases:
  * - Portfolio rebalancing and optimization
@@ -95,14 +95,14 @@ function calculateVolatility(prices: number[]): number {
 }
 
 /**
- * Calculate average APY from performance data
+ * Calculate average APR from performance data
  */
-function calculateAverageAPY(apyValues: number[]): number {
-  if (apyValues.length === 0) {
+function calculateAverageAPR(aprValues: number[]): number {
+  if (aprValues.length === 0) {
     return 0;
   }
 
-  return apyValues.reduce((sum, apy) => sum + apy, 0) / apyValues.length;
+  return aprValues.reduce((sum, apr) => sum + apr, 0) / aprValues.length;
 }
 
 /**
@@ -261,7 +261,7 @@ function processSingleVaultData(
   if (data.performanceData && data.performanceData.items) {
     for (const item of data.performanceData.items) {
       if (parseInt(item.timestamp) >= timestampThreshold) {
-        performance.push(item.data.linearNetApr * 100); // Convert APR to APY approximation
+        performance.push(item.data.linearNetApr * 100); // Extract APR value
       }
     }
   }
@@ -295,9 +295,9 @@ function transformOptimizationData(
     const priceHistory = combinedData.priceHistoryByVault.get(vaultAddress) || [];
     const volatility = calculateVolatility(priceHistory);
 
-    // Get vault-specific performance data and calculate expected APY
-    const apyHistory = combinedData.performanceByVault.get(vaultAddress) || [];
-    const expectedApy = calculateAverageAPY(apyHistory);
+    // Get vault-specific performance data and calculate expected APR
+    const aprHistory = combinedData.performanceByVault.get(vaultAddress) || [];
+    const expectedApr = calculateAverageAPR(aprHistory);
 
     // Use simplified risk score (based on volatility)
     const riskScore = Math.min(1, volatility / 0.2); // Normalize to 0-1
@@ -307,7 +307,7 @@ function transformOptimizationData(
       name: vault.name || 'Unknown Vault',
       chainId: vault.chain.id,
       currentValueUsd,
-      expectedApy,
+      expectedApr,
       volatility,
       riskScore,
     };

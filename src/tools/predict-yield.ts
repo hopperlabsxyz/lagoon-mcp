@@ -1,7 +1,7 @@
 /**
  * predict_yield Tool
  *
- * ML-based yield forecasting for vault APY prediction.
+ * ML-based yield forecasting for vault APR prediction.
  * Analyzes historical performance to predict future returns.
  *
  * Use cases:
@@ -103,9 +103,9 @@ function formatYieldPrediction(
 ## Yield Prediction: ${vaultName}
 
 ### Current Performance
-- **Current APY**: ${prediction.currentAPY.toFixed(2)}%
-- **Predicted APY**: ${prediction.predictedAPY.toFixed(2)}%${hasFeeData ? ` (Gross)` : ''}
-${hasFeeData ? `- **Predicted Net APY**: ${prediction.feeAdjustedAPY!.toFixed(2)}% (After Fees)` : ''}
+- **Current APR**: ${prediction.currentAPY.toFixed(2)}%
+- **Predicted APR**: ${prediction.predictedAPY.toFixed(2)}%${hasFeeData ? ` (Gross)` : ''}
+${hasFeeData ? `- **Predicted Net APR**: ${prediction.feeAdjustedAPY!.toFixed(2)}% (After Fees)` : ''}
 - **Trend**: ${trendEmoji} ${prediction.trend.charAt(0).toUpperCase() + prediction.trend.slice(1)}
 - **Confidence**: ${confidenceEmoji} ${(prediction.confidence * 100).toFixed(0)}%
 

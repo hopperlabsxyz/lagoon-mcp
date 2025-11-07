@@ -215,7 +215,7 @@ describe('export_data Tool', () => {
       expect(text).toContain('"name": "Test Vault"');
     });
 
-    it('should handle APY fallback (weekly → monthly → 0)', async () => {
+    it('should handle APR fallback (weekly → monthly → 0)', async () => {
       const vault1 = createMockVault({ weeklyApr: 0.15, monthlyApr: 0.12 });
       const vault2 = createMockVault({ weeklyApr: undefined, monthlyApr: 0.08 });
       const vault3 = createMockVault({ weeklyApr: undefined, monthlyApr: undefined });
@@ -239,9 +239,9 @@ describe('export_data Tool', () => {
       const text = (result.content[0] as { type: 'text'; text: string }).text;
       const data = JSON.parse(text.split('```json\n')[1].split('\n```')[0]);
 
-      expect(data[0].apy).toBe(0.15); // Weekly APR used
-      expect(data[1].apy).toBe(0.08); // Monthly APR used (no weekly)
-      expect(data[2].apy).toBe(0); // Default 0 (no APR data)
+      expect(data[0].apr).toBe(0.15); // Weekly APR used
+      expect(data[1].apr).toBe(0.08); // Monthly APR used (no weekly)
+      expect(data[2].apr).toBe(0); // Default 0 (no APR data)
     });
 
     it('should handle empty vault results', async () => {

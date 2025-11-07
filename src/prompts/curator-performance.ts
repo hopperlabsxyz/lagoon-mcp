@@ -26,7 +26,7 @@ Overall Rating: ⭐⭐⭐⭐⭐ (XX/100)
 Quick Stats:
 ├─ Total AUM: $XXM
 ├─ Active Vaults: XX
-├─ Avg APY: XX%
+├─ Avg APR: XX%
 ├─ Experience: XX months
 └─ Security Record: X incidents
 
@@ -36,14 +36,14 @@ Ranking: Top XX% of curators
 ### 2. Performance Metrics Framework
 
 #### Absolute Performance
-- **Weighted Average APY**: Calculate by TVL weighting across all vaults
+- **Weighted Average APR**: Calculate by TVL weighting across all vaults
 - **Total Returns Generated**: Lifetime value creation
 - **Best/Worst Performing Vaults**: Highlight range
-- **APY Distribution**: Visual representation across vault portfolio
+- **APR Distribution**: Visual representation across vault portfolio
 
-Formula for Weighted APY:
+Formula for Weighted APR:
 \`\`\`
-weighted_apy = Σ(vault_apy_i * vault_tvl_i) / Σ(vault_tvl_i)
+weighted_apr = Σ(vault_apr_i * vault_tvl_i) / Σ(vault_tvl_i)
 \`\`\`
 
 #### Risk-Adjusted Performance
@@ -57,7 +57,7 @@ weighted_apy = Σ(vault_apy_i * vault_tvl_i) / Σ(vault_tvl_i)
 - **Risk-Return Profile**: Position curator on risk-return matrix
 
 #### Consistency Analysis
-- **APY Volatility (CV)**: Coefficient of variation across vaults
+- **APR Volatility (CV)**: Coefficient of variation across vaults
   - < 0.15 = Very Consistent ✅
   - 0.15-0.30 = Moderately Consistent ⚠️
   - > 0.30 = Highly Variable 🚨
@@ -68,7 +68,7 @@ weighted_apy = Σ(vault_apy_i * vault_tvl_i) / Σ(vault_tvl_i)
 
 Present curator's vault portfolio:
 
-| Vault Name | Strategy | TVL | APY | Risk | Performance |
+| Vault Name | Strategy | TVL | APR | Risk | Performance |
 |------------|----------|-----|-----|------|-------------|
 | Vault A | Lend | $XXM | XX% | LOW | ⭐⭐⭐⭐⭐ |
 | Vault B | Leverage | $XXM | XX% | MED | ⭐⭐⭐⭐ |
@@ -156,7 +156,7 @@ Below Avg (Bottom 25%) ┤ ●●●●●●●● [35 curators]
 
 | Metric | Rank | Percentile | Assessment |
 |--------|------|------------|------------|
-| Weighted APY | #X | Top XX% | [Rating] |
+| Weighted APR | #X | Top XX% | [Rating] |
 | Risk-Adjusted Return | #X | Top XX% | [Rating] |
 | Consistency | #X | Top XX% | [Rating] |
 | Total AUM | #X | Top XX% | [Rating] |
@@ -190,7 +190,7 @@ Below Avg (Bottom 25%) ┤ ●●●●●●●● [35 curators]
 - Multiple vaults show simultaneous issues
 
 **⚠️ Review Signals**:
-- APY volatility increases >50%
+- APR volatility increases >50%
 - Ranking drops >10 positions
 - AUM declines >30% in 30 days
 - Risk profile shifts significantly
@@ -237,7 +237,7 @@ Below Avg (Bottom 25%) ┤ ●●●●●●●● [35 curators]
 1. Query curator data: Use query_graphql with curators query to get curator list
 2. Find curator's vaults: Use search_vaults filtered by curator ID
 3. Fetch vault details: Use get_vault_data for comprehensive vault information
-4. Calculate performance metrics: Weighted APY, Sharpe ratio from vault data
+4. Calculate performance metrics: Weighted APR, Sharpe ratio from vault data
 5. Assess consistency: Use get_vault_performance for historical trends
 6. Risk analysis: Use analyze_risk on each vault, aggregate results
 7. Compare vaults: Use compare_vaults to rank curator's vault portfolio
@@ -266,7 +266,7 @@ Curator: Aave Strategy Experts
 Rating: 92/100 ⭐⭐⭐⭐⭐
 
 Performance:
-├─ Weighted APY: 18.5% (Top 5%)
+├─ Weighted APR: 18.5% (Top 5%)
 ├─ Sharpe Ratio: 2.3 (Excellent)
 ├─ AUM: $45M (Top 10%)
 └─ Consistency: CV 0.12 (Very Stable)
@@ -290,7 +290,7 @@ Curator: DeFi Yield Optimizers
 Rating: 72/100 ⭐⭐⭐⭐
 
 Performance:
-├─ Weighted APY: 22% (Top 15%)
+├─ Weighted APR: 22% (Top 15%)
 ├─ Sharpe Ratio: 1.6 (Good)
 ├─ AUM: $3M (Growing rapidly)
 └─ Consistency: CV 0.24 (Moderate)

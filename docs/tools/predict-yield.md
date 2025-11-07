@@ -111,10 +111,10 @@ Returns yield projections with confidence:
 
 Returns projections for 7d, 30d, 90d, and 1y with confidence intervals.
 
-### Expected APY Trend
+### Expected APR Trend
 
 ```
-"What's the expected APY trend for lgUSDC over the next quarter?"
+"What's the expected APR trend for lgUSDC over the next quarter?"
 ```
 
 Focuses on 90d projection with trend analysis.
@@ -282,4 +282,4 @@ See the analytical guide for:
 
 - [Yield Prediction Algorithm](../../src/utils/yield-prediction.ts) - Implementation
 - [Development Guide](../DEVELOPMENT.md#yield-prediction-tool) - Technical specs
-- [DeFi Glossary](../../README.md#resources) - Understanding APR/APY
+- [DeFi Glossary](../../README.md#resources) - Understanding APR

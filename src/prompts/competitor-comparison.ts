@@ -24,7 +24,7 @@ Present high-level comparison table:
 | **TVL** | $XXM | $XXM | $XXM | $XXM |
 | **Market Share** | XX% | XX% | XX% | XX% |
 | **Vaults** | XXX | XXX | XXX | XXX |
-| **Avg APY** | XX% | XX% | XX% | XX% |
+| **Avg APR** | XX% | XX% | XX% | XX% |
 | **Users** | X,XXX | X,XXX | X,XXX | X,XXX |
 | **Networks** | X | X | X | X |
 | **Mgmt Fee** | X% | X% | X% | X% |
@@ -49,10 +49,10 @@ Ether.fi:  +XX% │ █████████░
 
 **Winner Analysis**: [Balance absolute size vs growth momentum]
 
-#### Average Vault APY
-- **Median APY**: Typical vault returns
+#### Average Vault APR
+- **Median APR**: Typical vault returns
 - **Top Quartile**: Best performers
-- **APY Consistency**: Stability over time (use CV)
+- **APR Consistency**: Stability over time (use CV)
 
 **Winner**: [Balance high returns vs consistency]
 
@@ -68,7 +68,7 @@ Ether.fi:  +XX% │ █████████░
 
 **Cost-Adjusted Returns**:
 \`\`\`
-Net APY = Gross APY - Total Fees
+Net APR = Gross APR - Total Fees
 
 Lagoon:    XX% - X.X% = XX% net
 Gauntlet:  XX% - X.X% = XX% net
@@ -352,14 +352,14 @@ Document available insurance options for each platform
       items {
         id
         tvl
-        apy
+        apr
         curator { id name }
         chain { id name }
       }
     }
   }
 
-Aggregate results to get protocol-level statistics (total TVL, vault count, avg APY, etc.)
+Aggregate results to get protocol-level statistics (total TVL, vault count, avg APR, etc.)
 
 ## Best Practices
 

@@ -60,11 +60,11 @@ interface CompareVaultsOutput {
  * Convert VaultData to VaultComparisonData for metrics calculation
  */
 function convertToComparisonData(vault: VaultData, chainId: number): VaultComparisonData {
-  // Extract APY from nested state structure with proper null checking
-  // Use weekly or monthly linearNetApr as the primary APY metric
+  // Extract APR from nested state structure with proper null checking
+  // Use weekly or monthly linearNetApr as the primary APR metric
   const weeklyApr = vault.state?.weeklyApr?.linearNetApr;
   const monthlyApr = vault.state?.monthlyApr?.linearNetApr;
-  const apy =
+  const apr =
     typeof weeklyApr === 'number' ? weeklyApr : typeof monthlyApr === 'number' ? monthlyApr : 0;
 
   const tvl = vault.state?.totalAssetsUsd;
@@ -75,7 +75,7 @@ function convertToComparisonData(vault: VaultData, chainId: number): VaultCompar
     symbol: vault.symbol || 'N/A',
     chainId: chainId,
     tvl: typeof tvl === 'number' ? tvl : 0,
-    apy: apy,
+    apr: apr,
     totalShares: vault.state?.totalSupply,
     totalAssets: vault.state?.totalAssets,
   };
@@ -116,21 +116,21 @@ function createTransformComparisonData(input: CompareVaultsInput) {
 ` +
       `- **Average TVL**: $${(summary.averageTvl / 1000000).toFixed(2)}M
 ` +
-      `- **Average APY**: ${(summary.averageApy * 100).toFixed(2)}%
+      `- **Average APR**: ${(summary.averageApr * 100).toFixed(2)}%
 
 ` +
       `### Best Performer
 ` +
       `- **Vault**: ${summary.bestPerformer.name}
 ` +
-      `- **APY**: ${(summary.bestPerformer.apy * 100).toFixed(2)}%
+      `- **APR**: ${(summary.bestPerformer.apr * 100).toFixed(2)}%
 
 ` +
       `### Worst Performer
 ` +
       `- **Vault**: ${summary.worstPerformer.name}
 ` +
-      `- **APY**: ${(summary.worstPerformer.apy * 100).toFixed(2)}%
+      `- **APR**: ${(summary.worstPerformer.apr * 100).toFixed(2)}%
 
 ` +
       `### Highest TVL
@@ -155,13 +155,13 @@ function createTransformComparisonData(input: CompareVaultsInput) {
 ` +
       `**Legend**:
 ` +
-      `- **Rank**: Overall ranking based on weighted score (60% APY, 40% TVL)
+      `- **Rank**: Overall ranking based on weighted score (60% APR, 40% TVL)
 ` +
       `- **Score**: Overall performance score (0-100)
 ` +
       `- **TVL Δ**: Delta from average TVL (%)
 ` +
-      `- **APY Δ**: Delta from average APY (%)
+      `- **APR Δ**: Delta from average APR (%)
 `;
 
     return { markdown };

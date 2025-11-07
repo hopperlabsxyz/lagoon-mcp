@@ -90,17 +90,17 @@ describe('predict_yield Tool', () => {
     return {
       items: data.map((d, i) => {
         // Calculate cumulative growth from inception (day 0) to current point
-        // based on the average APY up to this point
+        // based on the average APR up to this point
         let cumulativeGrowth = 1.0;
 
         if (i > 0) {
-          // Calculate average APY from start to current point
+          // Calculate average APR from start to current point
           const avgApy = data.slice(0, i + 1).reduce((sum, item) => sum + item.apy, 0) / (i + 1);
 
           // Calculate days elapsed from inception
           const daysElapsed = (d.timestamp - data[0].timestamp) / (24 * 60 * 60);
 
-          // Apply cumulative growth: (1 + APY/100) ^ (days/365)
+          // Apply cumulative growth: (1 + APR/100) ^ (days/365)
           cumulativeGrowth = Math.pow(1 + avgApy / 100, daysElapsed / 365);
         }
 
@@ -124,11 +124,11 @@ describe('predict_yield Tool', () => {
   // ==========================================
 
   describe('Yield Prediction - Increasing Trend', () => {
-    it('should predict increasing APY based on upward trend', async () => {
+    it('should predict increasing APR based on upward trend', async () => {
       const now = Math.floor(Date.now() / 1000);
       const dayInSeconds = 24 * 60 * 60;
 
-      // Create increasing APY trend: 5% -> 10% over 30 days
+      // Create increasing APR trend: 5% -> 10% over 30 days
       const performanceData = [];
       for (let i = 0; i < 30; i++) {
         performanceData.push({
@@ -139,7 +139,7 @@ describe('predict_yield Tool', () => {
       }
 
       const mockData = {
-        vault: createMockVault('Increasing APY Vault'),
+        vault: createMockVault('Increasing APR Vault'),
         performanceHistory: createMockPerformanceHistory(performanceData),
         tvlHistory: { items: [] },
       };
@@ -159,9 +159,9 @@ describe('predict_yield Tool', () => {
       expect(text).toContain('Increasing');
       expect(text).toContain('📈');
 
-      // Should have current and predicted APY
-      expect(text).toMatch(/Current APY.*%/);
-      expect(text).toMatch(/Predicted APY.*%/);
+      // Should have current and predicted APR
+      expect(text).toMatch(/Current APR.*%/);
+      expect(text).toMatch(/Predicted APR.*%/);
 
       // Should have projected returns
       expect(text).toContain('7d');
@@ -176,11 +176,11 @@ describe('predict_yield Tool', () => {
   // ==========================================
 
   describe('Yield Prediction - Decreasing Trend', () => {
-    it('should predict decreasing APY based on downward trend', async () => {
+    it('should predict decreasing APR based on downward trend', async () => {
       const now = Math.floor(Date.now() / 1000);
       const dayInSeconds = 24 * 60 * 60;
 
-      // Create decreasing APY trend: 10% -> 5% over 30 days
+      // Create decreasing APR trend: 10% -> 5% over 30 days
       const performanceData = [];
       for (let i = 0; i < 30; i++) {
         performanceData.push({
@@ -191,7 +191,7 @@ describe('predict_yield Tool', () => {
       }
 
       const mockData = {
-        vault: createMockVault('Decreasing APY Vault'),
+        vault: createMockVault('Decreasing APR Vault'),
         performanceHistory: createMockPerformanceHistory(performanceData),
         tvlHistory: { items: [] },
       };
@@ -218,11 +218,11 @@ describe('predict_yield Tool', () => {
   // ==========================================
 
   describe('Yield Prediction - Stable Trend', () => {
-    it('should predict stable APY when no significant trend exists', async () => {
+    it('should predict stable APR when no significant trend exists', async () => {
       const now = Math.floor(Date.now() / 1000);
       const dayInSeconds = 24 * 60 * 60;
 
-      // Create stable APY around 7%
+      // Create stable APR around 7%
       const performanceData = [];
       for (let i = 0; i < 30; i++) {
         performanceData.push({
@@ -233,7 +233,7 @@ describe('predict_yield Tool', () => {
       }
 
       const mockData = {
-        vault: createMockVault('Stable APY Vault'),
+        vault: createMockVault('Stable APR Vault'),
         performanceHistory: createMockPerformanceHistory(performanceData),
         tvlHistory: { items: [] },
       };
@@ -249,19 +249,19 @@ describe('predict_yield Tool', () => {
       expect(result.isError).toBe(false);
       const text = (result.content[0] as { type: 'text'; text: string }).text;
 
-      // Should show predicted APY close to current APY (within 1%)
-      const currentAPYMatch = text.match(/Current APY.*?(\d+\.\d+)%/);
-      const predictedAPYMatch = text.match(/Predicted APY.*?(\d+\.\d+)%/);
+      // Should show predicted APR close to current APR (within 1%)
+      const currentAPRMatch = text.match(/Current APR.*?(\d+\.\d+)%/);
+      const predictedAPRMatch = text.match(/Predicted APR.*?(\d+\.\d+)%/);
 
-      expect(currentAPYMatch).toBeTruthy();
-      expect(predictedAPYMatch).toBeTruthy();
+      expect(currentAPRMatch).toBeTruthy();
+      expect(predictedAPRMatch).toBeTruthy();
 
-      const currentAPY = parseFloat(currentAPYMatch![1]);
-      const predictedAPY = parseFloat(predictedAPYMatch![1]);
-      const apyDifference = Math.abs(predictedAPY - currentAPY);
+      const currentAPR = parseFloat(currentAPRMatch![1]);
+      const predictedAPR = parseFloat(predictedAPRMatch![1]);
+      const aprDifference = Math.abs(predictedAPR - currentAPR);
 
       // Stable trend should have < 1% difference between current and predicted
-      expect(apyDifference).toBeLessThan(1.0);
+      expect(aprDifference).toBeLessThan(1.0);
     });
   });
 
@@ -549,11 +549,11 @@ describe('predict_yield Tool', () => {
   // ==========================================
 
   describe('Fee-Adjusted Predictions', () => {
-    it('should calculate fee-adjusted APY when vault has fees', async () => {
+    it('should calculate fee-adjusted APR when vault has fees', async () => {
       const now = Math.floor(Date.now() / 1000);
       const dayInSeconds = 24 * 60 * 60;
 
-      // Create stable APY around 10%
+      // Create stable APR around 10%
       const performanceData = [];
       for (let i = 0; i < 30; i++) {
         performanceData.push({
@@ -587,9 +587,9 @@ describe('predict_yield Tool', () => {
       expect(result.isError).toBe(false);
       const text = (result.content[0] as { type: 'text'; text: string }).text;
 
-      // Should show both gross and net APY
-      expect(text).toMatch(/Predicted APY.*\(Gross\)/);
-      expect(text).toMatch(/Predicted Net APY.*\(After Fees\)/);
+      // Should show both gross and net APR
+      expect(text).toMatch(/Predicted APR.*\(Gross\)/);
+      expect(text).toMatch(/Predicted Net APR.*\(After Fees\)/);
 
       // Should show fee impact section
       expect(text).toContain('### Fee Impact');

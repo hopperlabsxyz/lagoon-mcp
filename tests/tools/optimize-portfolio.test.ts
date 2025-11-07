@@ -174,7 +174,7 @@ describe('optimize_portfolio', () => {
       expect(result.isError).toBe(false);
       const text = (result.content[0] as { text: string }).text;
 
-      // Vault C has highest APY (8.25%) so should get higher allocation
+      // Vault C has highest APR (8.25%) so should get higher allocation
       expect(text).toContain('Vault C');
       // Cache stores the final markdown text now
       expect(mockCacheSet).toHaveBeenCalledWith(
@@ -472,7 +472,7 @@ describe('optimize_portfolio', () => {
       const result = await executeOptimizePortfolio(baseInput);
 
       expect(result.isError).toBe(false);
-      // Should use 0 APY when no performance data
+      // Should use 0 APR when no performance data
     });
 
     it('should handle GraphQL errors', async () => {
