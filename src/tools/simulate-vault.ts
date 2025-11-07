@@ -157,7 +157,16 @@ export function createExecuteSimulateVault(
               }>;
               pageInfo: { hasNextPage: boolean; hasPreviousPage: boolean };
             };
-          }>(GET_PERIOD_SUMMARIES_QUERY, { vault_in: [vaultAddress], chainId, first: 1000 });
+          }>(GET_PERIOD_SUMMARIES_QUERY, {
+            where: {
+              vault_in: [vaultAddress],
+              chainId_eq: chainId,
+              type_in: ['PeriodSummary'],
+            },
+            orderBy: 'timestamp',
+            orderDirection: 'asc',
+            first: 1000,
+          });
 
           if (periodSummariesData?.transactions?.items?.length > 0) {
             // Extract PeriodSummary data from transaction items
