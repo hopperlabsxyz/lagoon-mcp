@@ -72,37 +72,18 @@ export const SINGLE_VAULT_OPTIMIZATION_QUERY = `
     priceHistory: transactions(
       where: {
         vault_in: [$vaultAddress],
-        type_in: ["TotalAssetsUpdated"]
+        type_in: [TotalAssetsUpdated]
       },
-      orderBy: "timestamp",
-      orderDirection: "asc",
+      orderBy: timestamp,
+      orderDirection: asc,
       first: 1000
     ) {
       items {
         timestamp
         data {
           ... on TotalAssetsUpdated {
-            pricePerShareUsd
-          }
-        }
-      }
-    }
-
-    # Get APY data for return estimation
-    performanceData: transactions(
-      where: {
-        vault_in: [$vaultAddress],
-        type_in: ["PeriodSummary"]
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: 1000
-    ) {
-      items {
-        timestamp
-        data {
-          ... on PeriodSummary {
-            linearNetApr
+            totalAssetsUsd
+            totalSupply
           }
         }
       }

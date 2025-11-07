@@ -46,13 +46,10 @@ interface SingleVaultOptimizationResponse {
   priceHistory: {
     items: Array<{
       timestamp: string;
-      data: { pricePerShareUsd: number };
-    }>;
-  };
-  performanceData: {
-    items: Array<{
-      timestamp: string;
-      data: { linearNetApr: number };
+      data: {
+        totalAssetsUsd: number;
+        totalSupply: string;
+      };
     }>;
   };
 }
@@ -247,23 +244,35 @@ function processSingleVaultData(
   }
 
   // Extract price history with timestamp filtering
+  // Calculate price per share from totalAssetsUsd / totalSupply
   const prices: number[] = [];
   if (data.priceHistory && data.priceHistory.items) {
     for (const item of data.priceHistory.items) {
       if (parseInt(item.timestamp) >= timestampThreshold) {
-        prices.push(item.data.pricePerShareUsd);
+        const totalSupply = parseFloat(item.data.totalSupply);
+        if (totalSupply > 0) {
+          const pricePerShare = item.data.totalAssetsUsd / totalSupply;
+          prices.push(pricePerShare);
+        }
       }
     }
   }
 
-  // Extract performance data with timestamp filtering
+  // Use pre-calculated APR from vault state
+  // Prefer monthlyApr, fallback to weeklyApr, then yearlyApr
   const performance: number[] = [];
-  if (data.performanceData && data.performanceData.items) {
-    for (const item of data.performanceData.items) {
-      if (parseInt(item.timestamp) >= timestampThreshold) {
-        performance.push(item.data.linearNetApr * 100); // Extract APR value
-      }
-    }
+  const apr =
+    data.vault.state?.monthlyApr?.linearNetApr ??
+    data.vault.state?.weeklyApr?.linearNetApr ??
+    data.vault.state?.yearlyApr?.linearNetApr ??
+    0;
+
+  // Convert APR to percentage (API returns decimal, e.g., 0.15 = 15%)
+  const aprPercentage = apr * 100;
+
+  // If we have price history, create a matching performance array
+  if (prices.length > 0) {
+    performance.push(aprPercentage);
   }
 
   return {
