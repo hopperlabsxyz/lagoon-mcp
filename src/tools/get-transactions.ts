@@ -65,12 +65,14 @@ interface TransactionItem {
     id: string;
     name: string;
   };
-  vault: {
-    id: string;
-    address: string;
-    symbol: string;
+  data: {
+    vault?: {
+      id: string;
+      address: string;
+      symbol: string;
+    };
+    [key: string]: unknown;
   };
-  data: unknown;
 }
 
 /**
@@ -162,9 +164,9 @@ function createTransformTransactionsData(input: GetTransactionsInput) {
           name: tx.chain.name,
         },
         vault: {
-          id: tx.vault.id,
-          address: tx.vault.address,
-          symbol: tx.vault.symbol,
+          id: tx.data.vault?.id || '',
+          address: tx.data.vault?.address || input.vaultAddress.toLowerCase(),
+          symbol: tx.data.vault?.symbol || 'UNKNOWN',
         },
         data: (tx.data || {}) as Record<string, unknown>,
       })),

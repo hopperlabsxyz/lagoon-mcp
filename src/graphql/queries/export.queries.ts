@@ -53,30 +53,68 @@ export const EXPORT_TRANSACTIONS_QUERY = `
   query ExportTransactions($vault_in: [Address!]!, $chainId: Int!, $first: Int!) {
     transactions(
       where: { vault_in: $vault_in, chainId_eq: $chainId },
-      orderBy: "timestamp",
-      orderDirection: "desc",
+      orderBy: timestamp,
+      orderDirection: desc,
       first: $first
     ) {
       items {
         ...TransactionBaseFragment
         data {
           ... on SettleDeposit {
-            user
-            assets
-            shares
+            assetsDeposited
+            assetsDepositedUsd
+            sharesMinted
+            vault {
+              id
+              address
+              symbol
+              decimals
+              asset {
+                decimals
+              }
+            }
           }
           ... on SettleRedeem {
-            user
-            assets
-            shares
+            assetsWithdrawed
+            assetsWithdrawedUsd
+            sharesBurned
+            vault {
+              id
+              address
+              symbol
+              decimals
+              asset {
+                decimals
+              }
+            }
           }
           ... on DepositRequest {
-            user
+            owner
             assets
+            assetsUsd
+            vault {
+              id
+              address
+              symbol
+              decimals
+              asset {
+                decimals
+              }
+            }
           }
           ... on RedeemRequest {
-            user
+            owner
             shares
+            sharesUsd
+            vault {
+              id
+              address
+              symbol
+              decimals
+              asset {
+                decimals
+              }
+            }
           }
         }
       }
@@ -103,17 +141,27 @@ export const EXPORT_TRANSACTIONS_QUERY = `
 export const EXPORT_PRICE_HISTORY_QUERY = `
   query ExportPriceHistory($vault_in: [Address!]!, $first: Int!) {
     transactions(
-      where: { vault_in: $vault_in, type_in: ["TotalAssetsUpdated"] },
-      orderBy: "timestamp",
-      orderDirection: "asc",
+      where: { vault_in: $vault_in, type_in: [TotalAssetsUpdated] },
+      orderBy: timestamp,
+      orderDirection: asc,
       first: $first
     ) {
       items {
         timestamp
         data {
           ... on TotalAssetsUpdated {
-            pricePerShareUsd
+            totalAssets
             totalAssetsUsd
+            totalSupply
+            vault {
+              id
+              address
+              symbol
+              decimals
+              asset {
+                decimals
+              }
+            }
           }
         }
       }
@@ -139,9 +187,9 @@ export const EXPORT_PRICE_HISTORY_QUERY = `
 export const EXPORT_PERFORMANCE_QUERY = `
   query ExportPerformance($vault_in: [Address!]!, $first: Int!) {
     transactions(
-      where: { vault_in: $vault_in, type_in: ["TotalAssetsUpdated"] },
-      orderBy: "timestamp",
-      orderDirection: "asc",
+      where: { vault_in: $vault_in, type_in: [TotalAssetsUpdated] },
+      orderBy: timestamp,
+      orderDirection: asc,
       first: $first
     ) {
       items {

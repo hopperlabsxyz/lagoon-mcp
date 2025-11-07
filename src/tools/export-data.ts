@@ -259,7 +259,20 @@ async function exportPriceHistory(
     transactions: {
       items: Array<{
         timestamp: string;
-        data: { pricePerShareUsd: number; totalAssetsUsd: number };
+        data: {
+          totalAssets: string;
+          totalAssetsUsd: number;
+          totalSupply: string;
+          vault: {
+            id: string;
+            address: string;
+            symbol: string;
+            decimals: number;
+            asset: {
+              decimals: number;
+            };
+          };
+        };
       }>;
     };
   }>(EXPORT_PRICE_HISTORY_QUERY, {
@@ -287,7 +300,14 @@ async function exportPriceHistory(
     if (!dayBuckets.has(date)) {
       dayBuckets.set(date, []);
     }
-    dayBuckets.get(date)!.push(tx.data.pricePerShareUsd);
+
+    // Calculate price per share using actual decimals
+    const vaultDecimals = tx.data.vault.decimals ?? 18;
+    const totalAssets = parseFloat(tx.data.totalAssets) / 10 ** vaultDecimals;
+    const totalSupply = parseFloat(tx.data.totalSupply) / 10 ** vaultDecimals;
+    const pricePerShare = totalSupply > 0 ? totalAssets / totalSupply : 0;
+
+    dayBuckets.get(date)!.push(pricePerShare);
   }
 
   const csvData: PriceHistoryCSVData[] = Array.from(dayBuckets.entries())

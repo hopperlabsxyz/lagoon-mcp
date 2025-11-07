@@ -150,6 +150,16 @@ function createMockPriceTransaction(
       pricePerShareUsd: merged.pricePerShareUsd,
       totalAssets: '1000000000000',
       totalAssetsUsd: merged.totalAssetsUsd,
+      totalSupply: '900000000000',
+      vault: {
+        id: 'vault-123',
+        address: '0x1234567890123456789012345678901234567890',
+        symbol: 'TEST',
+        decimals: 18,
+        asset: {
+          decimals: 6,
+        },
+      },
     },
   };
 }

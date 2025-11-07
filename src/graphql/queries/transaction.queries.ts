@@ -65,6 +65,11 @@ export const TRANSACTIONS_QUERY = `
             assetsDeposited
             assetsDepositedUsd
             sharesMinted
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on SettleRedeem {
             epochId
@@ -75,6 +80,11 @@ export const TRANSACTIONS_QUERY = `
             assetsWithdrawed
             assetsWithdrawedUsd
             sharesBurned
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on DepositRequest {
             controller
@@ -83,6 +93,11 @@ export const TRANSACTIONS_QUERY = `
             sender
             assets
             assetsUsd
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on RedeemRequest {
             controller
@@ -91,16 +106,31 @@ export const TRANSACTIONS_QUERY = `
             sender
             shares
             sharesUsd
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on NewTotalAssetsUpdated {
             totalAssets
             totalAssetsUsd
             totalSupply
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on TotalAssetsUpdated {
             totalAssets
             totalAssetsUsd
             totalSupply
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on PeriodSummary {
             duration
@@ -109,6 +139,11 @@ export const TRANSACTIONS_QUERY = `
             totalAssetsAtStart
             totalSupplyAtEnd
             totalSupplyAtStart
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on DepositSync {
             owner
@@ -116,19 +151,39 @@ export const TRANSACTIONS_QUERY = `
             shares
             assets
             assetsUsd
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on DepositRequestCanceled {
             controller
             requestId
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on RatesUpdated {
             newRates {
               performanceRate
               managementRate
             }
+            vault {
+              id
+              address
+              symbol
+            }
           }
           ... on StateUpdated {
             state
+            vault {
+              id
+              address
+              symbol
+            }
           }
         }
       }
@@ -185,6 +240,11 @@ export const PRICE_HISTORY_QUERY = `
             totalAssets
             totalAssetsUsd
             totalSupply
+            vault {
+              id
+              address
+              symbol
+            }
           }
         }
       }

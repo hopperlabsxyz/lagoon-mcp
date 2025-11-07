@@ -57,16 +57,17 @@ function createMockTransaction(overrides: Partial<any> = {}): any {
       id: 42161,
       name: 'Arbitrum One',
     },
-    vault: {
-      id: 'vault-123',
-      address: '0x1234567890123456789012345678901234567890',
-    },
     data: {
       sender: '0xuser1234567890123456789012345678901234567',
       owner: '0xuser1234567890123456789012345678901234567',
       assets: '1000000000000000000',
       shares: '1000000000000000000',
       assetsUsd: 1000,
+      vault: {
+        id: 'vault-123',
+        address: '0x1234567890123456789012345678901234567890',
+        symbol: 'TEST',
+      },
     },
     ...overrides,
   };
