@@ -124,8 +124,9 @@ export function createExecuteSimulateVault(
               shares
             }
           }
-          chainId
-          tvl
+          chain {
+            id
+          }
         }
       }
     `;
