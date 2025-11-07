@@ -32,6 +32,7 @@ export type VariablesMapper<TInput, TVariables = TInput> = (input: TInput) => TV
 export interface ValidationResult {
   valid: boolean;
   message?: string;
+  isError?: boolean; // If true, treat as error; if false/undefined, treat as non-error (e.g., no data found)
 }
 
 export type ResultValidator<TOutput> = (data: TOutput) => ValidationResult;
@@ -135,7 +136,8 @@ export function executeToolWithCache<TInput, TOutput, TVariables = TInput, TTran
                 text: validation.message || 'Invalid data returned from query',
               },
             ],
-            isError: false, // Not an error, just no valid data
+            // Use validator's isError flag, default to false for backward compatibility (no data = not an error)
+            isError: validation.isError ?? false,
           };
         }
       }

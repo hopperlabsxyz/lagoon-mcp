@@ -27,10 +27,10 @@ Lagoon MCP enables natural language queries about DeFi vaults, user portfolios, 
 
 ```bash
 # Install globally
-npm install -g @yourorg/lagoon-mcp
+npm install -g @schwepps/lagoon-mcp
 
 # Or install locally
-npm install @yourorg/lagoon-mcp
+npm install @schwepps/lagoon-mcp
 ```
 
 ### Configuration
@@ -159,7 +159,7 @@ For development setup, testing, and contributing guidelines, see [DEVELOPMENT.md
 
 ```bash
 # Clone and setup
-git clone https://github.com/yourorg/lagoon-mcp.git
+git clone https://github.com/schwepps/lagoon-mcp.git
 cd lagoon-mcp
 npm install
 
@@ -201,32 +201,113 @@ lagoon-mcp/
 │             │         │    Server    │           │     API     │
 └─────────────┘         └──────────────┘           └─────────────┘
                               │
-                              │ Cache
+                              │ Cache + DI
                               ▼
                         ┌──────────────┐
-                        │  node-cache  │
+                        │  Container   │
                         └──────────────┘
+                        │   │        │
+                   Cache  Client  Services
 ```
+
+### Architecture Patterns
+
+**Hybrid Service Layer**:
+- **Direct GraphQL** for simple operations (12/13 tools)
+- **Service Layer** for complex multi-step operations (e.g., RiskService)
+- See [ADR-001](./docs/architecture/ADR-001-service-layer.md) for decision rationale
+
+**Dependency Injection**:
+- Centralized `ServiceContainer` with GraphQL client, cache, config
+- Consistent tool creation via factory functions
+- Easy testing with container mocking
+
+**Type Safety**:
+- GraphQL schema → TypeScript types via `graphql-codegen`
+- Runtime validation with Zod schemas
+- Strict TypeScript compilation (`noImplicitAny`, `strictNullChecks`)
 
 ### Key Components
 
 - **MCP Server**: Modern McpServer API with automatic capability management
 - **GraphQL Client**: Communicates with Lagoon backend (`graphql-request`)
 - **Type Generation**: Auto-generates TypeScript types (`graphql-codegen`)
-- **Caching Layer**: In-memory cache with TTL (`node-cache`)
+- **Service Container**: Dependency injection with GraphQL client, cache, and config
+- **Caching Layer**: In-memory cache with tag-based invalidation (`node-cache`)
 - **Validation**: Runtime input validation (`zod`)
+- **Services**: Complex operation encapsulation (e.g., `RiskService`)
+
+### Tool Architecture
+
+```typescript
+// Simple tools use direct GraphQL
+export function createExecuteGetVaultData(container: ServiceContainer) {
+  return executeToolWithCache({
+    container,
+    query: VAULT_QUERY,
+    cacheKey: (input) => `vault:${input.address}:${input.chainId}`,
+    cacheTTL: 900,  // 15 minutes
+    // ...
+  });
+}
+
+// Complex tools use services
+export function createExecuteAnalyzeRisk(container: ServiceContainer) {
+  const riskService = new RiskService(container);
+
+  return async (input) => {
+    const risk = await riskService.analyze(input.address, input.chainId);
+    return formatRiskOutput(risk);
+  };
+}
+```
 
 ### Caching Strategy
 
-| Data Type | TTL | Rationale |
-|-----------|-----|-----------|
-| Vault data | 15 min | Relatively static |
-| User portfolios | 5 min | More dynamic |
-| Search results | 10 min | Balance between freshness and performance |
-| Performance data | 30 min | Historical, less time-sensitive |
-| Risk analysis | 15 min | Multi-factor metrics with moderate volatility |
-| Yield predictions | 60 min | ML-based forecasts valid for longer periods |
-| Schema | 24 hours | Rarely changes |
+**Tiered TTL System** optimized for data volatility:
+
+| Data Type | TTL | Rationale | Cache Tag |
+|-----------|-----|-----------|-----------|
+| Transactions | 5 min | Frequently changing | `TRANSACTION` |
+| User portfolios | 5 min | Dynamic user holdings | `PORTFOLIO` |
+| Search results | 10 min | Balance freshness/performance | `VAULT` |
+| Vault data | 15 min | Relatively static | `VAULT` |
+| Risk analysis | 15 min | Multi-factor metrics | `RISK` |
+| Performance data | 30 min | Historical, less volatile | `PERFORMANCE` |
+| Yield predictions | 60 min | ML forecasts valid longer | `PREDICTION` |
+| Schema | 24 hours | Rarely changes | `SCHEMA` |
+
+**Cache Invalidation**:
+- Tag-based invalidation for related data
+- Automatic expiration via TTL
+- Manual invalidation on data mutations
+
+### Testing Strategy
+
+**Multi-Layer Testing**:
+- **Unit Tests**: Individual tool logic with mocked GraphQL
+- **Integration Tests**: GraphQL client + real backend (optional)
+- **SDK Tests**: Computation library (APR, simulation, math)
+- **Coverage**: 80%+ enforced via vitest thresholds
+
+**Performance Testing**:
+- Cache hit rate monitoring (target: 60-70%)
+- Response time tracking (~300-800 tokens per query)
+- Concurrent request handling
+
+### Quality Assurance
+
+- **TypeScript**: Strict mode with comprehensive type checking
+- **ESLint**: Code quality and consistency rules
+- **Prettier**: Automated code formatting
+- **Vitest**: Fast unit and integration testing
+- **Husky**: Pre-commit hooks with optimized test execution
+- **Commitlint**: Conventional commit message enforcement
+
+### Architecture Decision Records
+
+All major architectural decisions are documented in `docs/architecture/`:
+- [ADR-001: Service Layer Pattern](./docs/architecture/ADR-001-service-layer.md) - Hybrid service layer rationale
 
 ## Troubleshooting
 
@@ -274,7 +355,7 @@ A: No rate limiting in MCP. Backend GraphQL API is public with no auth.
 A: Yes! Fork the repo, add your tool in `src/tools/`, and register in `src/tools/index.ts`.
 
 **Q: How do I update to a new version?**
-A: Run `npm update -g @yourorg/lagoon-mcp` and restart Claude Desktop.
+A: Run `npm update -g @schwepps/lagoon-mcp` and restart Claude Desktop.
 
 **Q: Does this work with all chains?**
 A: Yes! Supports all chains available in the Lagoon backend (12+ networks).
@@ -285,15 +366,15 @@ MIT License - see [LICENSE](./LICENSE) for details
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourorg/lagoon-mcp/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourorg/lagoon-mcp/discussions)
+- **Issues**: [GitHub Issues](https://github.com/schwepps/lagoon-mcp/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/schwepps/lagoon-mcp/discussions)
 - **Documentation**: [Tool Docs](./docs/tools/) | [Development Guide](./docs/DEVELOPMENT.md)
 
 ## Acknowledgments
 
 - Built with [Model Context Protocol](https://modelcontextprotocol.io)
 - Powered by [Anthropic Claude](https://claude.ai)
-- GraphQL backend by [Lagoon Team](https://github.com/yourorg/backend)
+- GraphQL backend by [Lagoon Team](https://github.com/schwepps/backend)
 
 ---
 

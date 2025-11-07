@@ -5,10 +5,6 @@
  * Resources provide static content like documentation and schemas.
  */
 
-import { ReadResourceRequest, ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
-import { getGraphQLSchema } from './schema.js';
-import { getDefiGlossary } from './glossary.js';
-
 export interface Resource {
   uri: string;
   name: string;
@@ -40,63 +36,3 @@ export const resources: Resource[] = [
     mimeType: 'text/markdown',
   },
 ];
-
-/**
- * Handle resource read requests
- */
-export async function handleResourceRead(
-  request: ReadResourceRequest
-): Promise<ReadResourceResult> {
-  const uri = request.params.uri;
-
-  try {
-    switch (uri) {
-      case 'lagoon://graphql-schema': {
-        const schema = await getGraphQLSchema();
-        return {
-          contents: [
-            {
-              uri,
-              mimeType: 'text/plain',
-              text: schema,
-            },
-          ],
-        };
-      }
-
-      case 'lagoon://defi-glossary': {
-        const glossary = getDefiGlossary();
-        return {
-          contents: [
-            {
-              uri,
-              mimeType: 'text/markdown',
-              text: glossary,
-            },
-          ],
-        };
-      }
-
-      default:
-        return {
-          contents: [
-            {
-              uri,
-              mimeType: 'text/plain',
-              text: `Resource "${uri}" not found. Available resources:\n${resources.map((r) => `- ${r.uri}: ${r.name}`).join('\n')}`,
-            },
-          ],
-        };
-    }
-  } catch (error) {
-    return {
-      contents: [
-        {
-          uri,
-          mimeType: 'text/plain',
-          text: `Error reading resource "${uri}": ${error instanceof Error ? error.message : String(error)}`,
-        },
-      ],
-    };
-  }
-}

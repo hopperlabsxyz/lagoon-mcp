@@ -179,7 +179,10 @@ function createTransformTransactionsData(
 export function createExecuteGetTransactions(
   container: ServiceContainer
 ): (input: GetTransactionsInput) => Promise<CallToolResult> {
-  return (input: GetTransactionsInput) => {
+  // Map to track in-flight requests at tool level (shared across all calls)
+  const inFlightRequests = new Map<string, Promise<CallToolResult>>();
+
+  return async (input: GetTransactionsInput) => {
     // Extract parameters with defaults
     const first = input.pagination?.first ?? 100;
     const skip = input.pagination?.skip ?? 0;
@@ -190,44 +193,7 @@ export function createExecuteGetTransactions(
     const where = buildWhereFilter(input);
     const filterHash = hashFilters(where);
 
-    const executor = executeToolWithCache<
-      GetTransactionsInput,
-      TransactionsResponse,
-      TransactionsVariables,
-      TransactionsOutput
-    >({
-      container,
-      cacheKey: (input) =>
-        cacheKeys.transactions({
-          vaultAddress: input.vaultAddress.toLowerCase(),
-          chainId: input.chainId,
-          filterHash,
-          first,
-          skip,
-          orderBy,
-          orderDirection,
-        }),
-      cacheTTL: cacheTTL.transactions,
-      query: TRANSACTIONS_QUERY,
-      variables: () => ({
-        first,
-        skip,
-        where,
-        orderBy,
-        orderDirection,
-      }),
-      validateResult: (data) => ({
-        valid: !!(data.transactions && data.transactions.items),
-        message:
-          data.transactions && data.transactions.items
-            ? undefined
-            : `No transaction data found for vault ${input.vaultAddress}`,
-      }),
-      transformResult: createTransformTransactionsData(input, orderBy, orderDirection),
-      toolName: 'get_transactions',
-    });
-
-    // Register cache tags for invalidation
+    // Generate cache key for deduplication
     const cacheKey = cacheKeys.transactions({
       vaultAddress: input.vaultAddress.toLowerCase(),
       chainId: input.chainId,
@@ -237,8 +203,80 @@ export function createExecuteGetTransactions(
       orderBy,
       orderDirection,
     });
-    container.cacheInvalidator.register(cacheKey, [CacheTag.TRANSACTION]);
 
-    return executor(input);
+    // Check for in-flight request with same key (request deduplication)
+    const inFlight = inFlightRequests.get(cacheKey);
+    if (inFlight) {
+      return await inFlight;
+    }
+
+    // Create new request promise
+    const requestPromise = (async (): Promise<CallToolResult> => {
+      try {
+        const executor = executeToolWithCache<
+          GetTransactionsInput,
+          TransactionsResponse,
+          TransactionsVariables,
+          TransactionsOutput
+        >({
+          container,
+          cacheKey: (input) =>
+            cacheKeys.transactions({
+              vaultAddress: input.vaultAddress.toLowerCase(),
+              chainId: input.chainId,
+              filterHash,
+              first,
+              skip,
+              orderBy,
+              orderDirection,
+            }),
+          cacheTTL: cacheTTL.transactions,
+          query: TRANSACTIONS_QUERY,
+          variables: () => ({
+            first,
+            skip,
+            where,
+            orderBy,
+            orderDirection,
+          }),
+          validateResult: (data) => {
+            // Missing transactions object entirely = malformed response (error)
+            if (!data.transactions) {
+              return {
+                valid: false,
+                message: `No transaction data found for vault ${input.vaultAddress}`,
+                isError: true, // Malformed response structure
+              };
+            }
+            // Null/undefined items array = malformed response (error)
+            if (data.transactions.items === null || data.transactions.items === undefined) {
+              return {
+                valid: false,
+                message: `No transaction data found for vault ${input.vaultAddress}`,
+                isError: true, // Malformed response structure
+              };
+            }
+            // Empty array OR has items = valid response (transform will handle empty arrays)
+            return { valid: true };
+          },
+          transformResult: createTransformTransactionsData(input, orderBy, orderDirection),
+          toolName: 'get_transactions',
+        });
+
+        // Register cache tags for invalidation
+        container.cacheInvalidator.register(cacheKey, [CacheTag.TRANSACTION]);
+
+        return await executor(input);
+      } finally {
+        // Clean up in-flight request regardless of success/failure
+        inFlightRequests.delete(cacheKey);
+      }
+    })();
+
+    // Store in-flight request
+    inFlightRequests.set(cacheKey, requestPromise);
+
+    // Return the promise
+    return await requestPromise;
   };
 }

@@ -1,8 +1,15 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-# Run tests before commit
-npm run test -- --run || exit 1
+# Run TypeScript type checking
+echo "Running TypeScript type check..."
+npx tsc --noEmit || exit 1
+
+# Run quick tests (only changed files) before commit for faster commits
+# Full test suite runs in CI
+echo "Running tests on changed files..."
+npm run test:quick || exit 1
 
 # Run lint-staged for formatting and linting
+echo "Running ESLint and Prettier..."
 npx lint-staged

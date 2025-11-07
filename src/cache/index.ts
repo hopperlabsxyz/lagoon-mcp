@@ -46,7 +46,7 @@ export const cacheTTL = {
   userPortfolio: 300, // 5 minutes - positions change with user actions
   searchResults: 600, // 10 minutes - discovery queries, balanced freshness
   performance: 1800, // 30 minutes - historical metrics, computation-heavy
-  transactions: 900, // 15 minutes - append-only history, low volatility
+  transactions: 300, // 5 minutes - transaction history updates
   schema: 86400, // 24 hours - schema changes require deployment
   comparison: 900, // 15 minutes - derived metrics from vault data
   priceHistory: 1800, // 30 minutes - historical OHLCV data, expensive query

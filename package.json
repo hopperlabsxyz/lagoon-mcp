@@ -19,7 +19,8 @@
     "test": "vitest",
     "test:unit": "vitest run tests/tools/ tests/graphql/ src/sdk/__tests__/",
     "test:integration": "./scripts/test-integration.sh",
-    "test:coverage": "vitest --coverage",
+    "test:coverage": "vitest run --coverage",
+    "test:quick": "vitest run --changed",
     "codegen": "graphql-codegen",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
@@ -39,7 +40,7 @@
     "crypto",
     "lagoon"
   ],
-  "author": "Your Org",
+  "author": "Schwepps",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -58,7 +59,6 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "graphql": "^16.8.1",
     "graphql-request": "^6.1.0",
-    "graphql-tag": "^2.12.6",
     "node-cache": "^5.1.2",
     "zod": "^3.22.4"
   },
