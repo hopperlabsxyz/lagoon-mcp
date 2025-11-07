@@ -337,7 +337,7 @@ Document available insurance options for each platform
 
 ### Analysis Workflow
 1. Query protocol metrics: Use query_graphql to fetch Lagoon protocol statistics
-2. Aggregate vault data: Use search_vaults to get vault counts, TVL totals, APY averages
+2. Aggregate vault data: Use search_vaults to get vault counts, TVL totals, APR averages
 3. Historical trends: Use get_vault_performance across multiple vaults for growth analysis
 4. Benchmark vaults: Use compare_vaults to compare similar vaults across platforms
 5. Risk profiles: Use analyze_risk to aggregate security indicators

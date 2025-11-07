@@ -9,9 +9,9 @@
  * Yield prediction result
  */
 export interface YieldPrediction {
-  currentAPY: number;
-  predictedAPY: number;
-  feeAdjustedAPY?: number; // Predicted APY after fees (net return to investor)
+  currentAPR: number;
+  predictedAPR: number;
+  feeAdjustedAPR?: number; // Predicted APR after fees (net return to investor)
   confidence: number; // 0-1 scale
   trend: 'increasing' | 'decreasing' | 'stable';
   projectedReturns: {
@@ -40,7 +40,7 @@ export interface YieldPrediction {
  */
 export interface YieldDataPoint {
   timestamp: number;
-  apy: number;
+  apr: number;
   tvl: number;
 }
 
@@ -89,13 +89,13 @@ function calculateLinearRegression(data: YieldDataPoint[]): {
   const n = data.length;
 
   if (n < 2) {
-    return { slope: 0, intercept: data[0]?.apy || 0, r2: 0 };
+    return { slope: 0, intercept: data[0]?.apr || 0, r2: 0 };
   }
 
   // Normalize timestamps to prevent overflow
   const minTimestamp = Math.min(...data.map((d) => d.timestamp));
   const x = data.map((d) => (d.timestamp - minTimestamp) / (24 * 60 * 60)); // Convert to days
-  const y = data.map((d) => d.apy);
+  const y = data.map((d) => d.apr);
 
   // Calculate means
   const xMean = x.reduce((sum, val) => sum + val, 0) / n;
@@ -165,8 +165,8 @@ export function predictYield(
 ): YieldPrediction {
   if (historicalData.length === 0) {
     return {
-      currentAPY: 0,
-      predictedAPY: 0,
+      currentAPR: 0,
+      predictedAPR: 0,
       confidence: 0,
       trend: 'stable',
       projectedReturns: [],
@@ -176,8 +176,8 @@ export function predictYield(
 
   // Sort by timestamp
   const sortedData = [...historicalData].sort((a, b) => a.timestamp - b.timestamp);
-  const apyValues = sortedData.map((d) => d.apy);
-  const currentAPY = apyValues[apyValues.length - 1];
+  const aprValues = sortedData.map((d) => d.apr);
+  const currentAPR = aprValues[aprValues.length - 1];
 
   // Calculate trend using linear regression
   const regression = calculateLinearRegression(sortedData);
@@ -189,12 +189,12 @@ export function predictYield(
         : 'decreasing';
 
   // Calculate EMA for short-term prediction
-  const emaShort = calculateEMA(apyValues, Math.min(7, apyValues.length)); // 7-day EMA
-  const emaLong = calculateEMA(apyValues, Math.min(30, apyValues.length)); // 30-day EMA
+  const emaShort = calculateEMA(aprValues, Math.min(7, aprValues.length)); // 7-day EMA
+  const emaLong = calculateEMA(aprValues, Math.min(30, aprValues.length)); // 30-day EMA
 
   // Weighted prediction: 40% regression, 40% short EMA, 20% long EMA
   const regressionPrediction = regression.slope * sortedData.length + regression.intercept;
-  const predictedAPY = regressionPrediction * 0.4 + emaShort * 0.4 + emaLong * 0.2;
+  const predictedAPR = regressionPrediction * 0.4 + emaShort * 0.4 + emaLong * 0.2;
 
   // Calculate confidence based on R² and data quantity
   const dataQualityScore = Math.min(1, sortedData.length / 30); // More data = higher confidence
@@ -202,7 +202,7 @@ export function predictYield(
   const confidence = (dataQualityScore * 0.4 + trendStrengthScore * 0.6) * 0.9; // Max 90%
 
   // Calculate volatility for confidence intervals
-  const volatility = calculateVolatility(apyValues);
+  const volatility = calculateVolatility(aprValues);
 
   // Project returns for different timeframes
   const projectedReturns = [
@@ -212,7 +212,7 @@ export function predictYield(
     { timeframe: '1y' as const, days: 365 },
   ].map(({ timeframe, days }) => {
     // Annualized to period conversion
-    const expectedReturn = (predictedAPY / 100) * (days / 365) * 100;
+    const expectedReturn = (predictedAPR / 100) * (days / 365) * 100;
 
     // Confidence intervals (±1 standard deviation scaled by time)
     const timeScaledVolatility = volatility * Math.sqrt(days / 365);
@@ -228,7 +228,7 @@ export function predictYield(
   });
 
   // Calculate fee-adjusted predictions if fee parameters provided
-  let feeAdjustedAPY: number | undefined;
+  let feeAdjustedAPR: number | undefined;
   let feeAdjustedReturns:
     | {
         timeframe: '7d' | '30d' | '90d' | '1y';
@@ -254,7 +254,7 @@ export function predictYield(
     const totalAnnualFeeDrag = feeParams.managementFee + performanceFeeDrag;
 
     // Calculate fee-adjusted APR (gross APR - fees)
-    feeAdjustedAPY = Math.max(0, predictedAPY - totalAnnualFeeDrag);
+    feeAdjustedAPR = Math.max(0, predictedAPR - totalAnnualFeeDrag);
 
     // Calculate fee-adjusted projected returns
     feeAdjustedReturns = projectedReturns.map((p) => {
@@ -288,21 +288,21 @@ export function predictYield(
 
   // Generate insights
   const insights = generateInsights({
-    currentAPY,
-    predictedAPY,
+    currentAPR,
+    predictedAPR,
     trend,
     confidence,
     volatility,
     dataPoints: sortedData.length,
     regression,
-    feeAdjustedAPY,
+    feeAdjustedAPR,
     feeImpact,
   });
 
   return {
-    currentAPY,
-    predictedAPY: Math.max(0, predictedAPY),
-    feeAdjustedAPY,
+    currentAPR,
+    predictedAPR: Math.max(0, predictedAPR),
+    feeAdjustedAPR,
     confidence,
     trend,
     projectedReturns,
@@ -316,14 +316,14 @@ export function predictYield(
  * Generate human-readable insights from prediction data
  */
 function generateInsights(params: {
-  currentAPY: number;
-  predictedAPY: number;
+  currentAPR: number;
+  predictedAPR: number;
   trend: 'increasing' | 'decreasing' | 'stable';
   confidence: number;
   volatility: number;
   dataPoints: number;
   regression: { slope: number; r2: number };
-  feeAdjustedAPY?: number;
+  feeAdjustedAPR?: number;
   feeImpact?: {
     managementFee: number;
     performanceFee: number;
@@ -343,16 +343,16 @@ function generateInsights(params: {
   }
 
   // Trend insight
-  const apyChange = params.predictedAPY - params.currentAPY;
-  const changePercent = ((apyChange / params.currentAPY) * 100).toFixed(1);
+  const aprChange = params.predictedAPR - params.currentAPR;
+  const changePercent = ((aprChange / params.currentAPR) * 100).toFixed(1);
 
   if (params.trend === 'increasing') {
     insights.push(
-      `Upward trend detected: APR expected to increase by ${changePercent}% (${apyChange.toFixed(2)}%)`
+      `Upward trend detected: APR expected to increase by ${changePercent}% (${aprChange.toFixed(2)}%)`
     );
   } else if (params.trend === 'decreasing') {
     insights.push(
-      `Downward trend detected: APR expected to decrease by ${Math.abs(parseFloat(changePercent))}% (${Math.abs(apyChange).toFixed(2)}%)`
+      `Downward trend detected: APR expected to decrease by ${Math.abs(parseFloat(changePercent))}% (${Math.abs(aprChange).toFixed(2)}%)`
     );
   } else {
     insights.push('Stable performance: APR expected to remain relatively constant');
@@ -384,22 +384,22 @@ function generateInsights(params: {
   }
 
   // Fee impact insights
-  if (params.feeAdjustedAPY !== undefined && params.feeImpact) {
-    const grossAPY = params.predictedAPY;
-    const netAPY = params.feeAdjustedAPY;
+  if (params.feeAdjustedAPR !== undefined && params.feeImpact) {
+    const grossAPR = params.predictedAPR;
+    const netAPR = params.feeAdjustedAPR;
     const feeDrag = params.feeImpact.totalAnnualFeeDrag;
 
     if (feeDrag > 3) {
       insights.push(
-        `High fees (${feeDrag.toFixed(2)}%) significantly reduce net returns from ${grossAPY.toFixed(2)}% to ${netAPY.toFixed(2)}%`
+        `High fees (${feeDrag.toFixed(2)}%) significantly reduce net returns from ${grossAPR.toFixed(2)}% to ${netAPR.toFixed(2)}%`
       );
     } else if (feeDrag > 1.5) {
       insights.push(
-        `Moderate fees (${feeDrag.toFixed(2)}%) impact net returns: ${grossAPY.toFixed(2)}% gross → ${netAPY.toFixed(2)}% net`
+        `Moderate fees (${feeDrag.toFixed(2)}%) impact net returns: ${grossAPR.toFixed(2)}% gross → ${netAPR.toFixed(2)}% net`
       );
     } else {
       insights.push(
-        `Low fees (${feeDrag.toFixed(2)}%) - minimal impact on net returns (${netAPY.toFixed(2)}%)`
+        `Low fees (${feeDrag.toFixed(2)}%) - minimal impact on net returns (${netAPR.toFixed(2)}%)`
       );
     }
 
@@ -414,19 +414,19 @@ function generateInsights(params: {
 }
 
 /**
- * Calculate compound APY from multiple yield sources
+ * Calculate compound APR from multiple yield sources
  *
- * @param yields - Array of APY values from different sources
- * @returns Compound APY
+ * @param yields - Array of APR values from different sources
+ * @returns Compound APR
  */
-export function calculateCompoundAPY(yields: number[]): number {
+export function calculateCompoundAPR(yields: number[]): number {
   if (yields.length === 0) {
     return 0;
   }
 
-  // Convert APY to multipliers, compound them, convert back to APY
-  const compoundMultiplier = yields.reduce((product, apy) => {
-    return product * (1 + apy / 100);
+  // Convert APR to multipliers, compound them, convert back to APR
+  const compoundMultiplier = yields.reduce((product, apr) => {
+    return product * (1 + apr / 100);
   }, 1);
 
   return (compoundMultiplier - 1) * 100;

@@ -190,7 +190,7 @@ export const PORTFOLIO_OPTIMIZATION_QUERY = `
       }
     }
 
-    # Get APY data for return estimation
+    # Get APR data for return estimation
     performanceData: transactions(
       where: {
         vault_in: $vaultAddresses,

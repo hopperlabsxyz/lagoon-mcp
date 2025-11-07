@@ -80,7 +80,7 @@ Risk Distribution:
 | **Maximum Sharpe** | Most users | Best risk-adjusted returns | Medium |
 | **Risk Parity** | Risk-conscious | Equal risk contribution | Low |
 | **Min Variance** | Conservative | Minimize volatility | Low |
-| **Max Return** | Aggressive | Highest APY | High |
+| **Max Return** | Aggressive | Highest APR | High |
 | **Max Diversification** | Balanced | Optimal spread | Medium |
 
 **Formulas**:

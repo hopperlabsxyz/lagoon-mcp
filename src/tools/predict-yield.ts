@@ -100,15 +100,15 @@ function formatYieldPrediction(
   const confidenceEmoji =
     prediction.confidence > 0.7 ? '🟢' : prediction.confidence > 0.4 ? '🟡' : '🔴';
 
-  const hasFeeData = prediction.feeAdjustedAPY !== undefined && prediction.feeImpact;
+  const hasFeeData = prediction.feeAdjustedAPR !== undefined && prediction.feeImpact;
 
   let output = `
 ## Yield Prediction: ${vaultName}
 
 ### Current Performance
-- **Current APR**: ${prediction.currentAPY.toFixed(2)}%
-- **Predicted APR**: ${prediction.predictedAPY.toFixed(2)}%${hasFeeData ? ` (Gross)` : ''}
-${hasFeeData ? `- **Predicted Net APR**: ${prediction.feeAdjustedAPY!.toFixed(2)}% (After Fees)` : ''}
+- **Current APR**: ${prediction.currentAPR.toFixed(2)}%
+- **Predicted APR**: ${prediction.predictedAPR.toFixed(2)}%${hasFeeData ? ` (Gross)` : ''}
+${hasFeeData ? `- **Predicted Net APR**: ${prediction.feeAdjustedAPR!.toFixed(2)}% (After Fees)` : ''}
 - **Trend**: ${trendEmoji} ${prediction.trend.charAt(0).toUpperCase() + prediction.trend.slice(1)}
 - **Confidence**: ${confidenceEmoji} ${(prediction.confidence * 100).toFixed(0)}%
 
@@ -122,7 +122,7 @@ ${hasFeeData ? `- **Predicted Net APR**: ${prediction.feeAdjustedAPY!.toFixed(2)
 - **Management Fee**: ${prediction.feeImpact!.managementFee.toFixed(2)}% annually
 - **Performance Fee**: ${prediction.feeImpact!.performanceFee.toFixed(2)}%${prediction.feeImpact!.performanceFeeActive ? ' (Currently Active - Above High Water Mark)' : ' (Inactive - Below High Water Mark)'}
 - **Total Annual Fee Drag**: ${prediction.feeImpact!.totalAnnualFeeDrag.toFixed(2)}%
-- **Net Impact**: Reduces predicted returns from ${prediction.predictedAPY.toFixed(2)}% to ${prediction.feeAdjustedAPY!.toFixed(2)}%
+- **Net Impact**: Reduces predicted returns from ${prediction.predictedAPR.toFixed(2)}% to ${prediction.feeAdjustedAPR!.toFixed(2)}%
 
 ---
 `;
@@ -246,7 +246,7 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
 
                 historicalData.push({
                   timestamp,
-                  apy: apr, // APR as percentage
+                  apr: apr, // APR as percentage
                   tvl: Number(item.data.totalAssetsAtEnd),
                 });
               }

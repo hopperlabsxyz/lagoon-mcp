@@ -503,7 +503,7 @@ describe('compare_vaults Tool', () => {
         // Low TVL, high APR
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
-          name: 'High APY',
+          name: 'High APR',
           tvl: 1000000,
           weeklyApr: 0.2,
         }),

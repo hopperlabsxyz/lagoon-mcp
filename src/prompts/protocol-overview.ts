@@ -282,7 +282,7 @@ health_score = (
 
 ### Analysis Workflow
 1. Query protocol data: Use query_graphql to fetch comprehensive vault and curator statistics
-2. Aggregate metrics: Use search_vaults to calculate total TVL, vault counts, avg APY
+2. Aggregate metrics: Use search_vaults to calculate total TVL, vault counts, avg APR
 3. Historical trends: Use get_vault_performance across multiple vaults for growth analysis
 4. Top performers: Use compare_vaults to identify and rank best performing vaults
 5. Risk distribution: Use analyze_risk on vault sample to assess security posture

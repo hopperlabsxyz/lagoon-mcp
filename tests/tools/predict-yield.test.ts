@@ -82,7 +82,7 @@ describe('predict_yield Tool', () => {
    * Helper to create mock performance history
    */
   function createMockPerformanceHistory(
-    data: Array<{ timestamp: number; apy: number; tvl: number }>
+    data: Array<{ timestamp: number; apr: number; tvl: number }>
   ): unknown {
     const baseAssets = 1000000000000n; // 1M in 6 decimals
     const baseSupply = 1000000000000n;
@@ -95,13 +95,13 @@ describe('predict_yield Tool', () => {
 
         if (i > 0) {
           // Calculate average APR from start to current point
-          const avgApy = data.slice(0, i + 1).reduce((sum, item) => sum + item.apy, 0) / (i + 1);
+          const avgApr = data.slice(0, i + 1).reduce((sum, item) => sum + item.apr, 0) / (i + 1);
 
           // Calculate days elapsed from inception
           const daysElapsed = (d.timestamp - data[0].timestamp) / (24 * 60 * 60);
 
           // Apply cumulative growth: (1 + APR/100) ^ (days/365)
-          cumulativeGrowth = Math.pow(1 + avgApy / 100, daysElapsed / 365);
+          cumulativeGrowth = Math.pow(1 + avgApr / 100, daysElapsed / 365);
         }
 
         const totalAssets = String(BigInt(Math.floor(Number(baseAssets) * cumulativeGrowth)));
@@ -133,7 +133,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 30; i++) {
         performanceData.push({
           timestamp: now - (29 - i) * dayInSeconds,
-          apy: 5 + (i / 29) * 5, // 5% to 10%
+          apr: 5 + (i / 29) * 5, // 5% to 10%
           tvl: 1000000,
         });
       }
@@ -150,6 +150,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '30d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -185,7 +186,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 30; i++) {
         performanceData.push({
           timestamp: now - (29 - i) * dayInSeconds,
-          apy: 10 - (i / 29) * 5, // 10% to 5%
+          apr: 10 - (i / 29) * 5, // 10% to 5%
           tvl: 1000000,
         });
       }
@@ -202,6 +203,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '30d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -227,7 +229,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 30; i++) {
         performanceData.push({
           timestamp: now - (29 - i) * dayInSeconds,
-          apy: 7 + (Math.random() - 0.5) * 0.2, // 7% ± 0.1%
+          apr: 7 + (Math.random() - 0.5) * 0.2, // 7% ± 0.1%
           tvl: 1000000,
         });
       }
@@ -244,6 +246,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '30d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -283,6 +286,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '7d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -306,6 +310,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '7d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -318,9 +323,9 @@ describe('predict_yield Tool', () => {
       const dayInSeconds = 24 * 60 * 60;
 
       const performanceData = [
-        { timestamp: now - 2 * dayInSeconds, apy: 5, tvl: 1000000 },
-        { timestamp: now - 1 * dayInSeconds, apy: 5.5, tvl: 1000000 },
-        { timestamp: now, apy: 6, tvl: 1000000 },
+        { timestamp: now - 2 * dayInSeconds, apr: 5, tvl: 1000000 },
+        { timestamp: now - 1 * dayInSeconds, apr: 5.5, tvl: 1000000 },
+        { timestamp: now, apr: 6, tvl: 1000000 },
       ];
 
       const mockData = {
@@ -335,6 +340,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '7d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -359,7 +365,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 90; i++) {
         performanceData.push({
           timestamp: now - (89 - i) * dayInSeconds,
-          apy: 5 + (i / 89) * 5, // Clear 5% -> 10% trend
+          apr: 5 + (i / 89) * 5, // Clear 5% -> 10% trend
           tvl: 1000000,
         });
       }
@@ -376,6 +382,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '90d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -391,9 +398,9 @@ describe('predict_yield Tool', () => {
 
       // Create extremely sparse data (only 3 points over 7 days) with high volatility
       const performanceData = [
-        { timestamp: now - 6 * dayInSeconds, apy: 15, tvl: 1000000 }, // Very high
-        { timestamp: now - 3 * dayInSeconds, apy: 2, tvl: 1000000 }, // Very low
-        { timestamp: now, apy: 10, tvl: 1000000 }, // Mid-high
+        { timestamp: now - 6 * dayInSeconds, apr: 15, tvl: 1000000 }, // Very high
+        { timestamp: now - 3 * dayInSeconds, apr: 2, tvl: 1000000 }, // Very low
+        { timestamp: now, apr: 10, tvl: 1000000 }, // Mid-high
       ];
 
       const mockData = {
@@ -408,6 +415,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '7d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -437,6 +445,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '7d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(true);
@@ -456,6 +465,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '7d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(true);
@@ -477,7 +487,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 30; i++) {
         performanceData.push({
           timestamp: now - (29 - i) * dayInSeconds,
-          apy: 7,
+          apr: 7,
           tvl: 1000000,
         });
       }
@@ -494,6 +504,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '30d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -517,7 +528,7 @@ describe('predict_yield Tool', () => {
     it('should include methodology explanation', async () => {
       const now = Math.floor(Date.now() / 1000);
 
-      const performanceData = [{ timestamp: now, apy: 7, tvl: 1000000 }];
+      const performanceData = [{ timestamp: now, apr: 7, tvl: 1000000 }];
 
       const mockData = {
         vault: createMockVault(),
@@ -531,6 +542,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '7d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -558,7 +570,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 30; i++) {
         performanceData.push({
           timestamp: now - (29 - i) * dayInSeconds,
-          apy: 10,
+          apr: 10,
           tvl: 1000000,
         });
       }
@@ -582,6 +594,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '30d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -613,7 +626,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 30; i++) {
         performanceData.push({
           timestamp: now - (29 - i) * dayInSeconds,
-          apy: 8,
+          apr: 8,
           tvl: 1000000,
         });
       }
@@ -638,6 +651,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '30d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -658,7 +672,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 30; i++) {
         performanceData.push({
           timestamp: now - (29 - i) * dayInSeconds,
-          apy: 12,
+          apr: 12,
           tvl: 1000000,
         });
       }
@@ -681,6 +695,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '30d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -701,7 +716,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 30; i++) {
         performanceData.push({
           timestamp: now - (29 - i) * dayInSeconds,
-          apy: 10,
+          apr: 10,
           tvl: 1000000,
         });
       }
@@ -725,6 +740,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '30d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);
@@ -755,7 +771,7 @@ describe('predict_yield Tool', () => {
       for (let i = 0; i < 30; i++) {
         performanceData.push({
           timestamp: now - (29 - i) * dayInSeconds,
-          apy: 10,
+          apr: 10,
           tvl: 1000000,
         });
       }
@@ -772,6 +788,7 @@ describe('predict_yield Tool', () => {
         vaultAddress: '0x1234567890123456789012345678901234567890',
         chainId: 1,
         timeRange: '30d',
+        responseFormat: 'quick',
       });
 
       expect(result.isError).toBe(false);

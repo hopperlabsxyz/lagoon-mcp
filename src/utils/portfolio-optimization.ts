@@ -207,7 +207,7 @@ export function calculatePortfolioMetrics(
   sharpeRatio: number;
   diversificationScore: number;
 } {
-  // Calculate expected return (weighted average of vault APYs)
+  // Calculate expected return (weighted average of vault APRs)
   const expectedReturn = vaults.reduce((sum, vault, index) => {
     const weight = positions[index].targetAllocation / 100;
     return sum + vault.expectedApr * weight;

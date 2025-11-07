@@ -9,7 +9,7 @@
  * - GraphQL error handling
  * - Invalid input validation (addresses, chain IDs, data types, formats)
  * - OHLCV aggregation for price history
- * - APY fallback logic (weekly → monthly → 0)
+ * - APR fallback logic (weekly → monthly → 0)
  *
  * Phase 4.2 implementation
  */
