@@ -74,13 +74,39 @@ describe('optimize_portfolio', () => {
       chain: { id: 42161, name: 'Arbitrum' },
       symbol: 'lgVaultA',
       assetSymbol: 'USDC',
+      decimals: 18,
+      asset: { decimals: 6 },
       state: { totalAssetsUsd: 1000000, sharePrice: 1.05 },
     },
     priceHistory: {
       items: [
-        { timestamp: '1704067200', data: { pricePerShareUsd: 1.0 } },
-        { timestamp: '1704153600', data: { pricePerShareUsd: 1.02 } },
-        { timestamp: '1704240000', data: { pricePerShareUsd: 1.05 } },
+        {
+          timestamp: '1704067200',
+          data: {
+            totalAssets: '1000000000000', // 1M USDC in 6 decimals
+            totalAssetsUsd: 1000000,
+            totalSupply: '1000000000000000000000000', // 1M shares in 18 decimals (1:1 ratio)
+            vault: { decimals: 18, asset: { decimals: 6 } },
+          },
+        },
+        {
+          timestamp: '1704153600',
+          data: {
+            totalAssets: '1020000000000', // 1.02M USDC
+            totalAssetsUsd: 1020000,
+            totalSupply: '1000000000000000000000000',
+            vault: { decimals: 18, asset: { decimals: 6 } },
+          },
+        },
+        {
+          timestamp: '1704240000',
+          data: {
+            totalAssets: '1050000000000', // 1.05M USDC
+            totalAssetsUsd: 1050000,
+            totalSupply: '1000000000000000000000000',
+            vault: { decimals: 18, asset: { decimals: 6 } },
+          },
+        },
       ],
     },
     performanceData: {
@@ -98,13 +124,39 @@ describe('optimize_portfolio', () => {
       chain: { id: 42161, name: 'Arbitrum' },
       symbol: 'lgVaultB',
       assetSymbol: 'USDT',
+      decimals: 18,
+      asset: { decimals: 6 },
       state: { totalAssetsUsd: 500000, sharePrice: 1.02 },
     },
     priceHistory: {
       items: [
-        { timestamp: '1704067200', data: { pricePerShareUsd: 1.0 } },
-        { timestamp: '1704153600', data: { pricePerShareUsd: 1.01 } },
-        { timestamp: '1704240000', data: { pricePerShareUsd: 1.02 } },
+        {
+          timestamp: '1704067200',
+          data: {
+            totalAssets: '500000000000', // 500K USDT in 6 decimals
+            totalAssetsUsd: 500000,
+            totalSupply: '500000000000000000000000', // 500K shares in 18 decimals (1:1 ratio)
+            vault: { decimals: 18, asset: { decimals: 6 } },
+          },
+        },
+        {
+          timestamp: '1704153600',
+          data: {
+            totalAssets: '505000000000', // 505K USDT
+            totalAssetsUsd: 505000,
+            totalSupply: '500000000000000000000000',
+            vault: { decimals: 18, asset: { decimals: 6 } },
+          },
+        },
+        {
+          timestamp: '1704240000',
+          data: {
+            totalAssets: '510000000000', // 510K USDT
+            totalAssetsUsd: 510000,
+            totalSupply: '500000000000000000000000',
+            vault: { decimals: 18, asset: { decimals: 6 } },
+          },
+        },
       ],
     },
     performanceData: {
@@ -122,13 +174,39 @@ describe('optimize_portfolio', () => {
       chain: { id: 42161, name: 'Arbitrum' },
       symbol: 'lgVaultC',
       assetSymbol: 'DAI',
+      decimals: 18,
+      asset: { decimals: 18 },
       state: { totalAssetsUsd: 250000, sharePrice: 1.08 },
     },
     priceHistory: {
       items: [
-        { timestamp: '1704067200', data: { pricePerShareUsd: 1.0 } },
-        { timestamp: '1704153600', data: { pricePerShareUsd: 1.04 } },
-        { timestamp: '1704240000', data: { pricePerShareUsd: 1.08 } },
+        {
+          timestamp: '1704067200',
+          data: {
+            totalAssets: '250000000000000000000000', // 250K DAI in 18 decimals
+            totalAssetsUsd: 250000,
+            totalSupply: '250000000000000000000000', // 250K shares in 18 decimals (1:1 ratio)
+            vault: { decimals: 18, asset: { decimals: 18 } },
+          },
+        },
+        {
+          timestamp: '1704153600',
+          data: {
+            totalAssets: '260000000000000000000000', // 260K DAI
+            totalAssetsUsd: 260000,
+            totalSupply: '250000000000000000000000',
+            vault: { decimals: 18, asset: { decimals: 18 } },
+          },
+        },
+        {
+          timestamp: '1704240000',
+          data: {
+            totalAssets: '270000000000000000000000', // 270K DAI
+            totalAssetsUsd: 270000,
+            totalSupply: '250000000000000000000000',
+            vault: { decimals: 18, asset: { decimals: 18 } },
+          },
+        },
       ],
     },
     performanceData: {

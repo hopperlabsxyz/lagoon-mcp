@@ -136,8 +136,15 @@ export const SINGLE_VAULT_OPTIMIZATION_QUERY = `
         timestamp
         data {
           ... on TotalAssetsUpdated {
+            totalAssets
             totalAssetsUsd
             totalSupply
+            vault {
+              decimals
+              asset {
+                decimals
+              }
+            }
           }
         }
       }

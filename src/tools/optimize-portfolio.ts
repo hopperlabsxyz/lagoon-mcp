@@ -34,6 +34,7 @@ import {
   VaultForOptimization,
   PortfolioOptimization,
 } from '../utils/portfolio-optimization.js';
+import { calculatePricePerShare } from '../sdk/vault-utils.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheTTL } from '../cache/index.js';
@@ -47,8 +48,15 @@ interface SingleVaultOptimizationResponse {
     items: Array<{
       timestamp: string;
       data: {
+        totalAssets: string;
         totalAssetsUsd: number;
         totalSupply: string;
+        vault: {
+          decimals: number;
+          asset: {
+            decimals: number;
+          };
+        };
       };
     }>;
   };
@@ -280,16 +288,22 @@ function processSingleVaultData(
   }
 
   // Extract price history with timestamp filtering
-  // Calculate price per share from totalAssetsUsd / totalSupply
+  // Calculate price per share using Lagoon SDK
   const prices: number[] = [];
   if (data.priceHistory && data.priceHistory.items) {
     for (const item of data.priceHistory.items) {
       if (parseInt(item.timestamp) >= timestampThreshold) {
-        const totalSupply = parseFloat(item.data.totalSupply);
-        if (totalSupply > 0) {
-          const pricePerShare = item.data.totalAssetsUsd / totalSupply;
-          prices.push(pricePerShare);
-        }
+        const vaultDecimals = item.data.vault.decimals;
+        const assetDecimals = item.data.vault.asset.decimals;
+        const pricePerShareBigInt = calculatePricePerShare(
+          BigInt(item.data.totalAssets),
+          BigInt(item.data.totalSupply),
+          vaultDecimals,
+          assetDecimals
+        );
+        // Convert to number for volatility calculations (in asset decimals)
+        const pricePerShare = Number(pricePerShareBigInt) / 10 ** assetDecimals;
+        prices.push(pricePerShare);
       }
     }
   }
@@ -366,7 +380,7 @@ function transformOptimizationData(
   );
 
   // Format optimization as markdown
-  const responseFormat = input.responseFormat || 'balanced';
+  const responseFormat = (input.responseFormat ?? 'balanced') as 'quick' | 'balanced' | 'detailed';
   const markdown = formatPortfolioOptimization(optimization, responseFormat);
 
   return { markdown };

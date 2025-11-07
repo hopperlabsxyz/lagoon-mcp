@@ -30,6 +30,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { simulateVaultManagement } from '../sdk/simulation-service.js';
 import { transformPeriodSummariesToAPRData } from '../sdk/apr-service.js';
 import { formatBigInt, safeBigIntStringify } from '../sdk/math-utils.js';
+import { calculatePricePerShare } from '../sdk/vault-utils.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import type { VaultData } from '../graphql/fragments/index.js';
 import { GET_PERIOD_SUMMARIES_QUERY } from '../graphql/queries/index.js';
@@ -199,9 +200,7 @@ export function createExecuteSimulateVault(
       const currentTotalAssets = BigInt(vault.state.totalAssets);
       const currentTotalSupply = BigInt(vault.state.totalSupply);
 
-      // Calculate price per share impact using high-precision arithmetic
-      // To avoid precision loss with integer division, we use a large precision multiplier
-      const PRECISION = BigInt(10 ** 18);
+      // Calculate price per share impact using Lagoon SDK
 
       let priceImpactPercentage = 0;
       let priceImpactAbsolute = BigInt(0);
@@ -209,10 +208,19 @@ export function createExecuteSimulateVault(
       let newPricePerShare = BigInt(0);
 
       if (currentTotalSupply > 0n && simulationResult.totalSupply > 0n) {
-        // Calculate prices with 18 decimal precision
-        currentPricePerShare = (currentTotalAssets * PRECISION) / currentTotalSupply;
-        newPricePerShare =
-          (simulationResult.totalAssets * PRECISION) / simulationResult.totalSupply;
+        // Calculate prices using SDK (returns price in asset decimals)
+        currentPricePerShare = calculatePricePerShare(
+          currentTotalAssets,
+          currentTotalSupply,
+          vaultDecimals,
+          assetDecimals
+        );
+        newPricePerShare = calculatePricePerShare(
+          simulationResult.totalAssets,
+          simulationResult.totalSupply,
+          vaultDecimals,
+          assetDecimals
+        );
 
         priceImpactAbsolute = newPricePerShare - currentPricePerShare;
         priceImpactPercentage =
@@ -221,9 +229,13 @@ export function createExecuteSimulateVault(
             : 0;
       } else if (simulationResult.totalSupply > 0n) {
         // New vault case - no current price to compare
-        newPricePerShare =
-          (simulationResult.totalAssets * PRECISION) / simulationResult.totalSupply;
-        currentPricePerShare = PRECISION; // 1.0 as default
+        newPricePerShare = calculatePricePerShare(
+          simulationResult.totalAssets,
+          simulationResult.totalSupply,
+          vaultDecimals,
+          assetDecimals
+        );
+        currentPricePerShare = BigInt(10 ** assetDecimals); // 1.0 in asset decimals
         priceImpactAbsolute = BigInt(0);
         priceImpactPercentage = 0;
       }

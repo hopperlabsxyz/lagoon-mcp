@@ -428,6 +428,51 @@ describe('export_data Tool', () => {
       const text = (result.content[0] as { type: 'text'; text: string }).text;
       expect(text).toContain('No price history found');
     });
+
+    it('should calculate price per share using SDK with correct decimal scaling', async () => {
+      // Create mock transaction with realistic values
+      // totalAssets: 1,000,000 USDC (6 decimals) = 1000000000000
+      // totalSupply: 950,000 shares (18 decimals) = 950000000000000000000000
+      // Expected pricePerShare: ~1.052631 USDC per share
+      const mockPriceTx = createMockPriceTransaction({
+        timestamp: '1704067200',
+        pricePerShareUsd: 1.05,
+        totalAssetsUsd: 1000000,
+      });
+
+      // Override with specific values for precision testing
+      (mockPriceTx as any).data.totalAssets = '1000000000000'; // 1M USDC in 6 decimals
+      (mockPriceTx as any).data.totalSupply = '950000000000000000000000'; // 950K shares in 18 decimals
+
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
+        transactions: {
+          items: [mockPriceTx],
+        },
+      });
+
+      const result = await executeExportData({
+        vaultAddresses: ['0x1234567890123456789012345678901234567890'],
+        chainId: 1,
+        dataType: 'price_history',
+        format: 'json',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      const jsonData = JSON.parse(text.split('```json\n')[1].split('\n```')[0]);
+
+      // Verify price is in reasonable range (not scientific notation like 1e-12)
+      expect(jsonData[0].open).toBeGreaterThan(1);
+      expect(jsonData[0].open).toBeLessThan(2);
+
+      // Verify it's approximately 1.052631 (1000000 / 950000)
+      expect(jsonData[0].open).toBeCloseTo(1.052631, 4);
+
+      // Verify all OHLCV values are in correct range
+      expect(jsonData[0].high).toBeGreaterThan(1);
+      expect(jsonData[0].low).toBeGreaterThan(1);
+      expect(jsonData[0].close).toBeGreaterThan(1);
+    });
   });
 
   // ==========================================

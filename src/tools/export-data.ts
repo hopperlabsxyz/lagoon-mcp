@@ -26,6 +26,7 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { ExportDataInput } from '../utils/validators.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { VaultData } from '../graphql/fragments/index.js';
+import { calculatePricePerShare } from '../sdk/vault-utils.js';
 import {
   EXPORT_VAULTS_QUERY,
   EXPORT_TRANSACTIONS_QUERY,
@@ -301,11 +302,17 @@ async function exportPriceHistory(
       dayBuckets.set(date, []);
     }
 
-    // Calculate price per share using actual decimals
+    // Calculate price per share using Lagoon SDK
     const vaultDecimals = tx.data.vault.decimals ?? 18;
-    const totalAssets = parseFloat(tx.data.totalAssets) / 10 ** vaultDecimals;
-    const totalSupply = parseFloat(tx.data.totalSupply) / 10 ** vaultDecimals;
-    const pricePerShare = totalSupply > 0 ? totalAssets / totalSupply : 0;
+    const assetDecimals = tx.data.vault.asset.decimals;
+    const pricePerShareBigInt = calculatePricePerShare(
+      BigInt(tx.data.totalAssets),
+      BigInt(tx.data.totalSupply),
+      vaultDecimals,
+      assetDecimals
+    );
+    // Convert to number for OHLCV export (in asset decimals)
+    const pricePerShare = Number(pricePerShareBigInt) / 10 ** assetDecimals;
 
     dayBuckets.get(date)!.push(pricePerShare);
   }
