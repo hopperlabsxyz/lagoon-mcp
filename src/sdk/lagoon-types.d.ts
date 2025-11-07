@@ -44,10 +44,27 @@ declare module '@lagoon-protocol/v0-computation' {
   export type VaultForSimulation = Record<string, unknown>;
 
   export interface SimulationResult {
-    totalSupply: bigint;
     totalAssets: bigint;
-    feesAccrued: bigint;
+    totalSupply: bigint;
+    managementFees: {
+      inAssets: bigint;
+      inShares: bigint;
+    };
+    performanceFees: {
+      inAssets: bigint;
+      inShares: bigint;
+    };
+    excessReturns: bigint;
+    periodNetApr: number;
+    periodGrossApr: number;
+    thirtyDaysNetApr?: number;
+    inceptionNetApr?: number;
     pricePerShare: bigint;
+    grossPricePerShare: bigint;
+    highWaterMark: bigint;
+    totalAssetsAtHighWaterMark: bigint;
+    assetsToUnwind: bigint;
+    assetsTransferedFromSafe: bigint;
   }
 
   export function simulate(vault: VaultForSimulation, input: SimulationInput): SimulationResult;

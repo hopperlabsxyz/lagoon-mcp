@@ -248,17 +248,38 @@ export function createExecuteSimulateVault(
           highWaterMark: vault.state.highWaterMark,
         },
         simulatedState: {
-          totalAssets: simulationResult.totalAssets.toString(),
-          totalAssetsFormatted: formatBigInt(simulationResult.totalAssets, assetDecimals),
-          totalSupply: simulationResult.totalSupply.toString(),
-          totalSupplyFormatted: formatBigInt(simulationResult.totalSupply, vaultDecimals),
+          totalAssets: simulationResult.totalAssets?.toString() ?? vault.state.totalAssets,
+          totalAssetsFormatted: formatBigInt(
+            simulationResult.totalAssets ?? BigInt(vault.state.totalAssets),
+            assetDecimals
+          ),
+          totalSupply: simulationResult.totalSupply?.toString() ?? vault.state.totalSupply,
+          totalSupplyFormatted: formatBigInt(
+            simulationResult.totalSupply ?? BigInt(vault.state.totalSupply),
+            vaultDecimals
+          ),
           pricePerShare: (newPricePerShare ?? BigInt(0)).toString(),
           pricePerShareFormatted: formatBigInt(newPricePerShare ?? BigInt(0), assetDecimals),
           feesAccrued: {
-            total: simulationResult.feesAccrued.toString(),
-            totalFormatted: formatBigInt(simulationResult.feesAccrued, assetDecimals),
-            management: 'Included in total',
-            performance: 'Included in total',
+            management: simulationResult.managementFees?.inAssets?.toString() ?? '0',
+            managementFormatted: formatBigInt(
+              simulationResult.managementFees?.inAssets ?? 0n,
+              assetDecimals
+            ),
+            performance: simulationResult.performanceFees?.inAssets?.toString() ?? '0',
+            performanceFormatted: formatBigInt(
+              simulationResult.performanceFees?.inAssets ?? 0n,
+              assetDecimals
+            ),
+            total: (
+              (simulationResult.managementFees?.inAssets ?? 0n) +
+              (simulationResult.performanceFees?.inAssets ?? 0n)
+            ).toString(),
+            totalFormatted: formatBigInt(
+              (simulationResult.managementFees?.inAssets ?? 0n) +
+                (simulationResult.performanceFees?.inAssets ?? 0n),
+              assetDecimals
+            ),
           },
           sharePriceImpact: {
             absolute: (priceImpactAbsolute ?? BigInt(0)).toString(),
@@ -292,9 +313,9 @@ export function createExecuteSimulateVault(
               ...(aprData.thirtyDay && {
                 thirtyDay: {
                   timestamp: aprData.thirtyDay.timestamp,
-                  pricePerShare: aprData.thirtyDay.pricePerShare.toString(),
+                  pricePerShare: aprData.thirtyDay.pricePerShare?.toString() ?? '0',
                   pricePerShareFormatted: formatBigInt(
-                    aprData.thirtyDay.pricePerShare,
+                    aprData.thirtyDay.pricePerShare ?? 0n,
                     assetDecimals
                   ),
                 },
@@ -302,9 +323,9 @@ export function createExecuteSimulateVault(
               ...(aprData.inception && {
                 inception: {
                   timestamp: aprData.inception.timestamp,
-                  pricePerShare: aprData.inception.pricePerShare.toString(),
+                  pricePerShare: aprData.inception.pricePerShare?.toString() ?? '0',
                   pricePerShareFormatted: formatBigInt(
-                    aprData.inception.pricePerShare,
+                    aprData.inception.pricePerShare ?? 0n,
                     assetDecimals
                   ),
                 },
