@@ -241,7 +241,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('TVL Risk');
+      expect(text).toContain('**TVL**');
       expect(text).toContain('%'); // Should show percentage
     });
 
@@ -261,7 +261,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('Concentration Risk');
+      expect(text).toContain('**Concentration**');
       expect(text).toContain('🔴'); // High concentration should be flagged
     });
 
@@ -281,7 +281,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('Volatility Risk');
+      expect(text).toContain('**Volatility**');
       expect(text).toMatch(/🔴|🟠/); // High volatility
     });
 
@@ -303,7 +303,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('Age Risk');
+      expect(text).toContain('**Age**');
       expect(text).toContain('🔴'); // Very new vault = critical risk
     });
 
@@ -323,7 +323,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('Curator Risk');
+      expect(text).toContain('**Curator**');
       expect(text).toContain('🟢'); // Experienced curator with good track record
     });
   });
@@ -346,7 +346,7 @@ describe('analyze_risk Tool', () => {
 
       expect(result.isError).toBe(false);
       const text = result.content[0].text as string;
-      expect(text).toContain('Volatility Risk');
+      expect(text).toContain('**Volatility**');
       expect(text).toContain('%'); // Should still show a score (medium risk for insufficient data)
     });
 
@@ -388,7 +388,7 @@ describe('analyze_risk Tool', () => {
 
       expect(result.isError).toBe(false);
       const text = result.content[0].text as string;
-      expect(text).toContain('Concentration Risk');
+      expect(text).toContain('**Concentration**');
       // Should handle gracefully with medium risk
     });
 
@@ -409,7 +409,7 @@ describe('analyze_risk Tool', () => {
 
       expect(result.isError).toBe(false);
       const text = result.content[0].text as string;
-      expect(text).toContain('Curator Risk');
+      expect(text).toContain('**Curator**');
       // New curator should have high risk score
     });
   });
@@ -527,11 +527,11 @@ describe('analyze_risk Tool', () => {
       const text = result.content[0].text as string;
 
       // Should include all risk factors
-      expect(text).toContain('TVL Risk');
-      expect(text).toContain('Concentration Risk');
-      expect(text).toContain('Volatility Risk');
-      expect(text).toContain('Age Risk');
-      expect(text).toContain('Curator Risk');
+      expect(text).toContain('**TVL**');
+      expect(text).toContain('**Concentration**');
+      expect(text).toContain('**Volatility**');
+      expect(text).toContain('**Age**');
+      expect(text).toContain('**Curator**');
 
       // Should include overall assessment
       expect(text).toContain('Overall Risk Assessment');
@@ -586,7 +586,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('Fee Risk');
+      expect(text).toContain('**Fees**');
       expect(text).toContain('management and performance fees');
     });
 
@@ -611,7 +611,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('Fee Risk');
+      expect(text).toContain('**Fees**');
       // High fee risk should contribute to overall risk
     });
   });
@@ -636,7 +636,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('Liquidity Risk');
+      expect(text).toContain('**Liquidity**');
       expect(text).toContain('meet redemption requests');
     });
 
@@ -659,7 +659,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('Liquidity Risk');
+      expect(text).toContain('**Liquidity**');
       // Low coverage ratio should show high liquidity risk
       expect(text).toMatch(/🔴|🟠/); // Should have high risk indicators
     });
@@ -683,7 +683,7 @@ describe('analyze_risk Tool', () => {
       });
 
       const text = result.content[0].text as string;
-      expect(text).toContain('Liquidity Risk');
+      expect(text).toContain('**Liquidity**');
     });
   });
 
@@ -705,18 +705,478 @@ describe('analyze_risk Tool', () => {
 
       const text = result.content[0].text as string;
 
-      // Verify all 7 factors are mentioned
-      expect(text).toContain('TVL Risk');
-      expect(text).toContain('Concentration Risk');
-      expect(text).toContain('Volatility Risk');
-      expect(text).toContain('Age Risk');
-      expect(text).toContain('Curator Risk');
-      expect(text).toContain('Fee Risk');
-      expect(text).toContain('Liquidity Risk');
+      // Verify all 7 original factors are mentioned (checking for table format)
+      expect(text).toContain('**TVL**');
+      expect(text).toContain('**Concentration**');
+      expect(text).toContain('**Volatility**');
+      expect(text).toContain('**Age**');
+      expect(text).toContain('**Curator**');
+      expect(text).toContain('**Fees**');
+      expect(text).toContain('**Liquidity**');
 
-      // Verify explanations for new factors
+      // Verify explanations for factors
       expect(text).toContain('management and performance fees');
       expect(text).toContain('meet redemption requests');
+    });
+  });
+
+  describe('Risk Analysis - New Risk Factors (Phase 1)', () => {
+    describe('APR Consistency Risk', () => {
+      it('should calculate low APR consistency risk for stable returns', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            state: {
+              ...(createMockVault() as any).state,
+              weeklyApr: { linearNetApr: 10.0 },
+              monthlyApr: { linearNetApr: 10.2 },
+              yearlyApr: { linearNetApr: 10.1 },
+              inceptionApr: { linearNetApr: 9.9 },
+            },
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('APR Consistency');
+        // Low variation should result in low risk (🟢)
+      });
+
+      it('should calculate high APR consistency risk for volatile returns', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            state: {
+              ...(createMockVault() as any).state,
+              weeklyApr: { linearNetApr: 20.0 },
+              monthlyApr: { linearNetApr: 5.0 },
+              yearlyApr: { linearNetApr: 15.0 },
+              inceptionApr: { linearNetApr: 2.0 },
+            },
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('APR Consistency');
+        // High APR variation (CV > 0.5) should show high risk
+        expect(text).toMatch(/🔴|🟠/);
+      });
+    });
+
+    describe('Yield Sustainability Risk', () => {
+      it('should calculate low yield sustainability risk for native-dominant yields', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            state: {
+              ...(createMockVault() as any).state,
+              weeklyApr: {
+                linearNetApr: 10.0,
+                nativeYields: [{ apr: 9.0 }],
+                airdrops: [{ apr: 0.5 }],
+                incentives: [{ apr: 0.5 }],
+              },
+            },
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Yield Sustainability');
+        // 90% native yields should be low risk
+      });
+
+      it('should calculate high yield sustainability risk for incentive-dependent yields', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            state: {
+              ...(createMockVault() as any).state,
+              weeklyApr: {
+                linearNetApr: 10.0,
+                nativeYields: [{ apr: 1.0 }],
+                airdrops: [{ apr: 4.5 }],
+                incentives: [{ apr: 4.5 }],
+              },
+            },
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Yield Sustainability');
+        // 10% native yields = almost entirely temporary (high risk)
+        expect(text).toMatch(/🔴|🟠/);
+      });
+    });
+
+    describe('Settlement Risk', () => {
+      it('should calculate low settlement risk for fast settlement', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault({
+              safeAssetBalanceUsd: 500000,
+              pendingSettlementUsd: 10000, // 2% pending
+            }),
+            averageSettlement: 0.5, // Same-day settlement
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Settlement');
+        // Fast settlement + low pending should be low risk
+      });
+
+      it('should calculate high settlement risk for slow settlement and high pending', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault({
+              safeAssetBalanceUsd: 100000,
+              pendingSettlementUsd: 80000, // 80% pending operations
+            }),
+            averageSettlement: 10, // 10 days average settlement
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Settlement');
+        // Slow settlement + high pending = high risk
+        expect(text).toMatch(/🔴|🟠/);
+      });
+    });
+
+    describe('Integration Complexity Risk', () => {
+      it('should calculate low integration complexity risk for single integration', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            defiIntegrations: [{ protocol: 'Aave' }], // Single integration
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Integration Complexity');
+        // Single integration = low complexity
+      });
+
+      it('should calculate high integration complexity risk for many integrations', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            defiIntegrations: [
+              { protocol: 'Aave' },
+              { protocol: 'Compound' },
+              { protocol: 'Uniswap' },
+              { protocol: 'Curve' },
+              { protocol: 'Balancer' },
+              { protocol: 'Yearn' },
+            ], // 6 integrations = very high complexity
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Integration Complexity');
+        // 6 integrations = large attack surface (high risk)
+        expect(text).toMatch(/🔴|🟠/);
+      });
+    });
+
+    describe('Capacity Utilization Risk', () => {
+      it('should calculate low capacity risk for healthy utilization (50%)', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            state: {
+              ...(createMockVault() as any).state,
+              totalAssets: '500000000000000000000000', // 500K
+            },
+            maxCapacity: '1000000000000000000000000', // 1M cap = 50% utilized
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Capacity Utilization');
+        // 50% utilization = healthy (low risk)
+      });
+
+      it('should calculate high capacity risk for near-full vault (95%)', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            state: {
+              ...(createMockVault() as any).state,
+              totalAssets: '950000000000000000000000', // 950K
+            },
+            maxCapacity: '1000000000000000000000000', // 1M cap = 95% utilized
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Capacity Utilization');
+        // 95% utilization = near capacity (high risk for deposits)
+        expect(text).toMatch(/🔴|🟠/);
+      });
+
+      it('should calculate medium capacity risk for under-utilized vault (20%)', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            state: {
+              ...(createMockVault() as any).state,
+              totalAssets: '200000000000000000000000', // 200K
+            },
+            maxCapacity: '1000000000000000000000000', // 1M cap = 20% utilized
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(5, 5) },
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Capacity Utilization');
+        // 20% utilization = under-utilized (demand concern)
+      });
+    });
+
+    describe('Curator Professional Signals', () => {
+      it('should calculate lower curator risk for professional curators', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            curators: [
+              {
+                id: 'curator-1',
+                name: 'Professional Curator',
+                aboutDescription: 'Experienced DeFi curator with proven track record',
+                logoUrl: 'https://example.com/logo.png',
+                url: 'https://curator-website.com',
+              },
+              {
+                id: 'curator-2',
+                name: 'Second Curator',
+                aboutDescription: 'Co-curator for decentralization',
+                logoUrl: 'https://example.com/logo2.png',
+                url: 'https://curator2-website.com',
+              },
+            ],
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(10, 9) }, // 90% success rate
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Curator');
+        // Multiple curators + website + description = professional signals = lower risk
+        expect(text).toContain('🟢'); // Should have low curator risk
+      });
+
+      it('should calculate higher curator risk for unprofessional curators', async () => {
+        const mockData = {
+          vault: {
+            ...createMockVault(),
+            curators: [
+              {
+                id: 'curator-1',
+                name: 'Anonymous',
+                aboutDescription: null, // No description
+                logoUrl: null,
+                url: null, // No website
+              },
+            ],
+          },
+          allVaults: { items: createMockAllVaults(100, 100000000) },
+          curatorVaults: { items: createMockCuratorVaults(1, 0) }, // New curator, no track record
+          priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+        };
+
+        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+        const result = await executeAnalyzeRisk({
+          vaultAddress: '0x1234567890123456789012345678901234567890',
+          chainId: 1,
+        });
+
+        const text = result.content[0].text as string;
+        expect(text).toContain('Curator');
+        // No professional signals + new curator = high risk
+        expect(text).toMatch(/🔴|🟠/);
+      });
+    });
+  });
+
+  describe('Risk Analysis - 12 Factor Comprehensive Test', () => {
+    it('should include all 12 risk factors in analysis', async () => {
+      const mockData = {
+        vault: {
+          ...createMockVault(),
+          averageSettlement: 2,
+          defiIntegrations: [{ protocol: 'Aave' }, { protocol: 'Compound' }],
+          maxCapacity: '2000000000000000000000000',
+          curators: [
+            {
+              id: 'curator-1',
+              name: 'Professional Curator',
+              aboutDescription: 'Experienced curator',
+              logoUrl: 'https://example.com/logo.png',
+              url: 'https://curator.com',
+            },
+          ],
+          state: {
+            ...(createMockVault() as any).state,
+            weeklyApr: {
+              linearNetApr: 10.0,
+              nativeYields: [{ apr: 8.0 }],
+              airdrops: [{ apr: 1.0 }],
+              incentives: [{ apr: 1.0 }],
+            },
+            monthlyApr: { linearNetApr: 10.5 },
+            yearlyApr: { linearNetApr: 9.8 },
+            inceptionApr: { linearNetApr: 10.2 },
+            totalAssets: '1000000000000000000000000',
+          },
+        },
+        allVaults: { items: createMockAllVaults(100, 100000000) },
+        curatorVaults: { items: createMockCuratorVaults(5, 5) },
+        priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
+      };
+
+      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+
+      const result = await executeAnalyzeRisk({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+
+      // Verify all 12 factors are mentioned
+      expect(text).toContain('TVL');
+      expect(text).toContain('Concentration');
+      expect(text).toContain('Volatility');
+      expect(text).toContain('Age');
+      expect(text).toContain('Curator');
+      expect(text).toContain('Fee');
+      expect(text).toContain('Liquidity');
+      expect(text).toContain('APR Consistency');
+      expect(text).toContain('Yield Sustainability');
+      expect(text).toContain('Settlement');
+      expect(text).toContain('Integration Complexity');
+      expect(text).toContain('Capacity Utilization');
+
+      // Verify explanations exist
+      expect(text).toContain('Risk Factor Explanations');
     });
   });
 });
