@@ -30,7 +30,7 @@ import {
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
-import { cacheKeys, cacheTTL, generateCacheKey } from '../cache/index.js';
+import { cacheKeys, cacheTTL } from '../cache/index.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 
 /**
@@ -184,14 +184,11 @@ export function createExecuteCompareVaults(
     let allCached = true;
 
     for (const address of input.vaultAddresses) {
-      const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
-        address,
-        chainId: input.chainId,
-      });
-      const cachedVault = container.cache.get(vaultCacheKey);
+      const vaultCacheKey = cacheKeys.vaultData(address, input.chainId);
+      const cachedVault = container.cache.get<VaultData>(vaultCacheKey);
 
       if (cachedVault) {
-        cachedVaults.push(cachedVault as VaultData);
+        cachedVaults.push(cachedVault);
       } else {
         allCached = false;
         break; // If any vault is missing, we need to query all

@@ -252,7 +252,7 @@ function createTransformPriceHistoryData(input: PriceHistoryInput, timestampGte:
     const statistics = calculateStatistics(ohlcvData);
 
     // Format output as markdown based on responseFormat
-    const responseFormat = input.responseFormat || 'summary';
+    const responseFormat = (input.responseFormat ?? 'summary') as 'summary' | 'detailed';
 
     let markdown =
       `# Price History: ${input.vaultAddress}\n\n` +

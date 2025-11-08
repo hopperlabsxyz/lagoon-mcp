@@ -43,7 +43,10 @@ export function createExecuteAnalyzeRisk(
   return async (input: AnalyzeRiskInput): Promise<CallToolResult> => {
     try {
       // Generate cache key including responseFormat
-      const responseFormat = input.responseFormat || 'detailed';
+      const responseFormat = (input.responseFormat ?? 'detailed') as
+        | 'score'
+        | 'summary'
+        | 'detailed';
       const cacheKey = `risk:${input.chainId}:${input.vaultAddress}:${responseFormat}`;
 
       // Register cache tags for invalidation

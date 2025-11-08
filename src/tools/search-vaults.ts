@@ -23,10 +23,8 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createHash } from 'crypto';
 import { SearchVaultsInput } from '../utils/validators.js';
 import { VaultData } from '../graphql/fragments/index.js';
-import {
-  createSearchVaultsQuery,
-  type SearchVaultsResponseFormat,
-} from '../graphql/queries/index.js';
+import { createSearchVaultsQuery } from '../graphql/queries/search.queries.js';
+import type { SearchVaultsResponseFormat } from '../graphql/queries/search.queries.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
@@ -161,14 +159,19 @@ export function createExecuteSearchVaults(
 ): (input: SearchVaultsInput) => Promise<CallToolResult> {
   return async (input: SearchVaultsInput): Promise<CallToolResult> => {
     // Apply maxResults to pagination.first (overrides user-provided pagination.first)
-    const effectiveFirst = input.maxResults || input.pagination?.first || 100;
+    const effectiveFirst = Number(input.maxResults) || Number(input.pagination?.first) || 100;
     const pagination = {
       first: Math.min(effectiveFirst, 100), // Enforce max 100
-      skip: input.pagination?.skip || 0,
+      skip: Number(input.pagination?.skip) || 0,
     };
 
     // Determine response format
-    const responseFormat: SearchVaultsResponseFormat = input.responseFormat || 'list';
+    const responseFormat: SearchVaultsResponseFormat =
+      input.responseFormat === 'summary'
+        ? 'summary'
+        : input.responseFormat === 'full'
+          ? 'full'
+          : 'list';
 
     // Generate cache key including responseFormat
     const filterHash = hashFilters(input.filters);
@@ -178,7 +181,7 @@ export function createExecuteSearchVaults(
     container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT]);
 
     // Create executor with dynamic query based on responseFormat
-    const query = createSearchVaultsQuery(responseFormat);
+    const query: string = createSearchVaultsQuery(responseFormat);
 
     const executor = executeToolWithCache<
       SearchVaultsInput,
@@ -219,13 +222,14 @@ export function createExecuteSearchVaults(
         const responseData = JSON.parse(result.content[0].text) as {
           vaults?: { items?: VaultData[] };
         };
-        if (responseData.vaults?.items) {
+        if (responseData.vaults?.items && Array.isArray(responseData.vaults.items)) {
           // Cache each vault individually with vault-specific key
-          responseData.vaults.items.forEach((vault: VaultData & { chain: { id: number } }) => {
+          const vaults = responseData.vaults.items;
+          vaults.forEach((vault) => {
             if (vault.address && vault.chain?.id) {
               const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
-                address: vault.address,
-                chainId: vault.chain.id,
+                address: String(vault.address),
+                chainId: Number(vault.chain.id),
               });
               container.cache.set(vaultCacheKey, vault, cacheTTL.vaultData);
             }

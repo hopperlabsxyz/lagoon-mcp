@@ -21,10 +21,8 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetUserPortfolioInput } from '../utils/validators.js';
 import { VaultData } from '../graphql/fragments/index.js';
-import {
-  createGetUserPortfolioQuery,
-  type PortfolioResponseFormat,
-} from '../graphql/queries/index.js';
+import { createGetUserPortfolioQuery } from '../graphql/queries/portfolio.queries.js';
+import type { PortfolioResponseFormat } from '../graphql/queries/portfolio.queries.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
@@ -156,13 +154,18 @@ export function createExecuteGetUserPortfolio(
 ): (input: GetUserPortfolioInput) => Promise<CallToolResult> {
   return async (input: GetUserPortfolioInput): Promise<CallToolResult> => {
     // Determine response format (default to 'summary' for balanced performance)
-    const responseFormat: PortfolioResponseFormat = input.responseFormat || 'summary';
+    const responseFormat: PortfolioResponseFormat =
+      input.responseFormat === 'list'
+        ? 'list'
+        : input.responseFormat === 'full'
+          ? 'full'
+          : 'summary';
 
     // Generate cache key (responseFormat doesn't affect caching since fragments are structural)
     const cacheKey = cacheKeys.userPortfolio(input.userAddress);
 
     // Create dynamic query based on responseFormat
-    const query = createGetUserPortfolioQuery(responseFormat);
+    const query: string = createGetUserPortfolioQuery(responseFormat);
 
     const executor = executeToolWithCache<
       GetUserPortfolioInput,
@@ -203,13 +206,14 @@ export function createExecuteGetUserPortfolio(
         const responseData = JSON.parse(result.content[0].text) as {
           positions?: PortfolioPosition[];
         };
-        if (responseData.positions) {
+        if (responseData.positions && Array.isArray(responseData.positions)) {
           // Cache each vault from positions individually with vault-specific key
-          responseData.positions.forEach((position: PortfolioPosition) => {
+          const positions = responseData.positions;
+          positions.forEach((position: PortfolioPosition) => {
             if (position.vault && position.vault.address && position.vault.chain?.id) {
               const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
-                address: position.vault.address,
-                chainId: position.vault.chain.id,
+                address: String(position.vault.address),
+                chainId: Number(position.vault.chain.id),
               });
               container.cache.set(vaultCacheKey, position.vault, cacheTTL.vaultData);
             }

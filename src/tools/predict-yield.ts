@@ -21,10 +21,8 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { PredictYieldInput } from '../utils/validators.js';
 import { VaultData } from '../graphql/fragments/index.js';
-import {
-  createYieldPredictionQuery,
-  type PredictionResponseFormat,
-} from '../graphql/queries/index.js';
+import * as PredictionQueries from '../graphql/queries/prediction.queries.js';
+import type { PredictionResponseFormat } from '../graphql/queries/prediction.queries.js';
 import { predictYield, YieldDataPoint, YieldPrediction } from '../utils/yield-prediction.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
@@ -106,9 +104,9 @@ function formatYieldPrediction(
 ## Yield Prediction: ${vaultName}
 
 ### Current Performance
-- **Current APR**: ${prediction.currentAPR.toFixed(2)}%
-- **Predicted APR**: ${prediction.predictedAPR.toFixed(2)}%${hasFeeData ? ` (Gross)` : ''}
-${hasFeeData ? `- **Predicted Net APR**: ${prediction.feeAdjustedAPR!.toFixed(2)}% (After Fees)` : ''}
+- **Current APR**: ${Number(prediction.currentAPR).toFixed(2)}%
+- **Predicted APR**: ${Number(prediction.predictedAPR).toFixed(2)}%${hasFeeData ? ` (Gross)` : ''}
+${hasFeeData ? `- **Predicted Net APR**: ${Number(prediction.feeAdjustedAPR).toFixed(2)}% (After Fees)` : ''}
 - **Trend**: ${trendEmoji} ${prediction.trend.charAt(0).toUpperCase() + prediction.trend.slice(1)}
 - **Confidence**: ${confidenceEmoji} ${(prediction.confidence * 100).toFixed(0)}%
 
@@ -119,10 +117,10 @@ ${hasFeeData ? `- **Predicted Net APR**: ${prediction.feeAdjustedAPR!.toFixed(2)
     output += `
 ### Fee Impact
 
-- **Management Fee**: ${prediction.feeImpact!.managementFee.toFixed(2)}% annually
-- **Performance Fee**: ${prediction.feeImpact!.performanceFee.toFixed(2)}%${prediction.feeImpact!.performanceFeeActive ? ' (Currently Active - Above High Water Mark)' : ' (Inactive - Below High Water Mark)'}
-- **Total Annual Fee Drag**: ${prediction.feeImpact!.totalAnnualFeeDrag.toFixed(2)}%
-- **Net Impact**: Reduces predicted returns from ${prediction.predictedAPR.toFixed(2)}% to ${prediction.feeAdjustedAPR!.toFixed(2)}%
+- **Management Fee**: ${Number(prediction.feeImpact?.managementFee).toFixed(2)}% annually
+- **Performance Fee**: ${Number(prediction.feeImpact?.performanceFee).toFixed(2)}%${prediction.feeImpact?.performanceFeeActive ? ' (Currently Active - Above High Water Mark)' : ' (Inactive - Below High Water Mark)'}
+- **Total Annual Fee Drag**: ${Number(prediction.feeImpact?.totalAnnualFeeDrag).toFixed(2)}%
+- **Net Impact**: Reduces predicted returns from ${Number(prediction.predictedAPR).toFixed(2)}% to ${Number(prediction.feeAdjustedAPR).toFixed(2)}%
 
 ---
 `;
@@ -305,10 +303,11 @@ export function createExecutePredictYield(
     const timestampThreshold = nowTimestamp - timeRangeSeconds;
 
     // Determine response format (default to 'quick')
-    const responseFormat: PredictionResponseFormat = input.responseFormat || 'quick';
+    const responseFormat: PredictionResponseFormat =
+      input.responseFormat === 'detailed' ? 'detailed' : 'quick';
 
     // Create dynamic query based on responseFormat
-    const query = createYieldPredictionQuery(responseFormat);
+    const query: string = PredictionQueries.createYieldPredictionQuery(responseFormat);
 
     const executor = executeToolWithCache<
       PredictYieldInput,
@@ -321,7 +320,7 @@ export function createExecutePredictYield(
         `yield_prediction:${input.chainId}:${input.vaultAddress}:${input.timeRange}:${input.responseFormat || 'quick'}`,
       cacheTTL: cacheTTL.yieldPrediction,
       query,
-      variables: () => ({
+      variables: (): YieldPredictionVariables => ({
         vaultAddress: input.vaultAddress,
         chainId: input.chainId,
       }),
