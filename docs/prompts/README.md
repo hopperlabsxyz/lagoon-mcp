@@ -15,6 +15,28 @@ This directory contains analytical guidance and frameworks for using Lagoon prot
 - API schemas and return formats → See individual tool documentation
 - Implementation details → See source code
 
+## ⚠️ Legal & Compliance
+
+**IMPORTANT**: All prompts in this repository integrate comprehensive legal disclaimers and compliance standards.
+
+### Disclaimer Standards
+**File**: [`DISCLAIMER_STANDARDS.md`](./DISCLAIMER_STANDARDS.md)
+
+**Comprehensive guide** to disclaimer requirements, communication language standards, and legal compliance for all Lagoon MCP prompts.
+
+**Key Topics:**
+- **Disclaimer Component System** - Universal, DeFi-specific, regulatory, and domain disclaimers
+- **Communication Language Standards** - Prohibited vs required framing (NOT investment advice)
+- **Prompt-Specific Requirements** - Tailored disclaimer requirements by prompt type
+- **Quality Control Checklist** - Pre-production verification and periodic audits
+- **Legal Compliance** - Securities law, tax obligations, regulatory frameworks
+
+**Applies To**: ALL runtime prompts in `/src/prompts/` providing financial analysis
+
+**Shared Disclaimers Module**: [`/src/prompts/shared/disclaimers.ts`](/src/prompts/shared/disclaimers.ts)
+
+---
+
 ## Available Prompts
 
 ### Financial Analysis Framework
