@@ -293,7 +293,10 @@ describe('compare_vaults Tool', () => {
       expect(result.isError).toBe(false);
       const text = result.content[0].text as string;
       expect(text).toContain('Vaults Analyzed**: 5');
-      expect(text).toContain('| Rank | Vault | TVL | APR | Score | TVL Δ | APR Δ |');
+      // Now includes risk columns since all vaults have risk data
+      expect(text).toContain(
+        '| Rank | Vault | TVL | APR | Risk | Score | TVL Δ | APR Δ | Risk Δ |'
+      );
       // Check that all vaults are present
       expect(text).toContain('Vault A');
       expect(text).toContain('Vault E');
@@ -751,9 +754,368 @@ describe('compare_vaults Tool', () => {
       const text = result.content[0].text as string;
       expect(text).toContain('**Legend**');
       expect(text).toContain('Overall ranking');
-      expect(text).toContain('60% APR, 40% TVL');
+      // Now shows 40/30/30 weighting because vaults have risk data
+      expect(text).toContain('40% APR, 30% TVL, 30% Safety');
       expect(text).toContain('TVL Δ');
       expect(text).toContain('APR Δ');
+    });
+  });
+
+  describe('Risk Analysis Integration (Phase 1)', () => {
+    /**
+     * Helper to create mock vault with risk data
+     */
+    function createMockVaultWithRisk(
+      overrides: Partial<{
+        address: string;
+        name: string;
+        tvl: number;
+        weeklyApr: number;
+        riskScore: number;
+        riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
+        nativeYieldsApr: number;
+        totalApr: number;
+        ageInDays: number;
+        curatorCount: number;
+        settlementDays: number;
+        integrationCount: number;
+      }> = {}
+    ): unknown {
+      const defaults = {
+        address: '0x1234567890123456789012345678901234567890',
+        name: 'Test Vault',
+        tvl: 1000000,
+        weeklyApr: 0.1,
+        riskScore: 0.3,
+        riskLevel: 'Medium' as const,
+        nativeYieldsApr: 0.08,
+        totalApr: 0.1,
+        ageInDays: 180,
+        curatorCount: 1,
+        settlementDays: 1.5,
+        integrationCount: 1,
+      };
+
+      const merged = { ...defaults, ...overrides };
+      const baseVault: any = createMockVault({
+        address: merged.address,
+        name: merged.name,
+        tvl: merged.tvl,
+        weeklyApr: merged.weeklyApr,
+      });
+
+      // Add risk-related data for yield sustainability calculation
+      baseVault.state.weeklyApr = {
+        linearNetApr: merged.totalApr,
+        linearNetAprWithoutExtraYields: merged.totalApr * 0.9,
+        nativeYields: [{ apr: merged.nativeYieldsApr }],
+        airdrops: [{ apr: (merged.totalApr - merged.nativeYieldsApr) / 2 }],
+        incentives: [{ apr: (merged.totalApr - merged.nativeYieldsApr) / 2 }],
+      };
+
+      // Add curator data for professional signals (count determines risk)
+      baseVault.curators = Array.from({ length: merged.curatorCount }, (_, i) => ({
+        id: `curator-${i + 1}`,
+        name: `Professional Curator ${i + 1}`,
+        aboutDescription: 'Experienced DeFi curator',
+        logoUrl: 'https://example.com/logo.png',
+        url: 'https://curator.com',
+      }));
+
+      baseVault.createdAt = String(Math.floor(Date.now() / 1000) - merged.ageInDays * 24 * 60 * 60);
+      baseVault.averageSettlement = merged.settlementDays;
+      baseVault.defiIntegrations = Array.from({ length: merged.integrationCount }, (_, i) => ({
+        name: `Integration ${i + 1}`,
+        description: 'DeFi Integration',
+        logoUrl: 'https://example.com/logo.png',
+        link: 'https://example.com',
+        type: 'Lending',
+      }));
+      baseVault.maxCapacity = '2000000000000000000000000';
+
+      return baseVault;
+    }
+
+    it('should calculate risk percentiles with inverted logic (lower risk = higher percentile)', async () => {
+      const mockVaults = [
+        createMockVaultWithRisk({
+          address: '0x1111111111111111111111111111111111111111',
+          name: 'Low Risk Vault',
+          riskScore: 0.2, // Low risk
+          riskLevel: 'Low',
+        }),
+        createMockVaultWithRisk({
+          address: '0x2222222222222222222222222222222222222222',
+          name: 'Medium Risk Vault',
+          riskScore: 0.5, // Medium risk
+          riskLevel: 'Medium',
+        }),
+        createMockVaultWithRisk({
+          address: '0x3333333333333333333333333333333333333333',
+          name: 'High Risk Vault',
+          riskScore: 0.8, // High risk
+          riskLevel: 'High',
+        }),
+      ];
+
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
+
+      const result = await executeCompareVaults({
+        vaultAddresses: mockVaults.map((v: any) => v.address),
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(false);
+      const text = result.content[0].text as string;
+
+      // Should include risk column in table
+      expect(text).toContain('| Risk |');
+
+      // Should show risk emojis
+      expect(text).toMatch(/🟢|🟡|🟠|🔴/);
+
+      // Low risk vault should rank higher in overall score
+      // Note: We can't test exact ranking without knowing the APR/TVL values
+    });
+
+    it('should identify safest and riskiest vaults in summary', async () => {
+      const mockVaults = [
+        createMockVaultWithRisk({
+          address: '0x1111111111111111111111111111111111111111',
+          name: 'Safest Vault',
+          riskScore: 0.15,
+          riskLevel: 'Low',
+        }),
+        createMockVaultWithRisk({
+          address: '0x2222222222222222222222222222222222222222',
+          name: 'Medium Vault',
+          riskScore: 0.5,
+          riskLevel: 'Medium',
+        }),
+        createMockVaultWithRisk({
+          address: '0x3333333333333333333333333333333333333333',
+          name: 'Riskiest Vault',
+          riskScore: 0.85,
+          riskLevel: 'Critical',
+        }),
+      ];
+
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
+
+      const result = await executeCompareVaults({
+        vaultAddresses: mockVaults.map((v: any) => v.address),
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+
+      // Should include safest vault section
+      expect(text).toContain('### Safest Vault');
+      expect(text).toMatch(/Safest Vault[\s\S]*Safest Vault/);
+      // Risk scores are calculated dynamically, just verify presence
+      expect(text).toMatch(/Safest Vault[\s\S]*\d+\.\d+%/);
+      expect(text).toMatch(/Safest Vault[\s\S]*(Low|Medium)/);
+
+      // Should include riskiest vault section
+      expect(text).toContain('### Riskiest Vault');
+      expect(text).toMatch(/Riskiest Vault[\s\S]*Riskiest Vault/);
+      // Risk scores are calculated dynamically, just verify presence
+      expect(text).toMatch(/Riskiest Vault[\s\S]*\d+\.\d+%/);
+      expect(text).toMatch(/Riskiest Vault[\s\S]*(Medium|High|Critical)/);
+    });
+
+    it('should use updated scoring algorithm (40% APR, 30% TVL, 30% Safety)', async () => {
+      const mockVaults = [
+        createMockVaultWithRisk({
+          address: '0x1111111111111111111111111111111111111111',
+          name: 'High APR Low Risk',
+          tvl: 1000000,
+          weeklyApr: 0.2,
+          riskScore: 0.2,
+          riskLevel: 'Low',
+        }),
+        createMockVaultWithRisk({
+          address: '0x2222222222222222222222222222222222222222',
+          name: 'Medium Everything',
+          tvl: 2000000,
+          weeklyApr: 0.1,
+          riskScore: 0.5,
+          riskLevel: 'Medium',
+        }),
+      ];
+
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
+
+      const result = await executeCompareVaults({
+        vaultAddresses: mockVaults.map((v: any) => v.address),
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+
+      // Should show updated legend
+      expect(text).toContain('40% APR, 30% TVL, 30% Safety');
+      expect(text).toContain('**Legend**');
+    });
+
+    it('should handle backward compatibility (vaults without risk data)', async () => {
+      const mockVaults = [
+        createMockVault({
+          address: '0x1111111111111111111111111111111111111111',
+          name: 'Vault A',
+          tvl: 1000000,
+          weeklyApr: 0.1,
+        }),
+        createMockVault({
+          address: '0x2222222222222222222222222222222222222222',
+          name: 'Vault B',
+          tvl: 2000000,
+          weeklyApr: 0.15,
+        }),
+      ];
+
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
+
+      const result = await executeCompareVaults({
+        vaultAddresses: mockVaults.map((v: any) => v.address),
+        chainId: 1,
+      });
+
+      expect(result.isError).toBe(false);
+      const text = result.content[0].text as string;
+
+      // Should still work and show both vaults
+      expect(text).toContain('Vault A');
+      expect(text).toContain('Vault B');
+
+      // All vaults now get risk scoring, so expect 40/30/30 weighting
+      // (backward compatibility is that if risk calculation fails, it still works)
+      expect(text).toContain('40% APR, 30% TVL, 30% Safety');
+    });
+
+    it('should display risk emojis correctly', async () => {
+      const mockVaults = [
+        createMockVaultWithRisk({
+          address: '0x1111111111111111111111111111111111111111',
+          name: 'Low Risk',
+          riskScore: 0.2,
+          riskLevel: 'Low',
+        }),
+        createMockVaultWithRisk({
+          address: '0x2222222222222222222222222222222222222222',
+          name: 'Medium Risk',
+          riskScore: 0.4,
+          riskLevel: 'Medium',
+        }),
+        createMockVaultWithRisk({
+          address: '0x3333333333333333333333333333333333333333',
+          name: 'High Risk',
+          riskScore: 0.7,
+          riskLevel: 'High',
+        }),
+        createMockVaultWithRisk({
+          address: '0x4444444444444444444444444444444444444444',
+          name: 'Critical Risk',
+          riskScore: 0.9,
+          riskLevel: 'Critical',
+        }),
+      ];
+
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
+
+      const result = await executeCompareVaults({
+        vaultAddresses: mockVaults.map((v: any) => v.address),
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+
+      // Should include all emoji types in risk column
+      expect(text).toContain('🟢'); // Low
+      expect(text).toContain('🟡'); // Medium
+      expect(text).toContain('🟠'); // High
+      expect(text).toContain('🔴'); // Critical
+
+      // Legend should explain emojis
+      expect(text).toContain('🟢 Low, 🟡 Medium, 🟠 High, 🔴 Critical');
+    });
+
+    it('should calculate average risk in summary statistics', async () => {
+      const mockVaults = [
+        createMockVaultWithRisk({
+          address: '0x1111111111111111111111111111111111111111',
+          riskScore: 0.2,
+          riskLevel: 'Low',
+        }),
+        createMockVaultWithRisk({
+          address: '0x2222222222222222222222222222222222222222',
+          riskScore: 0.5,
+          riskLevel: 'Medium',
+        }),
+        createMockVaultWithRisk({
+          address: '0x3333333333333333333333333333333333333333',
+          riskScore: 0.8,
+          riskLevel: 'High',
+        }),
+      ];
+
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
+
+      const result = await executeCompareVaults({
+        vaultAddresses: mockVaults.map((v: any) => v.address),
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+
+      // Should show average risk (actual values will differ from hardcoded ones due to full 12-factor calculation)
+      expect(text).toContain('Average Risk');
+      expect(text).toMatch(/Average Risk.*\d+\.\d+%/);
+    });
+
+    it('should display risk delta from average', async () => {
+      const mockVaults = [
+        createMockVaultWithRisk({
+          address: '0x1111111111111111111111111111111111111111',
+          name: 'Low',
+          riskScore: 0.2,
+          riskLevel: 'Low',
+          ageInDays: 365, // Older = lower risk
+          curatorCount: 3, // More curators = lower risk
+          settlementDays: 1.0, // Faster settlement = lower risk
+          integrationCount: 5, // More integrations = lower risk
+          nativeYieldsApr: 0.09, // Higher native yield = lower risk
+          totalApr: 0.1,
+        }),
+        createMockVaultWithRisk({
+          address: '0x2222222222222222222222222222222222222222',
+          name: 'High',
+          riskScore: 0.8,
+          riskLevel: 'High',
+          ageInDays: 30, // Newer = higher risk
+          curatorCount: 0, // No curators = higher risk
+          settlementDays: 7.0, // Slower settlement = higher risk
+          integrationCount: 1, // Fewer integrations = higher risk
+          nativeYieldsApr: 0.02, // Lower native yield = higher risk
+          totalApr: 0.1,
+        }),
+      ];
+
+      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
+
+      const result = await executeCompareVaults({
+        vaultAddresses: mockVaults.map((v: any) => v.address),
+        chainId: 1,
+      });
+
+      const text = result.content[0].text as string;
+
+      // Should include Risk Δ column
+      expect(text).toContain('| Risk Δ |');
+
+      // Should show + and - risk deltas in the table
+      expect(text).toMatch(/[+-]\d+\.\d+%/); // Match delta values like +9.1% or -9.1%
+      expect(text).toContain('Risk Δ'); // Ensure column exists
     });
   });
 

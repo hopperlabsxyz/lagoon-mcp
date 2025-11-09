@@ -5,6 +5,8 @@
  * Provides risk-adjusted portfolio recommendations and rebalancing guidance.
  */
 
+import { RiskScoreBreakdown } from './risk-scoring.js';
+
 /**
  * Portfolio position with current and target allocations
  */
@@ -18,6 +20,7 @@ export interface PortfolioPosition {
   targetValueUsd: number;
   rebalanceAmount: number; // Positive = buy, Negative = sell
   rebalancePercentage: number; // Percentage change needed
+  vault: VaultForOptimization; // Reference to full vault data for risk analysis
 }
 
 /**
@@ -48,7 +51,8 @@ export interface VaultForOptimization {
   currentValueUsd: number;
   expectedApr: number;
   volatility: number; // Standard deviation of returns
-  riskScore: number; // 0-1 scale
+  riskScore: number; // 0-1 scale (comprehensive 12-factor risk)
+  riskBreakdown?: RiskScoreBreakdown; // Detailed risk factor breakdown
 }
 
 /**
@@ -77,6 +81,7 @@ export function calculateEqualWeight(
       targetValueUsd,
       rebalanceAmount,
       rebalancePercentage,
+      vault, // Include full vault data for risk analysis
     };
   });
 }
@@ -110,6 +115,7 @@ export function calculateRiskParity(
       targetValueUsd,
       rebalanceAmount,
       rebalancePercentage,
+      vault, // Include full vault data for risk analysis
     };
   });
 }
@@ -156,6 +162,7 @@ export function calculateMaxSharpe(
       targetValueUsd,
       rebalanceAmount,
       rebalancePercentage,
+      vault, // Include full vault data for risk analysis
     };
   });
 }
@@ -190,6 +197,7 @@ export function calculateMinVariance(
       targetValueUsd,
       rebalanceAmount,
       rebalancePercentage,
+      vault, // Include full vault data for risk analysis
     };
   });
 }

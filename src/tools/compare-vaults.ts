@@ -26,12 +26,14 @@ import {
   normalizeAndRankVaults,
   generateComparisonSummary,
   formatComparisonTable,
+  ComparisonSummary,
 } from '../utils/comparison-metrics.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheKeys, cacheTTL } from '../cache/index.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
+import { analyzeRisk } from '../utils/risk-scoring.js';
 
 /**
  * GraphQL response type
@@ -59,8 +61,13 @@ interface CompareVaultsOutput {
 
 /**
  * Convert VaultData to VaultComparisonData for metrics calculation
+ * Now includes 12-factor risk analysis
  */
-function convertToComparisonData(vault: VaultData, chainId: number): VaultComparisonData {
+function convertToComparisonData(
+  vault: VaultData,
+  chainId: number,
+  allVaults: VaultData[]
+): VaultComparisonData {
   // Extract APR from nested state structure with proper null checking
   // Use weekly or monthly linearNetApr as the primary APR metric
   const weeklyApr = vault.state?.weeklyApr?.linearNetApr;
@@ -69,6 +76,106 @@ function convertToComparisonData(vault: VaultData, chainId: number): VaultCompar
     typeof weeklyApr === 'number' ? weeklyApr : typeof monthlyApr === 'number' ? monthlyApr : 0;
 
   const tvl = vault.state?.totalAssetsUsd;
+
+  // Calculate risk score using existing risk analysis utility
+  let riskBreakdown;
+  try {
+    // Extract data for risk calculation
+    const vaultTVL = typeof tvl === 'number' ? tvl : 0;
+    const totalProtocolTVL = allVaults.reduce((sum, v) => sum + (v.state?.totalAssetsUsd || 0), 0);
+
+    // Age in days - default to 180 days (6 months) as we don't have creation timestamp
+    // This is a reasonable middle-ground assumption for risk calculation
+    const ageInDays = 180;
+
+    // Curator data (simplified - vault count = 1 for now, as we don't have curator history here)
+    const curatorVaultCount = vault.curators?.length || 1;
+    const curators = vault.curators || [];
+    const professionalSignals = {
+      hasWebsite: curators.some((c) => c.url && c.url.trim() !== ''),
+      hasDescription: curators.some((c) => c.aboutDescription && c.aboutDescription.trim() !== ''),
+      multipleCurators: curators.length > 1,
+      curatorCount: curators.length,
+    };
+
+    // Fee data
+    const managementFee = vault.state?.managementFee || 0;
+    const performanceFee = vault.state?.performanceFee || 0;
+    const pricePerShare = BigInt(vault.state?.pricePerShare || '0');
+    const highWaterMark = BigInt(vault.state?.highWaterMark || '0');
+    const performanceFeeActive = pricePerShare > highWaterMark;
+
+    // Liquidity data
+    const safeAssets = vault.state?.safeAssetBalanceUsd || 0;
+    const pendingRedemptions = vault.state?.pendingSettlement?.assetsUsd || 0;
+
+    // APR consistency data
+    const aprData = {
+      weeklyApr: vault.state?.weeklyApr?.linearNetApr,
+      monthlyApr: vault.state?.monthlyApr?.linearNetApr,
+      yearlyApr: vault.state?.yearlyApr?.linearNetApr,
+      inceptionApr: vault.state?.inceptionApr?.linearNetApr,
+    };
+
+    // Yield composition
+    const weeklyAprData = vault.state?.weeklyApr;
+    const yieldComposition = weeklyAprData
+      ? {
+          totalApr: weeklyAprData.linearNetApr || 0,
+          nativeYieldsApr:
+            weeklyAprData.nativeYields?.reduce((sum, ny) => sum + (ny.apr || 0), 0) || 0,
+          airdropsApr: weeklyAprData.airdrops?.reduce((sum, ad) => sum + (ad.apr || 0), 0) || 0,
+          incentivesApr:
+            weeklyAprData.incentives?.reduce((sum, inc) => sum + (inc.apr || 0), 0) || 0,
+        }
+      : undefined;
+
+    // Settlement data
+    const averageSettlement = vault.averageSettlement || 0;
+    const pendingOperationsRatio = safeAssets > 0 ? pendingRedemptions / safeAssets : 0;
+    const settlementData = {
+      averageSettlementDays: averageSettlement,
+      pendingOperationsRatio,
+    };
+
+    // Integration complexity
+    const integrationCount = vault.defiIntegrations?.length || 0;
+
+    // Capacity utilization
+    const totalAssets = parseFloat(vault.state?.totalAssets || '0');
+    const maxCapacity = vault.maxCapacity ? parseFloat(vault.maxCapacity) : null;
+    const capacityData = {
+      totalAssets,
+      maxCapacity,
+    };
+
+    // Price history (empty for now - would need separate query)
+    const priceHistory: number[] = [];
+
+    // Calculate risk
+    riskBreakdown = analyzeRisk({
+      tvl: vaultTVL,
+      totalProtocolTVL,
+      priceHistory,
+      ageInDays,
+      curatorVaultCount,
+      curatorSuccessRate: 0.5, // Default without historical data
+      curatorProfessionalSignals: professionalSignals,
+      managementFee,
+      performanceFee,
+      performanceFeeActive,
+      safeAssets,
+      pendingRedemptions,
+      aprData,
+      yieldComposition,
+      settlementData,
+      integrationCount,
+      capacityData,
+    });
+  } catch (error) {
+    console.error(`Failed to calculate risk for vault ${vault.address}:`, error);
+    riskBreakdown = undefined;
+  }
 
   return {
     address: vault.address,
@@ -79,7 +186,87 @@ function convertToComparisonData(vault: VaultData, chainId: number): VaultCompar
     apr: apr,
     totalShares: vault.state?.totalSupply,
     totalAssets: vault.state?.totalAssets,
+    riskScore: riskBreakdown?.overallRisk,
+    riskLevel: riskBreakdown?.riskLevel,
+    riskBreakdown,
   };
+}
+
+/**
+ * Build markdown output from comparison data
+ */
+function buildComparisonMarkdown(
+  summary: ComparisonSummary,
+  table: string,
+  chainId: number,
+  cached: boolean = false
+): string {
+  const hasRiskData =
+    summary.averageRisk !== undefined && summary.safestVault && summary.riskiestVault;
+
+  let markdown = cached
+    ? `# Vault Comparison Results (Cached)\n\n`
+    : `# Vault Comparison Results\n\n`;
+
+  markdown += `**Chain ID**: ${chainId}\n`;
+  markdown += `**Vaults Analyzed**: ${summary.totalVaults}\n\n`;
+
+  markdown += `## Summary Statistics\n\n`;
+  markdown += `- **Average TVL**: $${(summary.averageTvl / 1000000).toFixed(2)}M\n`;
+  markdown += `- **Average APR**: ${(summary.averageApr * 100).toFixed(2)}%\n`;
+
+  if (hasRiskData) {
+    markdown += `- **Average Risk**: ${(summary.averageRisk! * 100).toFixed(1)}%\n`;
+  }
+
+  markdown += `\n### Best Performer\n`;
+  markdown += `- **Vault**: ${summary.bestPerformer.name}\n`;
+  markdown += `- **APR**: ${(summary.bestPerformer.apr * 100).toFixed(2)}%\n\n`;
+
+  markdown += `### Worst Performer\n`;
+  markdown += `- **Vault**: ${summary.worstPerformer.name}\n`;
+  markdown += `- **APR**: ${(summary.worstPerformer.apr * 100).toFixed(2)}%\n\n`;
+
+  markdown += `### Highest TVL\n`;
+  markdown += `- **Vault**: ${summary.highestTvl.name}\n`;
+  markdown += `- **TVL**: $${(summary.highestTvl.tvl / 1000000).toFixed(2)}M\n\n`;
+
+  markdown += `### Lowest TVL\n`;
+  markdown += `- **Vault**: ${summary.lowestTvl.name}\n`;
+  markdown += `- **TVL**: $${(summary.lowestTvl.tvl / 1000000).toFixed(2)}M\n\n`;
+
+  if (hasRiskData) {
+    markdown += `### Safest Vault\n`;
+    markdown += `- **Vault**: ${summary.safestVault!.name}\n`;
+    markdown += `- **Risk Score**: ${(summary.safestVault!.riskScore * 100).toFixed(1)}% (${summary.safestVault!.riskLevel})\n\n`;
+
+    markdown += `### Riskiest Vault\n`;
+    markdown += `- **Vault**: ${summary.riskiestVault!.name}\n`;
+    markdown += `- **Risk Score**: ${(summary.riskiestVault!.riskScore * 100).toFixed(1)}% (${summary.riskiestVault!.riskLevel})\n\n`;
+  }
+
+  markdown += `## Detailed Comparison\n\n`;
+  markdown += `${table}\n\n`;
+
+  markdown += `**Legend**:\n`;
+  markdown += `- **Rank**: Overall ranking based on weighted score`;
+
+  if (hasRiskData) {
+    markdown += ` (40% APR, 30% TVL, 30% Safety)\n`;
+  } else {
+    markdown += ` (60% APR, 40% TVL)\n`;
+  }
+
+  markdown += `- **Score**: Overall performance score (0-100)\n`;
+  markdown += `- **TVL Δ**: Delta from average TVL (%)\n`;
+  markdown += `- **APR Δ**: Delta from average APR (%)\n`;
+
+  if (hasRiskData) {
+    markdown += `- **Risk**: 12-factor risk score (🟢 Low, 🟡 Medium, 🟠 High, 🔴 Critical)\n`;
+    markdown += `- **Risk Δ**: Delta from average risk (%)\n`;
+  }
+
+  return markdown;
 }
 
 /**
@@ -90,7 +277,7 @@ function createTransformComparisonData(input: CompareVaultsInput) {
   return (data: CompareVaultsResponse): CompareVaultsOutput => {
     // Convert to comparison data
     const comparisonData: VaultComparisonData[] = data.vaults.items.map((vault) =>
-      convertToComparisonData(vault, input.chainId)
+      convertToComparisonData(vault, input.chainId, data.vaults.items)
     );
 
     // Normalize and rank vaults
@@ -103,67 +290,7 @@ function createTransformComparisonData(input: CompareVaultsInput) {
     const table = formatComparisonTable(normalizedVaults);
 
     // Build output markdown
-    const markdown =
-      `# Vault Comparison Results
-
-` +
-      `**Chain ID**: ${input.chainId}
-` +
-      `**Vaults Analyzed**: ${summary.totalVaults}
-
-` +
-      `## Summary Statistics
-
-` +
-      `- **Average TVL**: $${(summary.averageTvl / 1000000).toFixed(2)}M
-` +
-      `- **Average APR**: ${(summary.averageApr * 100).toFixed(2)}%
-
-` +
-      `### Best Performer
-` +
-      `- **Vault**: ${summary.bestPerformer.name}
-` +
-      `- **APR**: ${(summary.bestPerformer.apr * 100).toFixed(2)}%
-
-` +
-      `### Worst Performer
-` +
-      `- **Vault**: ${summary.worstPerformer.name}
-` +
-      `- **APR**: ${(summary.worstPerformer.apr * 100).toFixed(2)}%
-
-` +
-      `### Highest TVL
-` +
-      `- **Vault**: ${summary.highestTvl.name}
-` +
-      `- **TVL**: $${(summary.highestTvl.tvl / 1000000).toFixed(2)}M
-
-` +
-      `### Lowest TVL
-` +
-      `- **Vault**: ${summary.lowestTvl.name}
-` +
-      `- **TVL**: $${(summary.lowestTvl.tvl / 1000000).toFixed(2)}M
-
-` +
-      `## Detailed Comparison
-
-` +
-      `${table}
-
-` +
-      `**Legend**:
-` +
-      `- **Rank**: Overall ranking based on weighted score (60% APR, 40% TVL)
-` +
-      `- **Score**: Overall performance score (0-100)
-` +
-      `- **TVL Δ**: Delta from average TVL (%)
-` +
-      `- **APR Δ**: Delta from average APR (%)
-`;
+    const markdown = buildComparisonMarkdown(summary, table, input.chainId, false);
 
     return { markdown };
   };
@@ -198,73 +325,13 @@ export function createExecuteCompareVaults(
     // If ALL vaults are cached, return immediately without GraphQL query
     if (allCached && cachedVaults.length === input.vaultAddresses.length) {
       const comparisonData: VaultComparisonData[] = cachedVaults.map((vault) =>
-        convertToComparisonData(vault, input.chainId)
+        convertToComparisonData(vault, input.chainId, cachedVaults)
       );
       const normalizedVaults = normalizeAndRankVaults(comparisonData);
       const summary = generateComparisonSummary(comparisonData);
       const table = formatComparisonTable(normalizedVaults);
 
-      const markdown =
-        `# Vault Comparison Results (Cached)
-
-` +
-        `**Chain ID**: ${input.chainId}
-` +
-        `**Vaults Analyzed**: ${summary.totalVaults}
-
-` +
-        `## Summary Statistics
-
-` +
-        `- **Average TVL**: $${(summary.averageTvl / 1000000).toFixed(2)}M
-` +
-        `- **Average APR**: ${(summary.averageApr * 100).toFixed(2)}%
-
-` +
-        `### Best Performer
-` +
-        `- **Vault**: ${summary.bestPerformer.name}
-` +
-        `- **APR**: ${(summary.bestPerformer.apr * 100).toFixed(2)}%
-
-` +
-        `### Worst Performer
-` +
-        `- **Vault**: ${summary.worstPerformer.name}
-` +
-        `- **APR**: ${(summary.worstPerformer.apr * 100).toFixed(2)}%
-
-` +
-        `### Highest TVL
-` +
-        `- **Vault**: ${summary.highestTvl.name}
-` +
-        `- **TVL**: $${(summary.highestTvl.tvl / 1000000).toFixed(2)}M
-
-` +
-        `### Lowest TVL
-` +
-        `- **Vault**: ${summary.lowestTvl.name}
-` +
-        `- **TVL**: $${(summary.lowestTvl.tvl / 1000000).toFixed(2)}M
-
-` +
-        `## Detailed Comparison
-
-` +
-        `${table}
-
-` +
-        `**Legend**:
-` +
-        `- **Rank**: Overall ranking based on weighted score (60% APR, 40% TVL)
-` +
-        `- **Score**: Overall performance score (0-100)
-` +
-        `- **TVL Δ**: Delta from average TVL (%)
-` +
-        `- **APR Δ**: Delta from average APR (%)
-`;
+      const markdown = buildComparisonMarkdown(summary, table, input.chainId, true);
 
       return createSuccessResponse({ markdown });
     }

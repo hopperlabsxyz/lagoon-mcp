@@ -91,7 +91,8 @@ Complete tool documentation available in [docs/tools/](./docs/tools/).
 | **search_vaults** | Search and filter vaults with 20+ advanced criteria | [→ Details](./docs/tools/search-vaults.md) |
 | **get_vault_performance** | Historical metrics and performance analysis | [→ Details](./docs/tools/vault-performance.md) |
 | **get_transactions** | Query vault transaction history with flexible filtering | [→ Details](./docs/tools/get-transactions.md) |
-| **compare_vaults** | Side-by-side vault comparison with rankings | [→ Details](./docs/tools/compare-vaults.md) |
+| **compare_vaults** | Side-by-side vault comparison with 12-factor risk analysis and rankings | [→ Details](./docs/tools/compare-vaults.md) |
+| **optimize_portfolio** | Modern Portfolio Theory optimization with yield sustainability warnings | [→ Details](./docs/tools/optimize-portfolio.md) |
 | **get_price_history** | Historical share price data with OHLCV time-series | [→ Details](./docs/tools/price-history.md) |
 | **export_data** | Export vault data in CSV/JSON format | [→ Details](./docs/tools/export-data.md) |
 | **analyze_risk** | Multi-factor risk analysis with comprehensive scoring | [→ Details](./docs/tools/analyze-risk.md) |

@@ -38,6 +38,7 @@ import { calculatePricePerShare } from '../sdk/vault-utils.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheTTL } from '../cache/index.js';
+import { analyzeRisk, RiskScoreBreakdown } from '../utils/risk-scoring.js';
 
 /**
  * GraphQL response type for single vault query
@@ -240,6 +241,34 @@ ${
 
 ---
 
+### Yield Sustainability Warnings
+
+${(() => {
+  const warnings: string[] = [];
+
+  optimization.positions.forEach((pos) => {
+    if (pos.vault.riskBreakdown) {
+      const yieldRisk = pos.vault.riskBreakdown.yieldSustainabilityRisk;
+
+      if (yieldRisk >= 0.7) {
+        warnings.push(
+          `🚨 **${pos.vaultName}** (High Risk): Yield heavily dependent on temporary incentives/airdrops (<20% native).`
+        );
+      } else if (yieldRisk >= 0.4) {
+        warnings.push(
+          `⚠️ **${pos.vaultName}** (Medium Risk): Monitor yield composition - significant portion from temporary incentives.`
+        );
+      }
+    }
+  });
+
+  return warnings.length > 0
+    ? warnings.join('\n')
+    : '✅ **No sustainability concerns** - all vaults have healthy yield compositions';
+})()}
+
+---
+
 ### Key Insights
 
 ${optimization.recommendations.map((rec) => `- ${rec}`).join('\n')}
@@ -358,8 +387,109 @@ function transformOptimizationData(
     const aprHistory = combinedData.performanceByVault.get(vaultAddress) || [];
     const expectedApr = calculateAverageAPR(aprHistory);
 
-    // Use simplified risk score (based on volatility)
-    const riskScore = Math.min(1, volatility / 0.2); // Normalize to 0-1
+    // Calculate comprehensive 12-factor risk score
+    let riskScore = Math.min(1, volatility / 0.2); // Fallback to volatility-based
+    let riskBreakdown: RiskScoreBreakdown | undefined;
+
+    try {
+      // Extract data for comprehensive risk calculation
+      const vaultTVL = vault.state?.totalAssetsUsd || 0;
+      const totalProtocolTVL = combinedData.vaults.reduce(
+        (sum, v) => sum + (v.state?.totalAssetsUsd || 0),
+        0
+      );
+
+      // Age in days - default to 180 days (6 months) as we don't have creation timestamp in optimization
+      const ageInDays = 180;
+
+      // Curator professional signals
+      const curators = vault.curators || [];
+      const professionalSignals = {
+        hasWebsite: curators.some((c) => c.url && c.url.trim() !== ''),
+        hasDescription: curators.some(
+          (c) => c.aboutDescription && c.aboutDescription.trim() !== ''
+        ),
+        multipleCurators: curators.length > 1,
+        curatorCount: curators.length,
+      };
+
+      // Fee data
+      const managementFee = vault.state?.managementFee || 0;
+      const performanceFee = vault.state?.performanceFee || 0;
+      const pricePerShare = BigInt(vault.state?.pricePerShare || '0');
+      const highWaterMark = BigInt(vault.state?.highWaterMark || '0');
+      const performanceFeeActive = pricePerShare > highWaterMark;
+
+      // Liquidity data
+      const safeAssets = vault.state?.safeAssetBalanceUsd || 0;
+      const pendingRedemptions = vault.state?.pendingSettlement?.assetsUsd || 0;
+
+      // APR consistency data
+      const aprData = {
+        weeklyApr: vault.state?.weeklyApr?.linearNetApr,
+        monthlyApr: vault.state?.monthlyApr?.linearNetApr,
+        yearlyApr: vault.state?.yearlyApr?.linearNetApr,
+        inceptionApr: vault.state?.inceptionApr?.linearNetApr,
+      };
+
+      // Yield composition
+      const weeklyAprData = vault.state?.weeklyApr;
+      const yieldComposition = weeklyAprData
+        ? {
+            totalApr: weeklyAprData.linearNetApr || 0,
+            nativeYieldsApr:
+              weeklyAprData.nativeYields?.reduce((sum, ny) => sum + (ny.apr || 0), 0) || 0,
+            airdropsApr: weeklyAprData.airdrops?.reduce((sum, ad) => sum + (ad.apr || 0), 0) || 0,
+            incentivesApr:
+              weeklyAprData.incentives?.reduce((sum, inc) => sum + (inc.apr || 0), 0) || 0,
+          }
+        : undefined;
+
+      // Settlement data
+      const averageSettlement = vault.averageSettlement || 0;
+      const pendingOperationsRatio = safeAssets > 0 ? pendingRedemptions / safeAssets : 0;
+      const settlementData = {
+        averageSettlementDays: averageSettlement,
+        pendingOperationsRatio,
+      };
+
+      // Integration complexity
+      const integrationCount = vault.defiIntegrations?.length || 0;
+
+      // Capacity utilization
+      const totalAssets = parseFloat(vault.state?.totalAssets || '0');
+      const maxCapacity = vault.maxCapacity ? parseFloat(vault.maxCapacity) : null;
+      const capacityData = {
+        totalAssets,
+        maxCapacity,
+      };
+
+      // Calculate comprehensive risk using analyzeRisk utility
+      riskBreakdown = analyzeRisk({
+        tvl: vaultTVL,
+        totalProtocolTVL,
+        priceHistory,
+        ageInDays,
+        curatorVaultCount: vault.curators?.length || 1,
+        curatorSuccessRate: 0.5, // Default without historical data
+        curatorProfessionalSignals: professionalSignals,
+        managementFee,
+        performanceFee,
+        performanceFeeActive,
+        safeAssets,
+        pendingRedemptions,
+        aprData,
+        yieldComposition,
+        settlementData,
+        integrationCount,
+        capacityData,
+      });
+
+      riskScore = riskBreakdown.overallRisk;
+    } catch (error) {
+      console.error(`Failed to calculate comprehensive risk for vault ${vault.address}:`, error);
+      // Fall back to volatility-based risk score
+    }
 
     return {
       address: vault.address,
@@ -369,6 +499,7 @@ function transformOptimizationData(
       expectedApr,
       volatility,
       riskScore,
+      riskBreakdown,
     };
   });
 

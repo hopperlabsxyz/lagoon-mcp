@@ -4,6 +4,8 @@
  * Provides normalization, ranking, and comparison functions for multi-vault analysis
  */
 
+import { RiskScoreBreakdown } from './risk-scoring.js';
+
 /**
  * Vault data structure for comparison
  */
@@ -16,6 +18,10 @@ export interface VaultComparisonData {
   apr: number;
   totalShares?: string;
   totalAssets?: string;
+  // Risk analysis fields
+  riskScore?: number;
+  riskLevel?: 'Low' | 'Medium' | 'High' | 'Critical';
+  riskBreakdown?: RiskScoreBreakdown;
 }
 
 /**
@@ -25,8 +31,10 @@ export interface NormalizedVault extends VaultComparisonData {
   rank: number;
   tvlPercentile: number;
   aprPercentile: number;
+  riskPercentile?: number; // Percentile ranking for risk (lower risk = higher percentile)
   aprDelta: number; // Delta from average APR
   tvlDelta: number; // Delta from average TVL
+  riskDelta?: number; // Delta from average risk
   overallScore: number; // Weighted score (0-100)
 }
 
@@ -37,6 +45,7 @@ export interface ComparisonSummary {
   totalVaults: number;
   averageTvl: number;
   averageApr: number;
+  averageRisk?: number;
   bestPerformer: {
     address: string;
     name: string;
@@ -56,6 +65,18 @@ export interface ComparisonSummary {
     address: string;
     name: string;
     tvl: number;
+  };
+  safestVault?: {
+    address: string;
+    name: string;
+    riskScore: number;
+    riskLevel: string;
+  };
+  riskiestVault?: {
+    address: string;
+    name: string;
+    riskScore: number;
+    riskLevel: string;
   };
 }
 
@@ -113,10 +134,16 @@ export function normalizeAndRankVaults(vaults: VaultComparisonData[]): Normalize
   // Extract metrics
   const tvls = vaults.map((v) => v.tvl);
   const aprs = vaults.map((v) => v.apr);
+  const risks = vaults.map((v) => v.riskScore).filter((r): r is number => r !== undefined);
 
   // Calculate averages
   const avgTvl = tvls.reduce((sum, val) => sum + val, 0) / tvls.length;
   const avgApr = aprs.reduce((sum, val) => sum + val, 0) / aprs.length;
+  const avgRisk =
+    risks.length > 0 ? risks.reduce((sum, val) => sum + val, 0) / risks.length : undefined;
+
+  // Check if we have risk data
+  const hasRiskData = risks.length > 0;
 
   // Normalize each vault
   const normalized: NormalizedVault[] = vaults.map((vault) => ({
@@ -124,14 +151,30 @@ export function normalizeAndRankVaults(vaults: VaultComparisonData[]): Normalize
     rank: 0, // Will be set below
     tvlPercentile: calculatePercentile(vault.tvl, tvls),
     aprPercentile: calculatePercentile(vault.apr, aprs),
+    riskPercentile:
+      hasRiskData && vault.riskScore !== undefined
+        ? 100 - calculatePercentile(vault.riskScore, risks) // Invert: lower risk = higher percentile
+        : undefined,
     aprDelta: calculateDelta(vault.apr, avgApr),
     tvlDelta: calculateDelta(vault.tvl, avgTvl),
+    riskDelta:
+      avgRisk !== undefined && vault.riskScore !== undefined
+        ? calculateDelta(vault.riskScore, avgRisk)
+        : undefined,
     overallScore: 0, // Will be set below
   }));
 
-  // Calculate overall scores
+  // Calculate overall scores (now includes risk if available)
   normalized.forEach((vault) => {
-    vault.overallScore = calculateOverallScore(vault.aprPercentile, vault.tvlPercentile);
+    if (hasRiskData && vault.riskPercentile !== undefined) {
+      // Include risk in scoring: 40% APR, 30% TVL, 30% Safety (inverted risk)
+      vault.overallScore =
+        calculateOverallScore(vault.aprPercentile, vault.tvlPercentile, { apr: 0.4, tvl: 0.3 }) +
+        vault.riskPercentile * 0.3;
+    } else {
+      // Fallback to original weighting if no risk data
+      vault.overallScore = calculateOverallScore(vault.aprPercentile, vault.tvlPercentile);
+    }
   });
 
   // Sort by overall score (descending) and assign ranks
@@ -159,14 +202,42 @@ export function generateComparisonSummary(vaults: VaultComparisonData[]): Compar
   const averageTvl = totalTvl / vaults.length;
   const averageApr = totalApr / vaults.length;
 
+  // Calculate average risk if available
+  const vaultsWithRisk = vaults.filter((v) => v.riskScore !== undefined);
+  const averageRisk =
+    vaultsWithRisk.length > 0
+      ? vaultsWithRisk.reduce((sum, v) => sum + (v.riskScore || 0), 0) / vaultsWithRisk.length
+      : undefined;
+
   // Find extremes
   const sortedByApr = [...vaults].sort((a, b) => b.apr - a.apr);
   const sortedByTvl = [...vaults].sort((a, b) => b.tvl - a.tvl);
+
+  // Find safest and riskiest vaults if risk data available
+  let safestVault, riskiestVault;
+  if (vaultsWithRisk.length > 0) {
+    const sortedByRisk = [...vaultsWithRisk].sort(
+      (a, b) => (a.riskScore || 0) - (b.riskScore || 0)
+    );
+    safestVault = {
+      address: sortedByRisk[0].address,
+      name: sortedByRisk[0].name,
+      riskScore: sortedByRisk[0].riskScore || 0,
+      riskLevel: sortedByRisk[0].riskLevel || 'Unknown',
+    };
+    riskiestVault = {
+      address: sortedByRisk[sortedByRisk.length - 1].address,
+      name: sortedByRisk[sortedByRisk.length - 1].name,
+      riskScore: sortedByRisk[sortedByRisk.length - 1].riskScore || 0,
+      riskLevel: sortedByRisk[sortedByRisk.length - 1].riskLevel || 'Unknown',
+    };
+  }
 
   return {
     totalVaults: vaults.length,
     averageTvl,
     averageApr,
+    averageRisk,
     bestPerformer: {
       address: sortedByApr[0].address,
       name: sortedByApr[0].name,
@@ -187,6 +258,8 @@ export function generateComparisonSummary(vaults: VaultComparisonData[]): Compar
       name: sortedByTvl[sortedByTvl.length - 1].name,
       tvl: sortedByTvl[sortedByTvl.length - 1].tvl,
     },
+    safestVault,
+    riskiestVault,
   };
 }
 
@@ -196,8 +269,29 @@ export function generateComparisonSummary(vaults: VaultComparisonData[]): Compar
  * @returns Markdown formatted table
  */
 export function formatComparisonTable(vaults: NormalizedVault[]): string {
-  const header =
-    '| Rank | Vault | TVL | APR | Score | TVL Δ | APR Δ |\n|------|-------|-----|-----|-------|-------|-------|\n';
+  // Check if we have risk data
+  const hasRiskData = vaults.some((v) => v.riskScore !== undefined);
+
+  // Risk level emoji helper
+  const riskEmoji = (level?: string): string => {
+    switch (level) {
+      case 'Low':
+        return '🟢';
+      case 'Medium':
+        return '🟡';
+      case 'High':
+        return '🟠';
+      case 'Critical':
+        return '🔴';
+      default:
+        return '';
+    }
+  };
+
+  // Build header based on data availability
+  const header = hasRiskData
+    ? '| Rank | Vault | TVL | APR | Risk | Score | TVL Δ | APR Δ | Risk Δ |\n|------|-------|-----|-----|------|-------|-------|-------|--------|\n'
+    : '| Rank | Vault | TVL | APR | Score | TVL Δ | APR Δ |\n|------|-------|-----|-----|-------|-------|-------|\n';
 
   const rows = vaults
     .map((v) => {
@@ -207,7 +301,20 @@ export function formatComparisonTable(vaults: NormalizedVault[]): string {
       const tvlDeltaFormatted = `${v.tvlDelta > 0 ? '+' : ''}${v.tvlDelta.toFixed(1)}%`;
       const aprDeltaFormatted = `${v.aprDelta > 0 ? '+' : ''}${v.aprDelta.toFixed(1)}%`;
 
-      return `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${aprFormatted} | ${scoreFormatted} | ${tvlDeltaFormatted} | ${aprDeltaFormatted} |`;
+      if (hasRiskData) {
+        const riskFormatted =
+          v.riskScore !== undefined
+            ? `${riskEmoji(v.riskLevel)} ${(v.riskScore * 100).toFixed(1)}%`
+            : 'N/A';
+        const riskDeltaFormatted =
+          v.riskDelta !== undefined
+            ? `${v.riskDelta > 0 ? '+' : ''}${v.riskDelta.toFixed(1)}%`
+            : 'N/A';
+
+        return `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${aprFormatted} | ${riskFormatted} | ${scoreFormatted} | ${tvlDeltaFormatted} | ${aprDeltaFormatted} | ${riskDeltaFormatted} |`;
+      } else {
+        return `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${aprFormatted} | ${scoreFormatted} | ${tvlDeltaFormatted} | ${aprDeltaFormatted} |`;
+      }
     })
     .join('\n');
 

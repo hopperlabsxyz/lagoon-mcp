@@ -9,8 +9,9 @@ Side-by-side comparison of 2-10 vaults with normalized metrics, percentile ranki
 - **Investment Evaluation**: Compare candidate vaults before investing
 - **Performance Benchmarking**: Identify best/worst performers
 - **Due Diligence**: Side-by-side analysis of multiple options
-- **Risk-Adjusted Returns**: Compare APR relative to risk factors
+- **Risk-Adjusted Returns**: Compare APR relative to comprehensive 12-factor risk scores
 - **Portfolio Optimization**: Find better alternatives for current holdings
+- **Safety Assessment**: Identify safest and riskiest vaults based on multi-dimensional risk analysis
 
 ## Parameters
 
@@ -34,61 +35,75 @@ None - comparison uses all available vault fields automatically.
 
 ## Return Format
 
-Returns structured comparison with rankings:
+Returns structured markdown comparison table with normalized metrics, risk analysis, and rankings:
 
-```json
-{
-  "comparison": {
-    "vaults": [
-      {
-        "address": "0x1234...",
-        "chainId": 42161,
-        "symbol": "lgUSDC",
-        "metrics": {
-          "tvl": 1234567.89,
-          "tvlRank": 1,
-          "tvlPercentile": 95,
-          "apr": {
-            "net": 5.67,
-            "gross": 6.45,
-            "rank": 2
-          },
-          "capacity": {
-            "total": 5000000.00,
-            "utilization": 24.69,
-            "rank": 3
-          },
-          "age": {
-            "days": 180,
-            "rank": 1
-          }
-        },
-        "highlights": ["Highest TVL", "Established vault"]
-      }
-    ],
-    "summary": {
-      "bestTvl": "0x1234...",
-      "bestApr": "0x5678...",
-      "mostCapacity": "0x9abc...",
-      "oldest": "0x1234..."
-    },
-    "deltas": {
-      "tvl": {
-        "highest": 1234567.89,
-        "lowest": 456789.12,
-        "delta": 170.2,
-        "median": 890123.45
-      },
-      "apr": {
-        "highest": 7.89,
-        "lowest": 3.45,
-        "delta": 4.44,
-        "median": 5.67
-      }
-    }
-  }
-}
+**Output includes**:
+- Summary statistics (average TVL, APR, risk)
+- Best/worst performers identification
+- Safest/riskiest vaults (when risk data available)
+- Detailed comparison table with percentile rankings
+- Delta from average metrics
+- 12-factor risk scores with visual indicators
+
+**Example Output** (with risk analysis):
+
 ```
+# Vault Comparison Results
+
+**Chain ID**: 42161
+**Vaults Analyzed**: 3
+
+## Summary Statistics
+
+- **Average TVL**: $2.50M
+- **Average APR**: 8.50%
+- **Average Risk**: 35.0%
+
+### Best Performer
+- **Vault**: High Yield Vault
+- **APR**: 12.00%
+
+### Worst Performer
+- **Vault**: Stable Vault
+- **APR**: 6.50%
+
+### Highest TVL
+- **Vault**: Popular Vault
+- **TVL**: $5.00M
+
+### Lowest TVL
+- **Vault**: Small Vault
+- **TVL**: $1.00M
+
+### Safest Vault
+- **Vault**: Conservative Vault
+- **Risk Score**: 25.0% (Low)
+
+### Riskiest Vault
+- **Vault**: Aggressive Vault
+- **Risk Score**: 55.0% (Medium)
+
+## Detailed Comparison
+
+| Rank | Vault | TVL | APR | Risk | Score | TVL Δ | APR Δ | Risk Δ |
+|------|-------|-----|-----|------|-------|-------|-------|--------|
+| 1 | High Yield (lgUSDC) | $2.00M | 12.00% | 🟡 30.0% | 72.5 | -20.0% | +41.2% | -14.3% |
+| 2 | Popular (lgWETH) | $5.00M | 8.50% | 🟢 25.0% | 68.3 | +100.0% | 0.0% | -28.6% |
+| 3 | Stable (lgDAI) | $1.00M | 6.50% | 🟠 55.0% | 42.1 | -60.0% | -23.5% | +57.1% |
+
+**Legend**:
+- **Rank**: Overall ranking based on weighted score (40% APR, 30% TVL, 30% Safety)
+- **Score**: Overall performance score (0-100)
+- **TVL Δ**: Delta from average TVL (%)
+- **APR Δ**: Delta from average APR (%)
+- **Risk**: 12-factor risk score (🟢 Low, 🟡 Medium, 🟠 High, 🔴 Critical)
+- **Risk Δ**: Delta from average risk (%)
+```
+
+**Without risk data** (fallback):
+- Table excludes Risk and Risk Δ columns
+- Scoring uses 60% APR, 40% TVL weighting
+- Summary excludes safest/riskiest vault sections
 
 ## Examples
 
@@ -154,20 +169,32 @@ All metrics normalized for fair comparison:
 
 ### Ranking System
 
-Rankings assigned (1 = best) for each metric:
-- **Lower rank = Better performance**
-- Ties resolved by secondary metrics
-- Percentile scores show relative position
-- Rankings help identify outliers
+Rankings assigned (1 = best) based on weighted composite scores:
+
+**With Risk Data** (recommended):
+- **40% APR Percentile**: Rewards higher yields
+- **30% TVL Percentile**: Considers vault size and trust
+- **30% Safety Percentile**: Incorporates 12-factor risk analysis (inverted: lower risk = higher score)
+- **Lower rank = Better overall performance**
+
+**Without Risk Data** (fallback):
+- **60% APR Percentile**: Primary focus on yields
+- **40% TVL Percentile**: Secondary consideration for size
+- Ties resolved by TVL when scores equal
+
+**Percentile Calculation**:
+- 0-100 scale showing relative position within comparison set
+- Higher percentile = better performance for that metric
+- Risk percentiles inverted: lower risk scores → higher percentiles (safer vaults rank higher)
 
 ### Best/Worst Identification
 
 Automatically identifies:
 - **Highest TVL**: Most trusted/used vault
 - **Best APR**: Highest net returns
-- **Most Capacity**: Largest growth potential
-- **Oldest**: Most established
-- **Best Overall**: Weighted composite score
+- **Safest Vault**: Lowest risk score based on 12-factor analysis (when available)
+- **Riskiest Vault**: Highest risk score requiring careful evaluation (when available)
+- **Best Overall**: Weighted composite score balancing yield, size, and safety
 
 ### Delta Analysis
 
@@ -176,6 +203,44 @@ Calculates differences for context:
 - **Delta Percentage**: Relative difference
 - **Median**: Central tendency
 - **Standard Deviation**: Volatility indicator
+
+### 12-Factor Risk Analysis
+
+When vault risk data is available, comparison includes comprehensive risk scoring based on 12 factors:
+
+**Financial Factors** (30%):
+1. **TVL Risk** (15%): Vault size relative to protocol total
+2. **TVL Concentration** (15%): Position concentration risk
+
+**Market Factors** (15%):
+3. **Volatility Risk** (15%): Historical price stability
+
+**Protocol Factors** (20%):
+4. **Age Risk** (5%): Time since vault creation
+5. **Curator Track Record** (10%): Curator success rate and professionalism
+6. **Fee Structure** (5%): Management and performance fees impact
+
+**Operational Factors** (20%):
+7. **Liquidity Risk** (8%): Safe asset availability for redemptions
+8. **APR Consistency** (7%): Yield stability over time
+9. **Settlement Risk** (5%): Pending operations and settlement times
+
+**Technical Factors** (15%):
+10. **Yield Sustainability** (8%): Native vs. temporary yield sources
+11. **Integration Complexity** (4%): Number of DeFi protocol dependencies
+12. **Capacity Utilization** (3%): Vault capacity usage percentage
+
+**Risk Levels**:
+- 🟢 **Low** (0-25%): Conservative vaults with strong fundamentals
+- 🟡 **Medium** (25-50%): Balanced risk-return profiles
+- 🟠 **High** (50-75%): Elevated risk requiring careful monitoring
+- 🔴 **Critical** (75-100%): Significant risk factors, expert evaluation recommended
+
+**Integration Benefits**:
+- Risk-adjusted rankings prioritize safer high-yield vaults
+- Identify concentration and sustainability risks
+- Enable informed investment decisions beyond just APR
+- Support due diligence and compliance requirements
 
 ### Comparison Limits
 

@@ -11,6 +11,7 @@ AI-powered portfolio optimization engine based on Modern Portfolio Theory (MPT).
 - **Diversification Analysis**: Identify over-concentrated positions
 - **Strategic Asset Allocation**: Optimize long-term portfolio structure
 - **Performance Enhancement**: Improve risk-adjusted returns through scientific allocation
+- **Yield Sustainability Assessment**: Identify vaults with unsustainable yield dependencies
 
 ## Parameters
 
@@ -157,7 +158,43 @@ Returns comprehensive optimization analysis with actionable recommendations:
       "volatility": "-8.5%",
       "diversification": "+16%"
     }
-  }
+  },
+  "yieldSustainabilityWarnings": [
+    {
+      "vault": {
+        "address": "0x5678...",
+        "symbol": "lgWETH",
+        "chainId": 1
+      },
+      "yieldSustainabilityRisk": 0.75,
+      "yieldComposition": {
+        "nativeYields": 12.5,
+        "incentives": 45.0,
+        "airdrops": 12.5,
+        "total": 70.0
+      },
+      "warning": "HIGH",
+      "message": "🚨 This vault is heavily dependent on temporary incentives (64% of yield). Native protocol yields represent only 18% of total APR. Consider this yield may not be sustainable long-term.",
+      "recommendation": "Monitor closely for incentive program changes. Consider diversifying into vaults with higher native yield ratios."
+    },
+    {
+      "vault": {
+        "address": "0x9abc...",
+        "symbol": "lgUSDC",
+        "chainId": 42161
+      },
+      "yieldSustainabilityRisk": 0.50,
+      "yieldComposition": {
+        "nativeYields": 35.0,
+        "incentives": 15.0,
+        "airdrops": 5.0,
+        "total": 55.0
+      },
+      "warning": "MEDIUM",
+      "message": "⚠️ Monitor yield composition for lgUSDC - native yields are 64% of total APR. Watch for changes in incentive programs.",
+      "recommendation": "Current yield composition is acceptable but monitor regularly."
+    }
+  ]
 }
 ```
 
@@ -290,6 +327,82 @@ Similar to Equal Risk Contribution but also considers correlation structure for 
 
 **Response**: Balanced allocation emphasizing low-correlation vaults, diversification ratio improved from 1.85 → 2.35
 
+## Yield Sustainability Warnings
+
+Portfolio optimization now includes **yield sustainability risk assessment** to identify vaults heavily dependent on temporary incentives or airdrops that may not persist long-term.
+
+### Warning Levels
+
+**🚨 High Risk** (Sustainability Risk ≥ 0.7):
+- Native protocol yields < 20% of total APR
+- Heavy reliance on temporary incentives/airdrops (>80%)
+- **Action Required**: Consider reducing allocation or diversifying
+- **Example**: Vault with 5% native yield + 20% incentives = 20% total (only 25% sustainable)
+
+**⚠️ Medium Risk** (Sustainability Risk ≥ 0.4):
+- Native protocol yields 20-50% of total APR
+- Moderate dependence on temporary programs (50-80%)
+- **Action**: Monitor closely for incentive program changes
+- **Example**: Vault with 6% native yield + 6% incentives = 12% total (50% sustainable)
+
+**✅ Low Risk / No Concerns** (Sustainability Risk < 0.4):
+- Native protocol yields > 50% of total APR
+- Strong fundamental yield generation
+- **Status**: Healthy yield composition, no immediate concerns
+- **Example**: Vault with 8% native yield + 2% incentives = 10% total (80% sustainable)
+
+### Yield Composition Breakdown
+
+**Native Yields** (Sustainable):
+- Protocol fees, lending interest, staking rewards
+- Derived from fundamental protocol operations
+- Expected to persist long-term
+
+**Incentives** (Temporary):
+- Liquidity mining rewards, yield farming bonuses
+- Protocol-specific incentive programs
+- May be reduced or discontinued
+
+**Airdrops** (One-time):
+- Token distributions, governance rewards
+- Typically non-recurring events
+- Should not be relied upon for steady income
+
+### Risk-Adjusted Recommendations
+
+When yield sustainability warnings are present, optimization considers:
+
+1. **Reduced Allocation**: High-risk vaults may receive lower recommended weights
+2. **Diversification Priority**: Suggests balancing risky vaults with stable ones
+3. **Monitoring Guidance**: Provides specific metrics to track for each warned vault
+4. **Alternative Suggestions**: May recommend vaults with better sustainability profiles
+
+### Example Output Section
+
+```
+## ⚠️ Yield Sustainability Warnings
+
+### 🚨 High Risk - Monitor Closely
+
+**lgWETH (Ethereum)**: 75% yield sustainability risk
+- **Current Yield**: 18% APR (12% native, 45% incentives, 12% airdrops)
+- **Concern**: Only 18% of yield comes from native protocol activity
+- **Recommendation**: Monitor incentive program duration. Consider reducing allocation if programs expire.
+
+### ⚠️ Medium Risk - Watch For Changes
+
+**lgUSDC (Arbitrum)**: 50% yield sustainability risk
+- **Current Yield**: 12% APR (6% native, 5% incentives, 1% airdrops)
+- **Concern**: 50% of yield from temporary programs
+- **Recommendation**: Acceptable for now, but review quarterly for program changes.
+
+### ✅ No Sustainability Concerns
+
+The following vaults have healthy yield compositions with >50% native yields:
+- lgDAI (Ethereum): 85% native yields
+- lgUSDT (Arbitrum): 72% native yields
+```
+
 ## Interpretation Guide
 
 ### Sharpe Ratio
@@ -396,6 +509,9 @@ Similar to Equal Risk Contribution but also considers correlation structure for 
 5. **Diversification**: Include 5-10 vaults minimum for meaningful diversification benefits
 6. **Review Correlations**: Ensure selected vaults have low correlations for better diversification
 7. **Monitor Drift**: Set up alerts when allocations drift >10% from targets
+8. **Assess Yield Sustainability**: Pay attention to warnings about incentive-dependent yields
+9. **Track Incentive Programs**: Monitor expiration dates and renewal status of yield programs
+10. **Balance Risk Factors**: Consider both traditional portfolio metrics and yield composition risk
 
 ## Technical Details
 
