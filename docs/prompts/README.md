@@ -1,240 +1,145 @@
-# Analytical Prompts & Frameworks
+# Analytical Prompts Documentation
 
-This directory contains analytical guidance and frameworks for using Lagoon protocol tools effectively. These prompts provide structured approaches to financial analysis, portfolio management, and vault evaluation.
+## Overview
 
-## Purpose & Scope
+This directory contains documentation for Lagoon MCP analytical prompts. **The actual prompt logic lives in runtime TypeScript files** (`src/prompts/`), which are self-explanatory and contain complete implementation details.
 
-**What's in this directory:**
-- 📊 **Analytical frameworks** - How to analyze DeFi vault data
-- 🎯 **Best practices** - Professional financial analysis standards
-- 📝 **Report templates** - Structured output formats
-- 🔍 **Interpretation guides** - Understanding financial metrics
+**Documentation Purpose:**
+- 📋 **Legal compliance** - Mandatory disclaimer standards
+- 🎯 **High-level concepts** - Core analytical frameworks
+- 🔗 **Navigation** - Links to runtime prompts
 
-**What's NOT in this directory:**
-- Tool capabilities and parameters → See [`/docs/tools/`](/docs/tools/)
-- API schemas and return formats → See individual tool documentation
-- Implementation details → See source code
+**Not in this directory:**
+- Implementation details → See `src/prompts/*.ts`
+- Tool capabilities → See [`/docs/tools/`](/docs/tools/)
+- API schemas → See individual tool documentation
 
-## ⚠️ Legal & Compliance
+---
 
-**IMPORTANT**: All prompts in this repository integrate comprehensive legal disclaimers and compliance standards.
+## 🔴 Legal Requirements
 
 ### Disclaimer Standards
 **File**: [`DISCLAIMER_STANDARDS.md`](./DISCLAIMER_STANDARDS.md)
 
-**Comprehensive guide** to disclaimer requirements, communication language standards, and legal compliance for all Lagoon MCP prompts.
+**Critical legal framework** for all financial analysis prompts. Covers:
+- Universal & DeFi-specific disclaimers
+- Communication language standards (prohibited vs. required framing)
+- Regulatory compliance requirements
+- Quality control and audit procedures
 
-**Key Topics:**
-- **Disclaimer Component System** - Universal, DeFi-specific, regulatory, and domain disclaimers
-- **Communication Language Standards** - Prohibited vs required framing (NOT investment advice)
-- **Prompt-Specific Requirements** - Tailored disclaimer requirements by prompt type
-- **Quality Control Checklist** - Pre-production verification and periodic audits
-- **Legal Compliance** - Securities law, tax obligations, regulatory frameworks
-
-**Applies To**: ALL runtime prompts in `/src/prompts/` providing financial analysis
-
-**Shared Disclaimers Module**: [`/src/prompts/shared/disclaimers.ts`](/src/prompts/shared/disclaimers.ts)
+**Applies to**: ALL runtime prompts in `src/prompts/` providing financial analysis
 
 ---
 
-## Available Prompts
+## 📊 Analytical Framework
 
-### Financial Analysis Framework
+### Financial Analysis Concepts
 **File**: [`financial-analysis.md`](./financial-analysis.md)
 
-Comprehensive framework for analyzing DeFi vaults, portfolios, and yield strategies.
+High-level analytical frameworks and interpretation guidelines for DeFi vault analysis.
 
-**Key Frameworks:**
-- **Portfolio Analysis Pattern** - Multi-vault position analysis and optimization
-- **Vault Performance Analysis Pattern** - Historical trends and benchmarking
-- **Vault Discovery Pattern** - Finding suitable investment opportunities
-- **Risk Assessment Framework** - Multi-factor risk evaluation
+**Covers**:
+- Risk assessment frameworks (LOW/MEDIUM/HIGH categories)
+- Metric interpretation (APR, TVL, capacity, volume)
+- Analysis best practices
+- Report structure templates
 
-**Use Cases:**
-- Portfolio performance review and rebalancing recommendations
-- Individual vault due diligence and evaluation
-- Yield farming strategy optimization
-- Risk-adjusted return analysis
-
-**Related Tools**: All 13 tools documented in [`/docs/tools/`](/docs/tools/)
+**For detailed methodologies**: See runtime prompts in `src/prompts/`
 
 ---
 
-### Curator Performance Intelligence
-**File**: [`curator-performance-intelligence.md`](./curator-performance-intelligence.md)
+## 🔗 Runtime Prompts
 
-Comprehensive framework for evaluating curator performance, reputation, and vault management capabilities.
+The following prompts are implemented as self-explanatory TypeScript files in `src/prompts/`:
 
-**Key Features:**
-- **Performance Metrics** - Weighted APR, Sharpe ratio, risk-adjusted returns
-- **Reputation Scoring** - 0-100 composite score across 6 trust factors
-- **Comparative Rankings** - Percentile rankings and peer comparisons
-- **Trust Signals** - Positive indicators and warning signs framework
-- **Decision Framework** - Curator selection checklists and use case matching
+### Core Analysis Prompts
 
-**Use Cases:**
-- Data-driven curator selection for new investments
-- Ongoing curator performance monitoring
-- Identifying top-performing vs underperforming curators
-- Risk assessment of curator relationships
+**[`financial-analysis.ts`](../src/prompts/financial-analysis.ts)** - Comprehensive DeFi vault analysis
+- Portfolio analysis, performance evaluation, vault discovery patterns
+- Tools: All 13 MCP tools for complete financial analysis
 
-**Related Tools**: `query_graphql`, `search_vaults`, `get_vault_data`, `get_vault_performance`, `compare_vaults`, `analyze_risk`
+**[`curator-performance-intelligence.ts`](../src/prompts/curator-performance-intelligence.ts)** - Curator evaluation framework
+- Performance metrics, reputation scoring, trust signals
+- Tools: `query_graphql`, `search_vaults`, `get_vault_performance`, `analyze_risk`
 
----
+**[`competitor-comparison-framework.ts`](../src/prompts/competitor-comparison-framework.ts)** - Platform comparison analysis
+- Objective comparison vs. Gauntlet, Veda, Ether.fi
+- Tools: `query_graphql`, `search_vaults`, `compare_vaults`
 
-### Competitor Comparison Framework
-**File**: [`competitor-comparison-framework.md`](./competitor-comparison-framework.md)
+**[`onboarding-first-vault.ts`](../src/prompts/onboarding-first-vault.ts)** - New user vault selection guide
+- 5-step selection process, risk assessment, monitoring guidance
+- Tools: `search_vaults`, `analyze_risk`, `simulate_vault`
 
-Objective comparison of Lagoon Protocol against major competitors (Gauntlet, Veda, Ether.fi).
+**[`protocol-overview-kpi-dashboard.ts`](../src/prompts/protocol-overview-kpi-dashboard.ts)** - Protocol health monitoring
+- Real-time KPIs, ecosystem health, competitive positioning
+- Tools: `query_graphql`, `search_vaults`, `get_vault_performance`
 
-**Key Features:**
-- **Financial Comparison** - TVL, APR, fee structures, cost-adjusted returns
-- **Platform Scale** - Vault diversity, network support, user base analysis
-- **Features Matrix** - Risk management, discovery tools, automation capabilities
-- **Security Analysis** - Audit coverage, incident history, trust indicators
-- **Composite Scoring** - Weighted category scores for platform ranking
+**[`portfolio-optimization-engine.ts`](../src/prompts/portfolio-optimization-engine.ts)** - Modern portfolio theory optimization
+- Multiple strategies, correlation analysis, rebalancing recommendations
+- Tools: `user_portfolio`, `compare_vaults`, `analyze_risk`, `simulate_vault`
 
-**Use Cases:**
-- Platform evaluation before committing capital
-- Competitive positioning analysis
-- Migration decision support (moving between platforms)
-- Scenario-based platform recommendations
 
-**Related Tools**: `query_graphql`, `search_vaults`, `get_vault_performance`, `compare_vaults`, `analyze_risk`
 
 ---
 
-### Onboarding Guide: First Vault Selection
-**File**: [`onboarding-first-vault.md`](./onboarding-first-vault.md)
+## Documentation Philosophy
 
-Structured guidance for new users making their first vault deposit with confidence.
+**Two-Layer System:**
 
-**Key Features:**
-- **Profile Assessment** - Risk tolerance, timeline, amount, and goals questionnaire
-- **5-Step Selection Process** - Discovery, risk analysis, performance validation, curator check, projection
-- **Decision Framework** - Scoring system for vault evaluation (0-40 scale)
-- **Best Practices** - Common beginner mistakes and recommended approaches
-- **Monitoring Guide** - Post-selection tracking and exit signals
+1. **Documentation** (`docs/prompts/`) - Human-readable guidance
+   - Legal compliance standards
+   - High-level analytical concepts
+   - Navigation and reference
 
-**Use Cases:**
-- New DeFi user onboarding workflows
-- First-time vault deposit guidance
-- Risk-appropriate vault selection
-- Building confidence in investment decisions
+2. **Runtime Prompts** (`src/prompts/`) - Self-explanatory AI instructions
+   - Complete implementation logic
+   - Detailed methodologies
+   - Production-ready specifications
 
-**Related Tools**: `search_vaults`, `analyze_risk`, `get_vault_performance`, `query_graphql`, `simulate_vault`
+**Principle**: Prompts are self-explanatory in code. Documentation focuses on legal requirements and high-level concepts, not runtime logic duplication.
 
 ---
 
-### Protocol Overview & KPI Dashboard
-**File**: [`protocol-overview-kpi-dashboard.md`](./protocol-overview-kpi-dashboard.md)
+## Usage Guide
 
-Real-time protocol health insights and competitive positioning for informed platform usage decisions.
+**For Analysts & Users:**
+1. Read [`DISCLAIMER_STANDARDS.md`](./DISCLAIMER_STANDARDS.md) for legal framework
+2. Review [`financial-analysis.md`](./financial-analysis.md) for high-level concepts
+3. Reference runtime prompts in `src/prompts/` for detailed methodologies
+4. See [`/docs/tools/`](/docs/tools/) for tool capabilities
 
-**Key Features:**
-- **Core KPIs** - TVL, vault count, user growth, volume metrics
-- **Ecosystem Health** - Curator metrics, security track record, risk distribution
-- **Competitive Analysis** - Market positioning vs Gauntlet, Veda, Ether.fi
-- **Health Scoring** - 0-100 composite protocol health score
-- **Growth Trends** - 7d, 30d, 90d trend analysis with visualizations
-
-**Use Cases:**
-- Platform health evaluation before depositing funds
-- Monitoring protocol growth and adoption trends
-- Competitive intelligence and market positioning
-- Risk assessment through ecosystem health indicators
-
-**Related Tools**: `query_graphql`, `search_vaults`, `get_vault_performance`, `compare_vaults`, `analyze_risk`
+**For Developers:**
+1. **Legal compliance**: ALL prompts must follow `DISCLAIMER_STANDARDS.md`
+2. **Implementation**: Prompts in `src/prompts/` are self-documenting
+3. **Best practices**: Reference `financial-analysis.md` for framework patterns
 
 ---
 
-### Portfolio Optimization Engine
-**File**: [`portfolio-optimization-engine.md`](./portfolio-optimization-engine.md)
+## Contributing
 
-AI-powered portfolio optimization based on modern portfolio theory for maximizing risk-adjusted returns.
+When adding new prompts:
 
-**Key Features:**
-- **Multiple Optimization Strategies** - Maximum Sharpe, Risk Parity, Minimum Variance, Maximum Return, Maximum Diversification
-- **Modern Portfolio Theory** - Expected returns, volatility, Sharpe ratios, efficient frontier
-- **Correlation Analysis** - Vault return correlations and diversification metrics
-- **Rebalancing Recommendations** - Systematic allocation adjustments with cost-benefit analysis
-- **Scenario Analysis** - Best/expected/worst case projections with risk metrics
+1. **Create runtime prompt** in `src/prompts/` (self-explanatory implementation)
+2. **Add entry to this README** (one-line description + link)
+3. **Ensure disclaimer compliance** following `DISCLAIMER_STANDARDS.md`
+4. **Update tool docs** if introducing new tool usage patterns
 
-**Use Cases:**
-- Systematic portfolio rebalancing for $10K+ portfolios
-- Maximizing risk-adjusted returns through optimization
-- Diversification analysis and improvement
-- Transaction cost vs benefit analysis
-- Quarterly portfolio optimization reviews
-
-**Related Tools**: `user_portfolio`, `compare_vaults`, `analyze_risk`, `vault_performance`, `simulate_vault`
+**Quality Standards:**
+- ✅ Runtime prompts are self-contained and self-explanatory
+- ✅ Disclaimer compliance is mandatory
+- ✅ Documentation avoids duplicating runtime logic
+- ❌ Don't create separate .md files for each prompt (use runtime .ts files)
 
 ---
 
-### Advanced Analysis Patterns
-**File**: [`analysis-patterns.md`](./analysis-patterns.md)
+## Related Documentation
 
-*Coming soon: Advanced techniques for complex analysis scenarios*
-
----
-
-## Documentation Architecture
-
-Our documentation follows a clear separation of concerns:
-
-```
-/docs/
-  ├── tools/              ← "What tools can do"
-  │   ├── README.md       (Tool catalog & quick reference)
-  │   ├── analyze-risk.md (Risk scoring capabilities)
-  │   ├── simulate-vault.md (Simulation parameters)
-  │   └── ... (11 more tool docs)
-  │
-  └── prompts/            ← "How to analyze data"
-      ├── README.md       (This file - prompt catalog)
-      ├── financial-analysis.md (Analytical frameworks)
-      └── analysis-patterns.md (Advanced techniques)
-
-/src/prompts/
-  └── financial-analysis.ts  ← "Runtime instructions for Claude"
-```
-
-### Separation of Concerns
-
-| Directory | Focus | Audience | Update Frequency |
-|-----------|-------|----------|------------------|
-| `/docs/tools/` | Tool capabilities, parameters, schemas | Developers & Users | When tools change |
-| `/docs/prompts/` | Analysis techniques, frameworks | Analysts & Users | When patterns evolve |
-| `/src/prompts/` | Runtime AI instructions | Claude (internal) | As prompts improve |
-
-**Key Principle**: Tool documentation should remain stable (capabilities don't change often), while analytical frameworks can evolve based on usage patterns and feedback.
+- **Tool Capabilities**: [`/docs/tools/README.md`](/docs/tools/README.md)
+- **Runtime Prompts**: [`/src/prompts/`](../src/prompts/)
 
 ---
 
-## Using These Prompts
-
-### For End Users
-These prompts demonstrate how to structure queries and interpret results when using Lagoon protocol tools.
-
-**Example workflow:**
-1. Read [`financial-analysis.md`](./financial-analysis.md) to understand analysis frameworks
-2. Reference [`/docs/tools/`](/docs/tools/) for specific tool capabilities
-3. Apply the frameworks to your investment analysis needs
-
-### For Developers
-These prompts show the analytical patterns that Claude uses to generate insights.
-
-**Integration:**
-```typescript
-import { getFinancialAnalysisPrompt } from './src/prompts/financial-analysis';
-
-// Runtime prompt references this documentation
-const prompt = getFinancialAnalysisPrompt();
-```
-
-### For AI Systems
-Runtime prompts in `/src/prompts/` reference this documentation to:
-- Provide consistent analytical approaches
+*Last updated: 2025-11-09*
 - Apply domain-specific best practices
 - Generate structured, professional reports
 
