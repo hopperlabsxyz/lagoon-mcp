@@ -20,6 +20,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetUserPortfolioInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { createGetUserPortfolioQuery } from '../graphql/queries/portfolio.queries.js';
 import type { PortfolioResponseFormat } from '../graphql/queries/portfolio.queries.js';
@@ -223,6 +224,11 @@ export function createExecuteGetUserPortfolio(
         // If parsing fails, just return the result without fragment caching
         // This is a non-critical optimization
       }
+    }
+
+    // Add legal disclaimer to output
+    if (!result.isError && result.content[0]?.type === 'text') {
+      result.content[0].text = result.content[0].text + getToolDisclaimer('user_portfolio');
     }
 
     return result;

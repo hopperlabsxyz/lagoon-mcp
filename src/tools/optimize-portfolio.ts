@@ -27,6 +27,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { OptimizePortfolioInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { SINGLE_VAULT_OPTIMIZATION_QUERY } from '../graphql/queries/index.js';
 import {
@@ -601,7 +602,9 @@ export function createExecuteOptimizePortfolio(
       container.cacheInvalidator.register(cacheKey, [CacheTag.PORTFOLIO, CacheTag.ANALYTICS]);
 
       return {
-        content: [{ type: 'text', text: output.markdown }],
+        content: [
+          { type: 'text', text: output.markdown + getToolDisclaimer('optimize_portfolio') },
+        ],
         isError: false,
       };
     } catch (error) {

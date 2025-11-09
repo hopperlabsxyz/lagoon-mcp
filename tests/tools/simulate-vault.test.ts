@@ -10,6 +10,7 @@ import {
 } from '../../src/tools/simulate-vault.js';
 import type { VaultData, Vault } from '../../src/types/generated.js';
 import { createMockContainer } from '../helpers/test-container.js';
+import { parseJsonWithDisclaimer } from '../helpers/json-parser';
 
 // Type compatible avec le SimulationResult de Lagoon SDK
 type LagoonSimulationResult = {
@@ -213,7 +214,10 @@ describe('executeSimulateVault', () => {
     expect(result.content).toBeDefined();
     expect(result.content[0].type).toBe('text');
 
-    const content = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+    const content = parseJsonWithDisclaimer(result.content[0].text as string) as Record<
+      string,
+      unknown
+    >;
     expect((content.simulation as Record<string, unknown>).vaultAddress).toBe(input.vaultAddress);
     expect((content.currentState as Record<string, unknown>).totalAssets).toBe(
       (mockVault as any).state.totalAssets
@@ -267,7 +271,10 @@ describe('executeSimulateVault', () => {
     };
 
     const result = await executeSimulateVault(input);
-    const content = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+    const content = parseJsonWithDisclaimer(result.content[0].text as string) as Record<
+      string,
+      unknown
+    >;
 
     expect(content.aprAnalysis).toBeDefined();
     expect((content.aprAnalysis as Record<string, unknown>).method).toContain('Lagoon SDK');
@@ -295,7 +302,10 @@ describe('executeSimulateVault', () => {
     };
 
     const result = await executeSimulateVault(input);
-    const content = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+    const content = parseJsonWithDisclaimer(result.content[0].text as string) as Record<
+      string,
+      unknown
+    >;
 
     expect((content.simulatedState as Record<string, unknown>).totalAssets).toBe('500000000');
     expect((content.settlementAnalysis as Record<string, unknown>).settleDeposit).toBe(false);
@@ -355,7 +365,10 @@ describe('executeSimulateVault', () => {
     };
 
     const result = await executeSimulateVault(input);
-    const content = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+    const content = parseJsonWithDisclaimer(result.content[0].text as string) as Record<
+      string,
+      unknown
+    >;
 
     expect(content.simulatedState).toBeDefined();
     expect(content.aprAnalysis).toBeUndefined();
@@ -391,7 +404,10 @@ describe('executeSimulateVault', () => {
     };
 
     const result = await executeSimulateVault(input);
-    const content = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+    const content = parseJsonWithDisclaimer(result.content[0].text as string) as Record<
+      string,
+      unknown
+    >;
 
     // Current price per share: (1000000000 * 10^6) / 1000000000000000000 = 1000 (normalized units)
     // New price per share: (1050000000 * 10^6) / 1000000000000000000 = 1050 (normalized units)
@@ -449,7 +465,10 @@ describe('executeSimulateVault', () => {
     };
 
     const result = await executeSimulateVault(input);
-    const content = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+    const content = parseJsonWithDisclaimer(result.content[0].text as string) as Record<
+      string,
+      unknown
+    >;
 
     expect((content.currentState as Record<string, unknown>).totalSupply).toBe('0');
     expect((content.simulatedState as Record<string, unknown>).totalSupply).toBe(
@@ -470,7 +489,10 @@ describe('executeSimulateVault', () => {
     };
 
     const result = await executeSimulateVault(input);
-    const content = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+    const content = parseJsonWithDisclaimer(result.content[0].text as string) as Record<
+      string,
+      unknown
+    >;
 
     expect(content.settlementAnalysis).toBeDefined();
     expect((content.settlementAnalysis as Record<string, unknown>).assetsInSafe).toBe('500000000');
@@ -505,7 +527,10 @@ describe('executeSimulateVault', () => {
     };
 
     const result = await executeSimulateVault(input);
-    const content = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+    const content = parseJsonWithDisclaimer(result.content[0].text as string) as Record<
+      string,
+      unknown
+    >;
 
     // All BigInt values should be strings
     expect(typeof (content.currentState as Record<string, unknown>).totalAssets).toBe('string');
@@ -538,7 +563,10 @@ describe('executeSimulateVault', () => {
     };
 
     const result = await executeSimulateVault(input);
-    const content = JSON.parse(result.content[0].text as string) as Record<string, unknown>;
+    const content = parseJsonWithDisclaimer(result.content[0].text as string) as Record<
+      string,
+      unknown
+    >;
 
     expect(content.simulation).toBeDefined();
     expect((content.simulation as Record<string, unknown>).vaultAddress).toBe(input.vaultAddress);

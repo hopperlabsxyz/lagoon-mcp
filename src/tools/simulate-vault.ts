@@ -27,6 +27,7 @@
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { simulateVaultManagement } from '../sdk/simulation-service.js';
 import { transformPeriodSummariesToAPRData } from '../sdk/apr-service.js';
 import { formatBigInt, safeBigIntStringify } from '../sdk/math-utils.js';
@@ -350,7 +351,7 @@ export function createExecuteSimulateVault(
         content: [
           {
             type: 'text',
-            text: safeBigIntStringify(response),
+            text: safeBigIntStringify(response) + getToolDisclaimer('simulate_vault'),
           },
         ],
       };

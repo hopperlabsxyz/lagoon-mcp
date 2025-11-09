@@ -156,6 +156,18 @@ Analyze risk for both vaults (two queries) and compare results.
   - Fresh: 1000-2000ms (multi-factor calculation)
 - **Best For**: Due diligence, risk assessment, investment decisions
 
+## ⚠️ Legal Disclaimer
+
+**NOT FINANCIAL ADVICE** - This tool provides data analysis for informational purposes only.
+
+- Do NOT rely solely on this tool for investment decisions
+- Consult qualified financial professionals before investing
+- Cryptocurrency investments carry substantial risk including complete loss of capital
+- We accept no liability for losses from using this information
+- Past performance ≠ future results
+
+See [main disclaimer](../../README.md#️-important-legal-disclaimer) for full details.
+
 ## Implementation Notes
 
 ### Risk Scoring Methodology

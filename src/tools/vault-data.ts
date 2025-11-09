@@ -19,6 +19,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetVaultDataInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { GET_VAULT_DATA_QUERY } from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
@@ -93,6 +94,13 @@ export function createExecuteGetVaultData(
     const cacheKey = cacheKeys.vaultData(input.vaultAddress, input.chainId);
     container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT]);
 
-    return executor(input);
+    const result = await executor(input);
+
+    // Add legal disclaimer to output
+    if (!result.isError && result.content[0]?.type === 'text') {
+      result.content[0].text = result.content[0].text + getToolDisclaimer('vault_data');
+    }
+
+    return result;
   };
 }

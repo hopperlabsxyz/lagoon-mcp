@@ -239,6 +239,18 @@ Important disclaimers:
 - [analyze_risk](./analyze-risk.md): Risk assessment for predicted yields
 - [compare_vaults](./compare-vaults.md): Compare predicted yields
 
+## ⚠️ Legal Disclaimer
+
+**NOT FINANCIAL ADVICE** - This tool provides data analysis for informational purposes only.
+
+- Do NOT rely solely on this tool for investment decisions
+- Consult qualified financial professionals before investing
+- Cryptocurrency investments carry substantial risk including complete loss of capital
+- We accept no liability for losses from using this information
+- Past performance ≠ future results
+
+See [main disclaimer](../../README.md#️-important-legal-disclaimer) for full details.
+
 ## Common Workflows
 
 ### Investment Decision

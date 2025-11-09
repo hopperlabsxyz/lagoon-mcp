@@ -201,6 +201,18 @@ Exports not cached because:
 - Integration with applications
 - Need to preserve types
 
+## ⚠️ Legal Disclaimer
+
+**NOT FINANCIAL ADVICE** - This tool provides data analysis for informational purposes only.
+
+- Do NOT rely solely on this tool for investment decisions
+- Consult qualified financial professionals before investing
+- Cryptocurrency investments carry substantial risk including complete loss of capital
+- We accept no liability for losses from using this information
+- Past performance ≠ future results
+
+See [main disclaimer](../../README.md#️-important-legal-disclaimer) for full details.
+
 ## Related Tools
 
 - [search_vaults](./search-vaults.md): Find vaults to export

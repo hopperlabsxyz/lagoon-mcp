@@ -19,6 +19,7 @@
 
 import { createHash } from 'crypto';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { type GetTransactionsInput } from '../utils/validators.js';
 import { TRANSACTIONS_QUERY } from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
@@ -273,7 +274,14 @@ export function createExecuteGetTransactions(
         // Register cache tags for invalidation
         container.cacheInvalidator.register(cacheKey, [CacheTag.TRANSACTION]);
 
-        return await executor(input);
+        const result = await executor(input);
+
+        // Add legal disclaimer to output
+        if (!result.isError && result.content[0]?.type === 'text') {
+          result.content[0].text = result.content[0].text + getToolDisclaimer('get_transactions');
+        }
+
+        return result;
       } finally {
         // Clean up in-flight request regardless of success/failure
         inFlightRequests.delete(cacheKey);

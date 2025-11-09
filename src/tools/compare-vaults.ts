@@ -19,6 +19,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { CompareVaultsInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { COMPARE_VAULTS_QUERY } from '../graphql/queries/index.js';
 import {
@@ -369,11 +370,11 @@ export function createExecuteCompareVaults(
     // Execute GraphQL query for all vaults
     const result = await executor(input);
 
-    // Transform JSON output to markdown text format
+    // Transform JSON output to markdown text format with legal disclaimer
     if (!result.isError && result.content[0]?.type === 'text') {
       try {
         const output = JSON.parse(result.content[0].text) as CompareVaultsOutput;
-        result.content[0].text = output.markdown;
+        result.content[0].text = output.markdown + getToolDisclaimer('compare_vaults');
 
         // NEW: Cache each vault individually for future reuse
         // This enables vault_data and other tools to reuse these vaults

@@ -20,6 +20,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { PredictYieldInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import * as PredictionQueries from '../graphql/queries/prediction.queries.js';
 import type { PredictionResponseFormat } from '../graphql/queries/prediction.queries.js';
@@ -345,11 +346,11 @@ export function createExecutePredictYield(
     // Execute and get result
     const result = await executor(input);
 
-    // Transform JSON output to markdown text format
+    // Transform JSON output to markdown text format with legal disclaimer
     if (!result.isError && result.content[0]?.type === 'text') {
       try {
         const output = JSON.parse(result.content[0].text) as YieldPredictionOutput;
-        result.content[0].text = output.markdown;
+        result.content[0].text = output.markdown + getToolDisclaimer('predict_yield');
       } catch (error) {
         console.error('Failed to parse yield prediction output:', error);
       }

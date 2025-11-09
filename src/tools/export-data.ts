@@ -24,6 +24,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { ExportDataInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { calculatePricePerShare } from '../sdk/vault-utils.js';
@@ -150,7 +151,7 @@ async function exportVaults(
       content: [
         {
           type: 'text',
-          text: `# Vault Data Export (CSV)\n\n\`\`\`csv\n${csv}\n\`\`\`\n\n**Records**: ${csvData.length}\n**Format**: CSV\n**Data Type**: Vaults`,
+          text: `# Vault Data Export (CSV)\n\n\`\`\`csv\n${csv}\n\`\`\`\n\n**Records**: ${csvData.length}\n**Format**: CSV\n**Data Type**: Vaults${getToolDisclaimer('export_data')}`,
         },
       ],
       isError: false,
@@ -161,7 +162,7 @@ async function exportVaults(
       content: [
         {
           type: 'text',
-          text: `# Vault Data Export (JSON)\n\n\`\`\`json\n${JSON.stringify(csvData, null, 2)}\n\`\`\`\n\n**Records**: ${csvData.length}\n**Format**: JSON\n**Data Type**: Vaults`,
+          text: `# Vault Data Export (JSON)\n\n\`\`\`json\n${JSON.stringify(csvData, null, 2)}\n\`\`\`\n\n**Records**: ${csvData.length}\n**Format**: JSON\n**Data Type**: Vaults${getToolDisclaimer('export_data')}`,
         },
       ],
       isError: false,
@@ -225,13 +226,15 @@ async function exportTransactions(
     };
   });
 
+  const disclaimer = getToolDisclaimer('export_data');
+
   if (input.format === 'csv') {
     const csv = generateTransactionCSV(csvData);
     return {
       content: [
         {
           type: 'text',
-          text: `# Transaction Data Export (CSV)\n\n\`\`\`csv\n${csv}\n\`\`\`\n\n**Records**: ${csvData.length}\n**Format**: CSV\n**Data Type**: Transactions`,
+          text: `# Transaction Data Export (CSV)\n\n\`\`\`csv\n${csv}\n\`\`\`\n\n**Records**: ${csvData.length}\n**Format**: CSV\n**Data Type**: Transactions${disclaimer}`,
         },
       ],
       isError: false,
@@ -241,7 +244,7 @@ async function exportTransactions(
       content: [
         {
           type: 'text',
-          text: `# Transaction Data Export (JSON)\n\n\`\`\`json\n${JSON.stringify(csvData, null, 2)}\n\`\`\`\n\n**Records**: ${csvData.length}\n**Format**: JSON\n**Data Type**: Transactions`,
+          text: `# Transaction Data Export (JSON)\n\n\`\`\`json\n${JSON.stringify(csvData, null, 2)}\n\`\`\`\n\n**Records**: ${csvData.length}\n**Format**: JSON\n**Data Type**: Transactions${disclaimer}`,
         },
       ],
       isError: false,

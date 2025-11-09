@@ -20,6 +20,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetVaultPerformanceInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
@@ -449,6 +450,11 @@ export function createExecuteGetVaultPerformance(
       } catch (error) {
         console.error('Failed to add SDK APR to response:', error);
       }
+    }
+
+    // Add legal disclaimer to output
+    if (!result.isError && result.content[0]?.type === 'text') {
+      result.content[0].text = result.content[0].text + getToolDisclaimer('vault_performance');
     }
 
     return result;

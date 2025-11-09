@@ -294,6 +294,18 @@ Common errors and solutions:
 | "Invalid Ethereum address format" | Malformed address | Use 40-character hex string with 0x prefix |
 | "Simulation failed" | SDK internal error | Check vault state validity, retry |
 
+## ⚠️ Legal Disclaimer
+
+**NOT FINANCIAL ADVICE** - This tool provides data analysis for informational purposes only.
+
+- Do NOT rely solely on this tool for investment decisions
+- Consult qualified financial professionals before investing
+- Cryptocurrency investments carry substantial risk including complete loss of capital
+- We accept no liability for losses from using this information
+- Past performance ≠ future results
+
+See [main disclaimer](../../README.md#️-important-legal-disclaimer) for full details.
+
 ## Related Tools
 
 - **`get_vault_data`**: Get current vault state before simulation

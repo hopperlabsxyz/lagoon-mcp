@@ -15,6 +15,7 @@ import { createExecuteGetUserPortfolio } from '../../src/tools/user-portfolio';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheKeys } from '../../src/cache';
 import { createMockContainer } from '../helpers/test-container';
+import { parseJsonWithDisclaimer } from '../helpers/json-parser';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -245,7 +246,7 @@ describe('get_user_portfolio Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.positions[0].vaultSymbol).toBe('CACHED');
       expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
     });
@@ -291,7 +292,7 @@ describe('get_user_portfolio Tool', () => {
       const result = await executeGetUserPortfolio(input);
 
       // Assert
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.positions).toHaveLength(3);
       expect(data.positions[0].vaultSymbol).toBe('HIGH'); // 5000 USD
       expect(data.positions[1].vaultSymbol).toBe('MID'); // 1000 USD
@@ -332,7 +333,7 @@ describe('get_user_portfolio Tool', () => {
       const result = await executeGetUserPortfolio(input);
 
       // Assert
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.totalValueUsd).toBe('9124.68');
       expect(data.positionCount).toBe(2);
     });

@@ -18,6 +18,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { AnalyzeRiskInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { RiskService } from '../services/analytics/risk.service.js';
@@ -88,12 +89,14 @@ export function createExecuteAnalyzeRisk(
       // Cache the result
       container.cache.set(cacheKey, riskBreakdown, cacheTTL.riskAnalysis);
 
-      // Return formatted analysis
+      // Return formatted analysis with legal disclaimer
       return {
         content: [
           {
             type: 'text',
-            text: riskService.formatRiskBreakdown(riskBreakdown, responseFormat),
+            text:
+              riskService.formatRiskBreakdown(riskBreakdown, responseFormat) +
+              getToolDisclaimer('analyze_risk'),
           },
         ],
         isError: false,

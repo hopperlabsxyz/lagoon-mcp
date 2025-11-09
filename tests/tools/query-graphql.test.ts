@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createExecuteQueryGraphQL } from '../../src/tools/query-graphql';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { createMockContainer } from '../helpers/test-container';
+import { parseJsonWithDisclaimer } from '../helpers/json-parser';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -116,7 +117,7 @@ describe('query_graphql Tool', () => {
       const responseText = result.content[0].text as string;
       expect(responseText).toContain('\n'); // Pretty-printed JSON should have newlines
       expect(responseText).toContain('  '); // Should have indentation
-      const parsed = JSON.parse(responseText);
+      const parsed = parseJsonWithDisclaimer(responseText);
       expect(parsed).toEqual(mockResponse);
     });
   });
@@ -297,7 +298,8 @@ describe('query_graphql Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      expect(result.content[0].text).toBe('{}');
+      const parsed = parseJsonWithDisclaimer(result.content[0].text as string);
+      expect(parsed).toEqual({});
     });
 
     it('should handle large response payloads', async () => {
@@ -317,7 +319,7 @@ describe('query_graphql Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const parsed = JSON.parse(result.content[0].text as string);
+      const parsed = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(parsed.items).toHaveLength(100);
     });
   });

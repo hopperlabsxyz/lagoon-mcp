@@ -17,6 +17,7 @@ import { createExecuteGetVaultData } from '../../src/tools/vault-data';
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheKeys, cacheTTL } from '../../src/cache';
 import { createMockContainer } from '../helpers/test-container';
+import { parseJsonWithDisclaimer } from '../helpers/json-parser';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -479,7 +480,7 @@ describe('get_vault_data Tool', () => {
       const responseText = result.content[0].text as string;
       expect(responseText).toContain('\n'); // Pretty-printed JSON has newlines
       expect(responseText).toContain('  '); // Should have indentation
-      const parsed = JSON.parse(responseText);
+      const parsed = parseJsonWithDisclaimer(responseText);
       expect(parsed).toEqual(mockResponse);
     });
   });
@@ -497,7 +498,7 @@ describe('get_vault_data Tool', () => {
       });
 
       // Assert
-      const parsed = JSON.parse(result.content[0].text as string);
+      const parsed = parseJsonWithDisclaimer(result.content[0].text as string);
       const vault = parsed.vaultByAddress;
 
       // Verify configuration fields exist (no inception field)
@@ -521,7 +522,7 @@ describe('get_vault_data Tool', () => {
       });
 
       // Assert
-      const parsed = JSON.parse(result.content[0].text as string);
+      const parsed = parseJsonWithDisclaimer(result.content[0].text as string);
       const chain = parsed.vaultByAddress.chain;
 
       // Chain has no id field in working schema
@@ -544,7 +545,7 @@ describe('get_vault_data Tool', () => {
       });
 
       // Assert
-      const parsed = JSON.parse(result.content[0].text as string);
+      const parsed = parseJsonWithDisclaimer(result.content[0].text as string);
       const state = parsed.vaultByAddress.state;
 
       // Verify state fields
@@ -570,7 +571,7 @@ describe('get_vault_data Tool', () => {
       });
 
       // Assert
-      const parsed = JSON.parse(result.content[0].text as string);
+      const parsed = parseJsonWithDisclaimer(result.content[0].text as string);
       const curators = parsed.vaultByAddress.curators;
 
       expect(Array.isArray(curators)).toBe(true);
@@ -591,7 +592,7 @@ describe('get_vault_data Tool', () => {
       });
 
       // Assert
-      const parsed = JSON.parse(result.content[0].text as string);
+      const parsed = parseJsonWithDisclaimer(result.content[0].text as string);
       const vault = parsed.vaultByAddress;
 
       // No top-level airdrops/incentives/nativeYields/referral in working schema

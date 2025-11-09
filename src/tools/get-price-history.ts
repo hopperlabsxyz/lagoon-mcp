@@ -19,6 +19,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { PriceHistoryInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { PRICE_HISTORY_QUERY } from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
@@ -346,12 +347,12 @@ export function createExecuteGetPriceHistory(
     // Execute and get result
     const result = await executor(input);
 
-    // Transform JSON output to markdown text format
+    // Transform JSON output to markdown text format with legal disclaimer
     // executeToolWithCache returns JSON, but this tool should return markdown
     if (!result.isError && result.content[0]?.type === 'text') {
       try {
         const output = JSON.parse(result.content[0].text) as PriceHistoryOutput;
-        result.content[0].text = output.markdown;
+        result.content[0].text = output.markdown + getToolDisclaimer('price_history');
       } catch (error) {
         // If parsing fails, content is already in the right format
         console.error('Failed to parse price history output:', error);

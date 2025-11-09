@@ -17,6 +17,7 @@ import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheTTL } from '../../src/cache';
 import { createMockContainer } from '../helpers/test-container';
 import { GetTransactionsInput } from '../../src/utils/validators';
+import { parseJsonWithDisclaimer } from '../helpers/json-parser';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -138,7 +139,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.transactions).toHaveLength(1);
       expect(content.transactions[0].type).toBe('SettleDeposit');
       expect(content.vaultAddress).toBe(input.vaultAddress);
@@ -161,7 +162,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.transactions).toHaveLength(0);
       expect(content.pageInfo.totalCount).toBe(0);
     });
@@ -185,7 +186,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.transactions).toHaveLength(1);
       expect(content.transactions[0].type).toBe('SettleDeposit');
       expect(content.filters.transactionTypes).toEqual(['SettleDeposit']);
@@ -213,7 +214,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.transactions).toHaveLength(2);
       expect(content.filters.transactionTypes).toEqual(['SettleDeposit', 'SettleRedeem']);
     });
@@ -237,7 +238,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.transactions).toHaveLength(TRANSACTION_TYPES.length);
     });
   });
@@ -268,7 +269,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.transactions).toHaveLength(10);
       expect(content.pageInfo.hasNextPage).toBe(true);
 
@@ -302,7 +303,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.pageInfo.hasPreviousPage).toBe(true);
 
       // Verify GraphQL query used skip parameter
@@ -355,7 +356,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.pageInfo.totalCount).toBe(1050);
     });
   });
@@ -381,7 +382,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.filters.orderBy).toBe('blockNumber');
       expect(content.filters.orderDirection).toBe('desc');
 
@@ -411,7 +412,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.filters.orderBy).toBe('timestamp');
       expect(content.filters.orderDirection).toBe('asc');
 
@@ -440,7 +441,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.filters.orderDirection).toBe('asc');
     });
   });
@@ -587,7 +588,7 @@ describe('get_transactions tool', () => {
       };
 
       const result = await executeGetTransactions(input);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       const tx = content.transactions[0];
 
       expect(tx).toHaveProperty('id');
@@ -620,7 +621,7 @@ describe('get_transactions tool', () => {
       };
 
       const result = await executeGetTransactions(input);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       const tx = content.transactions[0];
 
       expect(tx.chain.id).toBe(42161);
@@ -646,7 +647,7 @@ describe('get_transactions tool', () => {
       };
 
       const result = await executeGetTransactions(input);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       const tx = content.transactions[0];
 
       expect(tx.vault.id).toBe('vault-123');
@@ -676,7 +677,7 @@ describe('get_transactions tool', () => {
       };
 
       const result = await executeGetTransactions(input);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       const tx = content.transactions[0];
 
       expect(tx.data.sender).toBeDefined();
@@ -705,7 +706,7 @@ describe('get_transactions tool', () => {
       };
 
       const result = await executeGetTransactions(input);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
 
       expect(content.pageInfo).toEqual({
         hasNextPage: true,
@@ -732,7 +733,7 @@ describe('get_transactions tool', () => {
       };
 
       const result = await executeGetTransactions(input);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
 
       expect(content.pageInfo.hasPreviousPage).toBe(false);
     });
@@ -754,7 +755,7 @@ describe('get_transactions tool', () => {
       };
 
       const result = await executeGetTransactions(input);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
 
       expect(content.pageInfo.hasNextPage).toBe(true);
       expect(content.pageInfo.hasPreviousPage).toBe(true);
@@ -777,7 +778,7 @@ describe('get_transactions tool', () => {
       };
 
       const result = await executeGetTransactions(input);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
 
       expect(content.pageInfo.hasNextPage).toBe(false);
       expect(content.pageInfo.hasPreviousPage).toBe(true);
@@ -876,7 +877,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.transactions).toHaveLength(0);
       expect(content.pageInfo.totalCount).toBe(0);
     });
@@ -900,7 +901,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.transactions).toHaveLength(1000);
     });
 
@@ -930,7 +931,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(content.transactions).toHaveLength(1);
     });
 
@@ -1022,7 +1023,7 @@ describe('get_transactions tool', () => {
       const result = await executeGetTransactions(input);
 
       expect(result.isError).toBe(false);
-      const content = JSON.parse(result.content[0].text as string);
+      const content = parseJsonWithDisclaimer(result.content[0].text as string);
 
       // Verify all parameters were applied
       expect(content.filters.transactionTypes).toEqual(['SettleDeposit']);

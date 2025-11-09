@@ -18,6 +18,7 @@ import { createExecuteGetVaultPerformance } from '../../src/tools/vault-performa
 import * as graphqlClientModule from '../../src/graphql/client';
 import { cache, cacheKeys, cacheTTL } from '../../src/cache';
 import { createMockContainer } from '../helpers/test-container';
+import { parseJsonWithDisclaimer } from '../helpers/json-parser';
 
 // Mock the GraphQL client
 vi.mock('../../src/graphql/client', () => ({
@@ -127,7 +128,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert - The filtering should happen client-side, so only transactions within 7d should be included
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.metrics).toHaveLength(1); // Only one transaction within 7d range
       expect(data.metrics[0].totalAssetsUsd).toBe(1000000);
     });
@@ -151,7 +152,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.metrics).toHaveLength(1); // Only one transaction within 30d range
     });
 
@@ -174,7 +175,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.metrics).toHaveLength(1); // Only one transaction within 90d range
     });
 
@@ -197,7 +198,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.metrics).toHaveLength(1); // Only one transaction within 1y range
     });
   });
@@ -223,7 +224,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.metrics).toHaveLength(3);
       expect(data.metrics[0].totalAssetsUsd).toBe(900000);
       expect(data.metrics[1].totalAssetsUsd).toBe(950000);
@@ -249,7 +250,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.metrics).toHaveLength(2);
       expect(data.metrics[0].totalAssetsUsd).toBe(900000);
       expect(data.metrics[1].totalAssetsUsd).toBe(950000);
@@ -275,7 +276,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.metrics).toHaveLength(3);
       expect(data.summary.transactionCount).toBe(3);
     });
@@ -301,7 +302,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.summary.startValue).toBe(1000000);
       expect(data.summary.endValue).toBe(1100000);
       expect(data.summary.percentChange).toBeCloseTo(10, 1);
@@ -326,7 +327,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.summary.percentChange).toBeCloseTo(-10, 1);
     });
 
@@ -349,7 +350,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       // Volume is 0 because deposit/withdrawal fields are not available in current schema
       expect(data.summary.volumeUsd).toBe(0);
     });
@@ -376,7 +377,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.summary.transactionCount).toBe(5);
     });
   });
@@ -544,7 +545,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data).toHaveProperty('vaultAddress');
       expect(data).toHaveProperty('chainId');
       expect(data).toHaveProperty('timeRange');
@@ -577,7 +578,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.hasMoreData).toBe(true);
     });
   });
@@ -638,7 +639,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data).toHaveProperty('sdkCalculatedAPR');
     });
 
@@ -660,7 +661,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data).not.toHaveProperty('sdkCalculatedAPR');
     });
 
@@ -689,7 +690,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data).not.toHaveProperty('sdkCalculatedAPR');
     });
 
@@ -714,7 +715,7 @@ describe('get_vault_performance Tool', () => {
 
       // Assert - Main response should still succeed
       expect(result.isError).toBe(false);
-      const data = JSON.parse(result.content[0].text as string);
+      const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data).toHaveProperty('metrics');
       expect(data).not.toHaveProperty('sdkCalculatedAPR');
     });

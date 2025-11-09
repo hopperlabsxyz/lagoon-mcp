@@ -21,6 +21,7 @@
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createHash } from 'crypto';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { SearchVaultsInput } from '../utils/validators.js';
 import { VaultData } from '../graphql/fragments/index.js';
 import { createSearchVaultsQuery } from '../graphql/queries/search.queries.js';
@@ -239,6 +240,11 @@ export function createExecuteSearchVaults(
         // If parsing fails, just return the result without fragment caching
         // This is a non-critical optimization
       }
+    }
+
+    // Add legal disclaimer to output
+    if (!result.isError && result.content[0]?.type === 'text') {
+      result.content[0].text = result.content[0].text + getToolDisclaimer('search_vaults');
     }
 
     return result;

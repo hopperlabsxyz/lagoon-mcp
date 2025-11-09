@@ -19,6 +19,7 @@
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { QueryGraphQLInput } from '../utils/validators.js';
 import { ServiceContainer } from '../core/container.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
@@ -42,12 +43,12 @@ export function createExecuteQueryGraphQL(
       // Execute GraphQL query using injected client
       const data = await container.graphqlClient.request(input.query, input.variables);
 
-      // Return successful response with pretty-printed JSON
+      // Return successful response with pretty-printed JSON and legal disclaimer
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(data, null, 2),
+            text: JSON.stringify(data, null, 2) + getToolDisclaimer('query_graphql'),
           },
         ],
         isError: false,

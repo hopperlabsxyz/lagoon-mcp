@@ -79,6 +79,42 @@ Restart Claude Desktop and start asking questions:
 "What are the top 5 vaults by TVL across all chains?"
 ```
 
+## ⚠️ Important Legal Disclaimer
+
+**THIS TOOL PROVIDES INFORMATIONAL CONTENT ONLY - NOT FINANCIAL ADVICE**
+
+Lagoon MCP is a data analysis tool that provides information about DeFi vaults. **All analysis outputs are for educational and informational purposes only** and should NOT be interpreted as:
+
+- Financial, investment, legal, or tax advice
+- Recommendations to buy, sell, hold, or trade any asset
+- Guarantees of future performance or returns
+- Professional financial guidance
+
+### Your Responsibilities
+
+Before making ANY investment decisions:
+
+1. **Conduct Independent Research**: Verify all data independently
+2. **Consult Professionals**: Seek advice from qualified financial, legal, and tax advisors
+3. **Understand Risks**: DeFi and cryptocurrency investments carry substantial risks including:
+   - Complete loss of invested capital
+   - Smart contract vulnerabilities
+   - Market volatility and illiquidity
+   - Regulatory uncertainty
+4. **Invest Responsibly**: Only invest what you can afford to lose completely
+
+### No Warranties or Guarantees
+
+We provide this software "AS IS" without warranties of any kind. We:
+- Make no guarantees about data accuracy, completeness, or timeliness
+- Accept no liability for investment losses or damages
+- Do not endorse any specific vaults, protocols, or strategies
+- Disclaim all responsibility for third-party platform performance
+
+**Past performance does not predict future results.** Market conditions change rapidly.
+
+---
+
 ## Available Tools
 
 Complete tool documentation available in [docs/tools/](./docs/tools/).
