@@ -1,5 +1,5 @@
 {
-  "name": "@schwepps/lagoon-mcp",
+  "name": "@hopperlabsxyz/lagoon-mcp",
   "version": "0.1.0",
   "description": "MCP server for Lagoon DeFi vault analytics - FOR INFORMATIONAL USE ONLY, NOT FINANCIAL ADVICE. Natural language access to vault data, portfolios, and performance metrics",
   "type": "module",
@@ -44,12 +44,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/schwepps/lagoon-mcp.git"
+    "url": "https://github.com/hopperlabsxyz/lagoon-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/schwepps/lagoon-mcp/issues"
+    "url": "https://github.com/hopperlabsxyz/lagoon-mcp/issues"
   },
-  "homepage": "https://github.com/schwepps/lagoon-mcp#readme",
+  "homepage": "https://github.com/hopperlabsxyz/lagoon-mcp#readme",
   "engines": {
     "node": ">=18.0.0"
   },

@@ -27,10 +27,10 @@ Lagoon MCP enables natural language queries about DeFi vaults, user portfolios, 
 
 ```bash
 # Install globally
-npm install -g @schwepps/lagoon-mcp
+npm install -g @hopperlabsxyz/lagoon-mcp
 
 # Or install locally
-npm install @schwepps/lagoon-mcp
+npm install @hopperlabsxyz/lagoon-mcp
 ```
 
 ### Configuration
@@ -40,6 +40,7 @@ npm install @schwepps/lagoon-mcp
 | Platform | Status | Config Format | Documentation |
 |----------|--------|---------------|---------------|
 | **Claude Desktop** | ✅ Available Now | JSON | [↓ See below](#claude-desktop) |
+| **Claude Code (CLI)** | ✅ Available Now | JSON | [↓ See below](#claude-code-cli) |
 | **OpenAI Agents SDK** | ✅ Available Now | YAML | [↓ See below](#openai-agents-sdk) |
 | **ChatGPT Desktop** | ⏳ Coming Soon | JSON (expected) | [↓ See below](#chatgpt-desktop) |
 | **Grok** | ❌ Not Supported | N/A | No native MCP support |
@@ -80,6 +81,83 @@ Add to your Claude Desktop config file:
   }
 }
 ```
+
+---
+
+#### Claude Code (CLI)
+
+**Configuration file**: `~/.claude.json` (project-based configuration)
+
+Claude Code CLI uses a project-scoped configuration system. You can configure MCP servers in two ways:
+
+##### Option 1: Project-Specific Configuration (~/.claude.json)
+
+Edit your `~/.claude.json` file and add lagoon-mcp to your project:
+
+**For production use** (after `npm install -g @hopperlabsxyz/lagoon-mcp`):
+
+```json
+{
+  "projects": {
+    "/path/to/your/project": {
+      "mcpServers": {
+        "lagoon": {
+          "type": "stdio",
+          "command": "lagoon-mcp",
+          "env": {
+            "LAGOON_GRAPHQL_URL": "https://api.lagoon.finance/query"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**For local development**:
+
+```json
+{
+  "projects": {
+    "/path/to/your/project": {
+      "mcpServers": {
+        "lagoon": {
+          "type": "stdio",
+          "command": "node",
+          "args": ["/absolute/path/to/lagoon-mcp/dist/index.js"],
+          "env": {
+            "LAGOON_GRAPHQL_URL": "http://localhost:3000/query"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+##### Option 2: Team Collaboration (.mcp.json)
+
+Create a `.mcp.json` file in your project root for team-wide configuration:
+
+```json
+{
+  "mcpServers": {
+    "lagoon": {
+      "type": "stdio",
+      "command": "lagoon-mcp",
+      "env": {
+        "LAGOON_GRAPHQL_URL": "https://api.lagoon.finance/query"
+      }
+    }
+  }
+}
+```
+
+This file can be committed to version control for consistent team setup.
+
+**After configuration**: Restart Claude Code and use `/mcp` command to verify lagoon appears in the server list.
+
+**Note**: Claude Code CLI uses different config files than Claude Desktop. See [FAQ](#faq) for details.
 
 ---
 
@@ -277,7 +355,20 @@ Complete tool documentation available in [docs/tools/](./docs/tools/).
 
 ### Prompts
 
-- **Financial Analysis** (`financial-analysis`) - Structured guidance for analyzing vault performance and portfolios with risk assessment frameworks
+Prompts are self-explanatory templates invoked by name. See [Prompt Guidelines](./docs/prompts/README.md) for usage patterns.
+
+| Prompt | Description |
+|--------|-------------|
+| **financial-analysis** | Guidance for analyzing DeFi vault data and generating financial insights with risk assessment frameworks |
+| **curator-performance** | Comprehensive framework for evaluating curator performance, reputation, and vault management capabilities |
+| **competitor-comparison** | Objective comparison of Lagoon Protocol against major competitors with data-driven analysis |
+| **onboarding-first-vault** | Structured guidance for new users making their first vault deposit with risk profile assessment |
+| **protocol-overview** | Real-time protocol health insights and KPI dashboard tracking TVL, growth, and ecosystem health |
+| **portfolio-optimization** | AI-powered portfolio optimization based on modern portfolio theory with systematic rebalancing |
+
+**Usage**: Invoke prompts by name in Claude (e.g., "Use the financial-analysis prompt to evaluate this vault")
+
+**See also**: [Disclaimer Standards](./docs/prompts/DISCLAIMER_STANDARDS.md)
 
 ## Development
 
@@ -287,7 +378,7 @@ For development setup, testing, and contributing guidelines, see [DEVELOPMENT.md
 
 ```bash
 # Clone and setup
-git clone https://github.com/schwepps/lagoon-mcp.git
+git clone https://github.com/hopperlabsxyz/lagoon-mcp.git
 cd lagoon-mcp
 npm install
 
@@ -482,7 +573,13 @@ A: No. xAI has not announced native MCP support for Grok, and there is no Grok d
 **Q: Do I need to modify the code for different platforms?**  
 A: No! The lagoon-mcp server is already compatible with all MCP clients (uses standard MCP protocol and stdio transport). Only configuration format differs between platforms.
 
-**Q: Can I use this with other Claude clients?**  
+**Q: What's the difference between Claude Desktop and Claude Code CLI configuration?**
+A: They use different config files:
+- **Claude Desktop**: `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) - single global config
+- **Claude Code CLI**: `~/.claude.json` (project-based) or `.mcp.json` (team sharing)
+Make sure to edit the correct file for your platform!
+
+**Q: Can I use this with other Claude clients?**
 A: Yes! The MCP protocol is standard. Any MCP-compatible client should work (e.g., Cline, Cursor IDE)
 
 **Q: Is there a rate limit?**
@@ -492,7 +589,7 @@ A: No rate limiting in MCP. Backend GraphQL API is public with no auth.
 A: Yes! Fork the repo, add your tool in `src/tools/`, and register in `src/tools/index.ts`.
 
 **Q: How do I update to a new version?**
-A: Run `npm update -g @schwepps/lagoon-mcp` and restart Claude Desktop.
+A: Run `npm update -g @hopperlabsxyz/lagoon-mcp` and restart Claude Desktop.
 
 **Q: Does this work with all chains?**
 A: Yes! Supports all chains available in the Lagoon backend (12+ networks).
@@ -503,15 +600,15 @@ MIT License - see [LICENSE](./LICENSE) for details
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/schwepps/lagoon-mcp/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/schwepps/lagoon-mcp/discussions)
+- **Issues**: [GitHub Issues](https://github.com/hopperlabsxyz/lagoon-mcp/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/hopperlabsxyz/lagoon-mcp/discussions)
 - **Documentation**: [Tool Docs](./docs/tools/) | [Development Guide](./docs/DEVELOPMENT.md)
 
 ## Acknowledgments
 
 - Built with [Model Context Protocol](https://modelcontextprotocol.io)
 - Powered by [Anthropic Claude](https://claude.ai)
-- GraphQL backend by [Lagoon Team](https://github.com/schwepps/backend)
+- GraphQL backend by [Lagoon Team](https://github.com/hopperlabsxyz/backend)
 
 ---
 
