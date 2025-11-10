@@ -35,7 +35,23 @@ npm install @schwepps/lagoon-mcp
 
 ### Configuration
 
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+#### Supported Platforms
+
+| Platform | Status | Config Format | Documentation |
+|----------|--------|---------------|---------------|
+| **Claude Desktop** | ✅ Available Now | JSON | [↓ See below](#claude-desktop) |
+| **OpenAI Agents SDK** | ✅ Available Now | YAML | [↓ See below](#openai-agents-sdk) |
+| **ChatGPT Desktop** | ⏳ Coming Soon | JSON (expected) | [↓ See below](#chatgpt-desktop) |
+| **Grok** | ❌ Not Supported | N/A | No native MCP support |
+
+---
+
+#### Claude Desktop
+
+Add to your Claude Desktop config file:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
@@ -50,7 +66,7 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 }
 ```
 
-For local development:
+**Local development**:
 ```json
 {
   "mcpServers": {
@@ -64,6 +80,81 @@ For local development:
   }
 }
 ```
+
+---
+
+#### OpenAI Agents SDK
+
+For developers using the [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/guides/mcp/), create `mcp_agent.config.yaml`:
+
+```yaml
+$schema: "https://raw.githubusercontent.com/lastmile-ai/mcp-agent/main/schema/mcp-agent.config.schema.json"
+mcp:
+  servers:
+    lagoon:
+      command: "lagoon-mcp"
+      env:
+        LAGOON_GRAPHQL_URL: "https://api.lagoon.finance/query"
+```
+
+**Python SDK Usage**:
+```python
+from agents.mcp import MCPServerStdio
+
+lagoon_server = MCPServerStdio(
+    params={
+        "command": "lagoon-mcp",
+        "env": {
+            "LAGOON_GRAPHQL_URL": "https://api.lagoon.finance/query"
+        }
+    },
+    name="lagoon"
+)
+```
+
+**TypeScript SDK Usage**:
+```typescript
+import { MCPServerStdio } from '@openai/openai-agents-mcp';
+
+const lagoonServer = new MCPServerStdio({
+  command: 'lagoon-mcp',
+  env: {
+    LAGOON_GRAPHQL_URL: 'https://api.lagoon.finance/query'
+  }
+});
+```
+
+**Note**: This is for API developers building custom applications, not end-user desktop usage.
+
+---
+
+#### ChatGPT Desktop
+
+**Status**: MCP support for ChatGPT Desktop is currently in development and expected "in the coming months" per OpenAI.
+
+**Availability**:
+- ⏳ Desktop app with MCP: Not yet released
+- ⏳ Enterprise/Team: Limited beta access only
+- ❌ Individual ChatGPT Plus: Not available yet
+
+**Expected Configuration** (once available):
+
+Configuration file location will likely follow a similar pattern to Claude Desktop (exact location TBD).
+
+```json
+{
+  "mcpServers": {
+    "lagoon": {
+      "command": "lagoon-mcp",
+      "env": {
+        "LAGOON_GRAPHQL_URL": "https://api.lagoon.finance/query"
+      }
+    }
+  }
+}
+```
+
+**Technical Note**: The lagoon-mcp server is already compatible with ChatGPT's MCP implementation (uses standard MCP protocol and stdio transport). No code changes will be needed once ChatGPT Desktop launches with MCP support
 
 ### Usage
 
@@ -382,8 +473,17 @@ Type 'unknown' is not assignable to type 'Vault'
 
 ## FAQ
 
-**Q: Can I use this with other Claude clients?**
-A: Currently optimized for Claude Desktop, but the MCP protocol is standard.
+**Q: Does this work with ChatGPT?**  
+A: Not yet for end users. ChatGPT Desktop MCP support is "coming in the coming months" per OpenAI. Currently available for API developers via OpenAI Agents SDK (YAML config format). See the [ChatGPT Desktop section](#chatgpt-desktop) above.
+
+**Q: Does this work with Grok?**  
+A: No. xAI has not announced native MCP support for Grok, and there is no Grok desktop app with MCP capabilities. We recommend using Claude Desktop or waiting for ChatGPT Desktop MCP support.
+
+**Q: Do I need to modify the code for different platforms?**  
+A: No! The lagoon-mcp server is already compatible with all MCP clients (uses standard MCP protocol and stdio transport). Only configuration format differs between platforms.
+
+**Q: Can I use this with other Claude clients?**  
+A: Yes! The MCP protocol is standard. Any MCP-compatible client should work (e.g., Cline, Cursor IDE)
 
 **Q: Is there a rate limit?**
 A: No rate limiting in MCP. Backend GraphQL API is public with no auth.
