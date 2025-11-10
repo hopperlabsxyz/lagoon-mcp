@@ -23,7 +23,7 @@ Lagoon MCP enables natural language queries about DeFi vaults, user portfolios, 
 - Claude Desktop app
 - Access to Lagoon backend GraphQL endpoint
 
-### Installation
+### Installation (will be updated after publishing)
 
 ```bash
 # Install globally
@@ -384,6 +384,9 @@ npm install
 
 # Generate types from GraphQL schema
 npm run codegen
+
+# Build the project
+npm run build
 
 # Run in development mode
 npm run dev
