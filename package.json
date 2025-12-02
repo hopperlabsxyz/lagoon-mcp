@@ -1,5 +1,5 @@
 {
-  "name": "@hopperlabsxyz/lagoon-mcp",
+  "name": "@lagoon-protocol/lagoon-mcp",
   "version": "0.1.0",
   "description": "MCP server for Lagoon DeFi vault analytics - FOR INFORMATIONAL USE ONLY, NOT FINANCIAL ADVICE. Natural language access to vault data, portfolios, and performance metrics",
   "type": "module",
