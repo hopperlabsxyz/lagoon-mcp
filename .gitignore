@@ -32,9 +32,6 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
-# Generated
-src/types/generated.ts
-
 # Temporary
 tmp/
 temp/
