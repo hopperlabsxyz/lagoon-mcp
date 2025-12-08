@@ -99,6 +99,9 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install -g npm@latest
+
       - name: Publish to npm (Trusted Publishing)
         run: npm publish --provenance --access public
 
