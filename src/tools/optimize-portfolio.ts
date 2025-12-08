@@ -347,8 +347,8 @@ function processSingleVaultData(
     data.vault.state?.yearlyApr?.linearNetApr ??
     0;
 
-  // Convert APR to percentage (API returns decimal, e.g., 0.15 = 15%)
-  const aprPercentage = apr * 100;
+  // APR is already in percentage format from the API (e.g., 15.0 = 15%)
+  const aprPercentage = apr;
 
   // If we have price history, create a matching performance array
   if (prices.length > 0) {
