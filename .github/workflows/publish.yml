@@ -100,7 +100,7 @@ jobs:
         run: npm run build
 
       - name: Publish to npm (Trusted Publishing)
-        run: npm publish --access public
+        run: npm publish --provenance --access public
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
