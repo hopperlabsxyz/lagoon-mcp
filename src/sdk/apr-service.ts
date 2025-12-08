@@ -10,7 +10,6 @@
 import * as LagoonCore from '@lagoon-protocol/v0-core';
 import { getLastPeriodSummaryInDuration } from '@lagoon-protocol/v0-computation';
 import type { VaultData } from '../graphql/fragments/index.js';
-import type { Vault } from '../types/generated.js';
 
 /**
  * Duration constants (seconds)
@@ -75,7 +74,7 @@ export interface APRHistoricalData {
  */
 export function transformPeriodSummariesToAPRData(
   periodSummaries: PeriodSummary[],
-  vault: Vault | VaultData
+  vault: VaultData
 ): APRHistoricalData {
   // Graceful degradation for new vaults with no history
   if (!periodSummaries?.length) {
@@ -107,7 +106,7 @@ export function transformPeriodSummariesToAPRData(
       if (original) {
         result.thirtyDay = {
           timestamp: Number(thirtyDayPeriod.timestamp),
-          pricePerShare: calculatePricePerShareFromPeriod(original, vault as VaultData),
+          pricePerShare: calculatePricePerShareFromPeriod(original, vault),
         };
       }
     }
@@ -120,7 +119,7 @@ export function transformPeriodSummariesToAPRData(
     if (sorted[0]) {
       result.inception = {
         timestamp: parseInt(sorted[0].timestamp),
-        pricePerShare: calculatePricePerShareFromPeriod(sorted[0], vault as VaultData),
+        pricePerShare: calculatePricePerShareFromPeriod(sorted[0], vault),
       };
     }
 
