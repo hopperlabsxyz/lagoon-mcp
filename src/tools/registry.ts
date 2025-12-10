@@ -10,6 +10,7 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { ZodSchema, ZodObject, ZodRawShape } from 'zod';
 
 // Tool factory functions
+import { createExecuteDiscoverTools, discoverToolsInputSchema } from './discover-tools.js';
 import { createExecuteQueryGraphQL } from './query-graphql.js';
 import { createExecuteGetVaultData } from './vault-data.js';
 import { createExecuteGetUserPortfolio } from './user-portfolio.js';
@@ -64,6 +65,16 @@ export interface ToolDefinition<TInput = unknown> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const TOOL_REGISTRY: ToolDefinition<any>[] = [
   {
+    name: 'discover_tools',
+    description:
+      'Search and discover available Lagoon MCP tools by category or keyword. ' +
+      'Categories: vault, portfolio, analytics, transactions, export. ' +
+      'Use this to understand available capabilities before calling specific tools. ' +
+      'Performance: ~100-200 tokens. No caching needed.',
+    schema: discoverToolsInputSchema,
+    executorFactory: () => createExecuteDiscoverTools(),
+  },
+  {
     name: 'query_graphql',
     description:
       'Execute raw GraphQL queries against the Lagoon backend. ' +
@@ -100,7 +111,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
     description:
       'Search and filter vaults with advanced criteria and 10-minute caching. ' +
       'Supports 20+ filter options including asset, chain, TVL, curator, visibility. ' +
-      'Returns paginated results (default 100, max 1000) with sort options. ' +
+      'Returns paginated results (default 20, max 1000) with sort options. ' +
       'Best for: vault discovery, filtering by criteria, TVL-sorted lists, multi-vault analysis. ' +
       'Performance: ~300-500 tokens per page. ' +
       'Cache key based on filter hash for efficient repeated searches.',
@@ -131,7 +142,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Returns detailed transaction data with timestamps, block numbers, hashes, and type-specific fields. ' +
       'Best for: analyzing historical vault activity, tracking user deposits/withdrawals, monitoring state changes, generating transaction reports. ' +
       'Performance: ~400-600 tokens per query (varies with transaction count). ' +
-      'Features 15-minute caching and pagination support (default 100, max 1000).',
+      'Features 15-minute caching and pagination support (default 20, max 1000).',
     schema: getTransactionsInputSchema,
     executorFactory: createExecuteGetTransactions,
   },

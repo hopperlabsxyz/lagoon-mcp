@@ -22,12 +22,13 @@ export const ethereumAddressSchema = z
 export const chainIdSchema = z.number().int().positive('Chain ID must be a positive integer');
 
 // Pagination first parameter
+// Default reduced from 100 to 20 for token efficiency (~80% reduction per query)
 export const paginationFirstSchema = z
   .number()
   .int()
   .positive()
   .max(1000, 'Maximum page size is 1000')
-  .default(100);
+  .default(20);
 
 // Pagination skip parameter
 export const paginationSkipSchema = z
