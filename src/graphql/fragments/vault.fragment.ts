@@ -118,6 +118,11 @@ export interface VaultData {
     // Fees
     managementFee: number;
     performanceFee: number;
+    protocolFee: number;
+
+    // Whitelist configuration
+    isWhitelistActivated: boolean;
+    whitelist: string[] | null;
 
     // State metadata
     highWaterMark: string;
@@ -210,6 +215,9 @@ export const VAULT_FRAGMENT = `
       }
       managementFee
       performanceFee
+      protocolFee
+      isWhitelistActivated
+      whitelist
       pendingSettlement {
         assets
         assetsUsd

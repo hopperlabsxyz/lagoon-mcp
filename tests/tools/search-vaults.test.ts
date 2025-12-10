@@ -102,6 +102,9 @@ function createMockVault(overrides: Record<string, unknown> = {}): any {
       },
       managementFee: 0.02,
       performanceFee: 0.1,
+      protocolFee: 0,
+      isWhitelistActivated: false,
+      whitelist: null,
       pendingSettlement: {
         assets: '100000000000000000000',
         assetsUsd: 100000,

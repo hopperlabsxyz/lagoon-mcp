@@ -157,6 +157,7 @@ export const getTransactionsInputSchema = z.object({
         'DepositRequestCanceled',
         'RatesUpdated',
         'StateUpdated',
+        'WhitelistUpdated',
       ])
     )
     .optional(),

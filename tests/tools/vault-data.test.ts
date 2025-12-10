@@ -204,6 +204,11 @@ function createMockVaultResponse(overrides: any = {}): any {
         // Fees
         managementFee: 0.02,
         performanceFee: 0.1,
+        protocolFee: 0,
+
+        // Whitelist configuration
+        isWhitelistActivated: false,
+        whitelist: null,
 
         // State metadata (no version)
         highWaterMark: '1100000000000000000',

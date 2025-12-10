@@ -25,9 +25,9 @@ export type ApRs = {
   /** List of incentives with their respective APR contributions for the corresponding period */
   incentives: Array<Incentive>;
   /** Linear net APR including all rewards and after fees */
-  linearNetApr: Scalars['Float']['output'];
+  linearNetApr?: Maybe<Scalars['Float']['output']>;
   /** Linear net APR excluding airdrops after fees */
-  linearNetAprWithoutExtraYields: Scalars['Float']['output'];
+  linearNetAprWithoutExtraYields?: Maybe<Scalars['Float']['output']>;
   /** List of native yields with their respective APR contributions for the corresponding period */
   nativeYields: Array<NativeYield>;
 };
@@ -100,7 +100,7 @@ export type Asset = {
   /** Name of the asset */
   name: Scalars['String']['output'];
   /** Current price of the asset in USD */
-  priceUsd: Scalars['Float']['output'];
+  priceUsd?: Maybe<Scalars['Float']['output']>;
   /** Symbol of the asset */
   symbol: Scalars['String']['output'];
 };
@@ -147,11 +147,11 @@ export type Balances = {
   /** Amount of assets */
   assets: Scalars['BigInt']['output'];
   /** USD amount of assets */
-  assetsUsd: Scalars['Float']['output'];
+  assetsUsd?: Maybe<Scalars['Float']['output']>;
   /** Amount of shares */
   shares: Scalars['BigInt']['output'];
   /** USD amount of shares */
-  sharesUsd: Scalars['Float']['output'];
+  sharesUsd?: Maybe<Scalars['Float']['output']>;
 };
 
 /** Bundle */
@@ -277,7 +277,7 @@ export type DepositRequest = {
   /** Amount of assets deposited */
   assets: Scalars['BigInt']['output'];
   /** The USD value of the assets being deposited */
-  assetsUsd: Scalars['Float']['output'];
+  assetsUsd?: Maybe<Scalars['Float']['output']>;
   /** The address that will control the request */
   controller: Scalars['Address']['output'];
   /** The address from which the asset will be transfered from. */
@@ -307,7 +307,7 @@ export type DepositSync = {
   /** Amount of assets deposited. */
   assets: Scalars['BigInt']['output'];
   /** The USD value of the assets being deposited */
-  assetsUsd: Scalars['Float']['output'];
+  assetsUsd?: Maybe<Scalars['Float']['output']>;
   /** The address from which the asset will be transfered from. */
   owner: Scalars['Address']['output'];
   /** Address of the transaction sender who initiated the deposit. */
@@ -439,11 +439,33 @@ export type NewTotalAssetsUpdated = {
   /** The new total assets value. */
   totalAssets: Scalars['BigInt']['output'];
   /** The total value of all assets in the vault converted to USD */
-  totalAssetsUsd: Scalars['Float']['output'];
+  totalAssetsUsd?: Maybe<Scalars['Float']['output']>;
   /** The new total supply value. */
   totalSupply: Scalars['BigInt']['output'];
   /** The vault associated with the new total assets updated */
   vault: Vault;
+};
+
+/** Vault Proxy */
+export type OptinProxy = {
+  __typename?: 'OptinProxy';
+  /** The OptinProxy's address. */
+  address: Scalars['Address']['output'];
+  /** The address (usually a contract) that has the authority to initiate implementation upgrades */
+  proxyAdmin: Scalars['Address']['output'];
+  /** Current state optin proxy */
+  state: OptinProxyState;
+};
+
+/** Current state of a vault optin proxy */
+export type OptinProxyState = {
+  __typename?: 'OptinProxyState';
+  /** The time in seconds one must wait before enforcing a new implementation, null if not applicable */
+  delay: Scalars['BigInt']['output'];
+  /** The current implementation address. */
+  implementation: Scalars['Address']['output'];
+  /** The owner of the proxy admin contract */
+  upgradeAuthority?: Maybe<Scalars['Address']['output']>;
 };
 
 /** The direction to order results */
@@ -662,7 +684,7 @@ export type RedeemRequest = {
   /** The amount of shares to redeemed. */
   shares: Scalars['BigInt']['output'];
   /** The USD value of the shares being redeemed */
-  sharesUsd: Scalars['Float']['output'];
+  sharesUsd?: Maybe<Scalars['Float']['output']>;
   /** The vault associated with the redeem request */
   vault: Vault;
 };
@@ -707,7 +729,7 @@ export type SettleDeposit = {
   /** The amount of asset deposited. */
   assetsDeposited: Scalars['BigInt']['output'];
   /** The USD value of the assets being deposited */
-  assetsDepositedUsd: Scalars['Float']['output'];
+  assetsDepositedUsd?: Maybe<Scalars['Float']['output']>;
   /** The last deposit epoch id settled. */
   epochId: Scalars['Int']['output'];
   /** Unique identifier for the related settlement data. */
@@ -717,7 +739,7 @@ export type SettleDeposit = {
   /** The total assets value settled. */
   totalAssets: Scalars['BigInt']['output'];
   /** The total value of all assets in the vault converted to USD */
-  totalAssetsUsd: Scalars['Float']['output'];
+  totalAssetsUsd?: Maybe<Scalars['Float']['output']>;
   /** The new total supply value. */
   totalSupply: Scalars['BigInt']['output'];
   /** The vault associated with the settle deposit */
@@ -736,7 +758,7 @@ export type SettleRedeem = {
   /** The amount of asset withdrawed. */
   assetsWithdrawed: Scalars['BigInt']['output'];
   /** The USD value of the assets being withdrawed */
-  assetsWithdrawedUsd: Scalars['Float']['output'];
+  assetsWithdrawedUsd?: Maybe<Scalars['Float']['output']>;
   /** The last redeem epoch id settled. */
   epochId: Scalars['Int']['output'];
   /** Unique identifier for the related settlement data. */
@@ -746,7 +768,7 @@ export type SettleRedeem = {
   /** The total assets value settled. */
   totalAssets: Scalars['BigInt']['output'];
   /** The total value of all assets in the vault converted to USD */
-  totalAssetsUsd: Scalars['Float']['output'];
+  totalAssetsUsd?: Maybe<Scalars['Float']['output']>;
   /** The total supply value. */
   totalSupply: Scalars['BigInt']['output'];
   /** The vault associated with the settle settle redeem */
@@ -777,7 +799,7 @@ export type TotalAssetsUpdated = {
   /** The total assets value settled before fees, deposits and redeems. */
   totalAssets: Scalars['BigInt']['output'];
   /** The total value of all assets in the vault converted to USD */
-  totalAssetsUsd: Scalars['Float']['output'];
+  totalAssetsUsd?: Maybe<Scalars['Float']['output']>;
   /** The total supply value settled before fees, deposits, adn redeems */
   totalSupply: Scalars['BigInt']['output'];
   /** The vault associated with the total assets updated */
@@ -806,7 +828,7 @@ export type Transaction = {
 };
 
 /** Union type representing different types of transaction that can occur, including real on-chain events and virtual ones like PeriodSummaries */
-export type TransactionData = DepositRequest | DepositRequestCanceled | DepositSync | NewTotalAssetsUpdated | PeriodSummary | RatesUpdated | RedeemRequest | SettleDeposit | SettleRedeem | StateUpdated | TotalAssetsUpdated;
+export type TransactionData = DepositRequest | DepositRequestCanceled | DepositSync | NewTotalAssetsUpdated | PeriodSummary | RatesUpdated | RedeemRequest | SettleDeposit | SettleRedeem | StateUpdated | TotalAssetsUpdated | WhitelistUpdated;
 
 /** Filter input for Transaction */
 export type TransactionFilterInput = {
@@ -871,7 +893,9 @@ export type TransactionType =
   /** Emitted when the totalAssets variable is updated. */
   | 'TotalAssetsUpdated'
   /** Vault states are not events but it maintains key event states. */
-  | 'VaultState';
+  | 'VaultState'
+  /** Emitted when a whitelist entry is updated */
+  | 'WhitelistUpdated';
 
 /** User entity representing a vault user */
 export type User = {
@@ -966,6 +990,8 @@ export type Vault = {
   name?: Maybe<Scalars['String']['output']>;
   /** Native yields associated with the vault */
   nativeYields: Array<NativeYield>;
+  /** A transparent upgradeable proxy that allows opting into logic upgrades through a registry. Returns null for vaults that don't support this upgradeability pattern. */
+  optinProxy?: Maybe<OptinProxy>;
   /** Prevent withdraw */
   preventWithdraw?: Maybe<PreventWithdraw>;
   /** Referral program associated with the vault */
@@ -1012,26 +1038,6 @@ export type VaultFilterInput = {
   curatorIds_contains?: InputMaybe<Scalars['String']['input']>;
   /** Filter by curatorIds containing any of the values */
   curatorIds_contains_any?: InputMaybe<Array<Scalars['String']['input']>>;
-  /** Filter by decimals equal to value */
-  decimals_eq?: InputMaybe<Scalars['Int']['input']>;
-  /** Filter by decimals greater than value */
-  decimals_gt?: InputMaybe<Scalars['Int']['input']>;
-  /** Filter by decimals greater than or equal to value */
-  decimals_gte?: InputMaybe<Scalars['Int']['input']>;
-  /** Filter by decimals less than value */
-  decimals_lt?: InputMaybe<Scalars['Int']['input']>;
-  /** Filter by decimals less than or equal to value */
-  decimals_lte?: InputMaybe<Scalars['Int']['input']>;
-  /** Filter by decimals not equal to value */
-  decimals_not_eq?: InputMaybe<Scalars['Int']['input']>;
-  /** Filter by factoryId equal to value */
-  factoryId_eq?: InputMaybe<Scalars['String']['input']>;
-  /** Filter by factoryId in array of values */
-  factoryId_in?: InputMaybe<Array<Scalars['String']['input']>>;
-  /** Filter by factoryId not equal to value */
-  factoryId_not_eq?: InputMaybe<Scalars['String']['input']>;
-  /** Filter by factoryId not in array of values */
-  factoryId_not_in?: InputMaybe<Array<Scalars['String']['input']>>;
   /** Filter by id in array of values */
   id_in?: InputMaybe<Array<Scalars['ID']['input']>>;
   /** Filter by integratorId equal to value */
@@ -1093,7 +1099,7 @@ export type VaultPositionState = {
   /** User shares in this vault */
   shares: Scalars['BigInt']['output'];
   /** User shares in this vault converted to USD */
-  sharesUsd: Scalars['Float']['output'];
+  sharesUsd?: Maybe<Scalars['Float']['output']>;
 };
 
 /** Current state and metrics of a vault including assets, supply, pricing, and performance data */
@@ -1105,6 +1111,8 @@ export type VaultState = {
   highWaterMark: Scalars['BigInt']['output'];
   /** Annualized percentage returns since inception */
   inceptionApr: ApRs;
+  /** Wether the whitelist is activated or not */
+  isWhitelistActivated: Scalars['Boolean']['output'];
   /** The timestamp of the last fee calculation, used to compute management fees */
   lastFeeTime: Scalars['BigInt']['output'];
   /** Live APRs associated with the vault */
@@ -1124,27 +1132,42 @@ export type VaultState = {
   /** Price per vault share in base units */
   pricePerShare: Scalars['BigInt']['output'];
   /** Price per vault share in USD */
-  pricePerShareUsd: Scalars['Float']['output'];
+  pricePerShareUsd?: Maybe<Scalars['Float']['output']>;
+  /** Protocol fee percentage charged on currators fees by the protocol */
+  protocolFee: Scalars['Float']['output'];
   /** Vault access control roles and permissions */
   roles: Roles;
   /** The asset amounts currenlty in the vault custody */
   safeAssetBalance: Scalars['BigInt']['output'];
   /** The USD asset amounts currenlty in the vault custody */
-  safeAssetBalanceUsd: Scalars['Float']['output'];
+  safeAssetBalanceUsd?: Maybe<Scalars['Float']['output']>;
   /** The status of the vault, open, closed, or closing */
   state: State;
   /** Total assets under management in the vault */
   totalAssets: Scalars['BigInt']['output'];
   /** Total assets value in USD */
-  totalAssetsUsd: Scalars['Float']['output'];
+  totalAssetsUsd?: Maybe<Scalars['Float']['output']>;
   /** Total supply of vault shares */
   totalSupply: Scalars['BigInt']['output'];
   /** Vault version */
   version: Scalars['String']['output'];
   /** Weekly annualized percentage returns */
   weeklyApr: ApRs;
+  /** Whitelisted addresses, null if not applicable */
+  whitelist?: Maybe<Array<Scalars['Address']['output']>>;
   /** Yearly annualized percentage returns */
   yearlyApr: ApRs;
+};
+
+/** Emitted when a whitelist entry is updated. */
+export type WhitelistUpdated = {
+  __typename?: 'WhitelistUpdated';
+  /** The address of the account being updated. */
+  account: Scalars['Address']['output'];
+  /** Indicates whether the account is authorized (true) or not (false). */
+  authorized: Scalars['Boolean']['output'];
+  /** The vault associated with this deposit request canceled. */
+  vault: Vault;
 };
 
 /** Represents a wrapped native token with its contract details and metadata */
