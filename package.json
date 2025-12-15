@@ -20,6 +20,8 @@
   },
   "files": [
     "dist",
+    "!dist/**/__tests__",
+    "!dist/**/*.test.*",
     "skills",
     "README.md",
     "LICENSE"

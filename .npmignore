@@ -1,0 +1,36 @@
+# Source files
+src/
+tests/
+*.test.ts
+*.spec.ts
+
+# Build configuration
+tsconfig.json
+tsconfig.tests.json
+codegen.yml
+vitest.config.ts
+
+# Linting/formatting
+.eslintrc.json
+.prettierrc
+.prettierignore
+.lintstagedrc.json
+commitlint.config.cjs
+
+# Development
+scripts/
+docs/
+.github/
+*.tsbuildinfo
+
+# Test artifacts in dist
+dist/**/__tests__
+dist/**/*.test.*
+
+# Temporary files
+*.zip
+
+# Environment
+.env
+.env.*
+!.env.example
