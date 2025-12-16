@@ -88,15 +88,6 @@ function buildGraphQLFilters(filters: SearchVaultsInput['filters']): Record<stri
     }
   }
 
-  // Handle nested state filters
-  // Note: Backend may not support these - will be tested in Phase 2.5
-  if (filters.state_totalAssetsUsd_gte !== undefined) {
-    graphqlFilters.state_totalAssetsUsd_gte = filters.state_totalAssetsUsd_gte;
-  }
-  if (filters.state_totalAssetsUsd_lte !== undefined) {
-    graphqlFilters.state_totalAssetsUsd_lte = filters.state_totalAssetsUsd_lte;
-  }
-
   return graphqlFilters;
 }
 

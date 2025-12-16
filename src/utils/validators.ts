@@ -78,10 +78,6 @@ export const searchVaultsInputSchema = z.object({
       chainId_eq: chainIdSchema.optional(),
       chainId_in: z.array(chainIdSchema).optional(),
 
-      // TVL filters (nested state filters)
-      state_totalAssetsUsd_gte: z.number().positive().optional(),
-      state_totalAssetsUsd_lte: z.number().positive().optional(),
-
       // Curator filters
       curatorIds_contains: z.array(z.string()).optional(),
       curatorIds_contains_any: z.array(z.string()).optional(),
@@ -104,7 +100,7 @@ export const searchVaultsInputSchema = z.object({
       skip: paginationSkipSchema,
     })
     .optional(),
-  orderBy: z.string().default('totalAssetsUsd'),
+  orderBy: z.enum(['address', 'chainId', 'id', 'totalAssetsUsd']).default('totalAssetsUsd'),
   orderDirection: z.enum(['asc', 'desc']).default('desc'),
   // NEW: Response format for token optimization
   responseFormat: z
@@ -158,6 +154,7 @@ export const getTransactionsInputSchema = z.object({
         'DepositRequestCanceled',
         'RatesUpdated',
         'StateUpdated',
+        'VaultState',
         'WhitelistUpdated',
       ])
     )
