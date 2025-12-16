@@ -36,14 +36,10 @@ query GetCurator($curatorId: ID!) {
   curator(id: $curatorId) {
     id
     name
-    description
-    vaults {
-      id
-      name
-      state {
-        totalAssetsUsd
-      }
-    }
+    aboutDescription
+    logoUrl
+    url
+    isVisible
   }
 }
 \`\`\`
@@ -55,7 +51,7 @@ Get all vaults managed by the curator:
 \`\`\`json
 {
   "filters": {
-    "curatorIds_contains": ["curator-id"]
+    "curatorIds_contains": "curator-id"
   },
   "orderBy": "totalAssetsUsd",
   "orderDirection": "desc",
