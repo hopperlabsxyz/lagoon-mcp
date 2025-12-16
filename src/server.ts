@@ -41,7 +41,7 @@ import { getPortfolioOptimizationPrompt } from './prompts/portfolio-optimization
 export function createServer(): McpServer {
   const server = new McpServer({
     name: 'lagoon-mcp',
-    version: '0.1.0',
+    version: '0.2.0',
   });
 
   // ==========================================

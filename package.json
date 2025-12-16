@@ -1,15 +1,28 @@
 {
   "name": "@lagoon-protocol/lagoon-mcp",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "MCP server for Lagoon DeFi vault analytics - FOR INFORMATIONAL USE ONLY, NOT FINANCIAL ADVICE. Natural language access to vault data, portfolios, and performance metrics",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./skills": {
+      "types": "./dist/skills/index.d.ts",
+      "import": "./dist/skills/index.js"
+    }
+  },
   "bin": {
     "lagoon-mcp": "./dist/index.js"
   },
   "files": [
     "dist",
+    "!dist/**/__tests__",
+    "!dist/**/*.test.*",
+    "skills",
     "README.md",
     "LICENSE"
   ],

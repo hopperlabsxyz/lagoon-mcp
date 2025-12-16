@@ -14,6 +14,7 @@ Lagoon MCP enables natural language queries about DeFi vaults, user portfolios, 
 - 🔒 **Type-Safe** - Full TypeScript type safety from GraphQL to Claude
 - 📚 **Rich Resources** - GraphQL schema introspection and DeFi terminology guide
 - 🎯 **Smart Prompts** - Financial analysis guidance with best practices
+- 🧠 **Claude Skills** - Procedural knowledge modules for domain expertise
 
 ## Quick Start
 
@@ -370,6 +371,57 @@ Prompts are self-explanatory templates invoked by name. See [Prompt Guidelines](
 
 **See also**: [Disclaimer Standards](./docs/prompts/DISCLAIMER_STANDARDS.md)
 
+## Claude Skills (Beta)
+
+Skills are procedural knowledge modules that enhance how Claude uses MCP tools. While tools provide data access, Skills teach Claude WHEN to use which tool and HOW to interpret results for different audiences.
+
+**MCP (Data)** + **Skills (Knowledge)** = **Domain Expert Experience**
+
+### Available Skills
+
+| Skill | Purpose | Audience |
+|-------|---------|----------|
+| `lagoon-onboarding` | Guide new users to first vault selection | New Users |
+| `lagoon-portfolio-review` | Quarterly portfolio health checks | Existing Users |
+| `lagoon-risk-expert` | Comprehensive risk evaluation | Advanced Users |
+
+### Using Skills
+
+#### With Claude Desktop
+
+Add to your Claude configuration:
+
+```json
+{
+  "skills": [
+    {
+      "path": "/path/to/lagoon-mcp/skills/lagoon-onboarding"
+    }
+  ]
+}
+```
+
+#### With Backend Integration (npm)
+
+```typescript
+import { buildSkillAwarePrompt } from '@lagoon-protocol/lagoon-mcp/skills';
+
+const { systemPrompt, detectedSkill, tokensAdded } = buildSkillAwarePrompt(
+  "You are a Lagoon vault assistant...",
+  userMessage,
+  { confidenceThreshold: 0.5 }
+);
+
+const response = await claude.messages.create({
+  model: 'claude-sonnet-4-20250514',
+  system: systemPrompt,
+  tools: mcpTools,
+  messages: [{ role: 'user', content: userMessage }]
+});
+```
+
+**See also**: [Skills Documentation](./skills/README.md) | [Full API Reference](./src/skills/index.ts)
+
 ## Development
 
 For development setup, testing, and contributing guidelines, see [DEVELOPMENT.md](./docs/DEVELOPMENT.md).
@@ -402,10 +454,12 @@ lagoon-mcp/
 ├── docs/
 │   ├── DEVELOPMENT.md          # Development guide
 │   └── tools/                  # Individual tool documentation
+├── skills/                     # Claude Skills for enhanced interactions
 ├── src/
 │   ├── tools/                  # Tool implementations
 │   ├── resources/              # MCP resources
 │   ├── prompts/                # MCP prompts
+│   ├── skills/                 # Skills TypeScript API
 │   ├── graphql/                # GraphQL client and fragments
 │   ├── cache/                  # Caching layer
 │   └── utils/                  # Utilities
