@@ -80,7 +80,12 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Execute raw GraphQL queries against the Lagoon backend. ' +
       'Use for custom queries with specific field selection, large datasets (20+ vaults), ' +
       'or advanced filtering. No caching - results are always fresh. ' +
-      'Requires GraphQL query syntax knowledge.',
+      'Requires GraphQL query syntax knowledge. ' +
+      'IMPORTANT SCHEMA INFO: ' +
+      '(1) The vaults query returns VaultPage with items array - access fields through: vaults { items { address name ... } pageInfo { hasNextPage } }. ' +
+      '(2) For chain ID, use nested "chain { id name }" NOT "chainId" field. ' +
+      '(3) Fee fields are on VaultState as individual fields: state { managementFee performanceFee protocolFee } - there is NO "feeRates" or "configuration" field. ' +
+      '(4) Required variables for vaults query: orderBy (use "totalAssetsUsd") and orderDirection (use "desc").',
     schema: queryGraphQLInputSchema,
     executorFactory: createExecuteQueryGraphQL,
   },

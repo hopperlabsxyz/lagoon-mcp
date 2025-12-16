@@ -189,8 +189,10 @@ export function createExecuteSearchVaults(
         return {
           first: pagination.first,
           skip: pagination.skip,
-          orderBy: input.orderBy,
-          orderDirection: input.orderDirection,
+          // Fallback defaults ensure GraphQL query always has required variables
+          // even if Zod defaults weren't applied by the caller
+          orderBy: input.orderBy || 'totalAssetsUsd',
+          orderDirection: input.orderDirection || 'desc',
           where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
         };
       },
