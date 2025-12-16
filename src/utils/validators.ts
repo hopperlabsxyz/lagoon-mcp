@@ -79,7 +79,7 @@ export const searchVaultsInputSchema = z.object({
       chainId_in: z.array(chainIdSchema).optional(),
 
       // Curator filters
-      curatorIds_contains: z.array(z.string()).optional(),
+      curatorIds_contains: z.string().optional(),
       curatorIds_contains_any: z.array(z.string()).optional(),
 
       // Visibility
