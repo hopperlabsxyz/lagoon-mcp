@@ -22,6 +22,11 @@ export interface VaultComparisonData {
   riskScore?: number;
   riskLevel?: 'Low' | 'Medium' | 'High' | 'Critical';
   riskBreakdown?: RiskScoreBreakdown;
+  // Fee fields (values in basis points: 100 = 1%, 1000 = 10%)
+  fees?: {
+    managementFee: number;
+    performanceFee: number;
+  };
 }
 
 /**
@@ -271,6 +276,8 @@ export function generateComparisonSummary(vaults: VaultComparisonData[]): Compar
 export function formatComparisonTable(vaults: NormalizedVault[]): string {
   // Check if we have risk data
   const hasRiskData = vaults.some((v) => v.riskScore !== undefined);
+  // Check if we have fee data
+  const hasFeeData = vaults.some((v) => v.fees !== undefined);
 
   // Risk level emoji helper
   const riskEmoji = (level?: string): string => {
@@ -288,10 +295,35 @@ export function formatComparisonTable(vaults: NormalizedVault[]): string {
     }
   };
 
+  // Format fee as percentage (basis points to %)
+  const formatFee = (bps?: number): string => {
+    if (bps === undefined) return 'N/A';
+    return `${(bps / 100).toFixed(2)}%`;
+  };
+
   // Build header based on data availability
-  const header = hasRiskData
-    ? '| Rank | Vault | TVL | APR | Risk | Score | TVL Δ | APR Δ | Risk Δ |\n|------|-------|-----|-----|------|-------|-------|-------|--------|\n'
-    : '| Rank | Vault | TVL | APR | Score | TVL Δ | APR Δ |\n|------|-------|-----|-----|-------|-------|-------|\n';
+  let header = '| Rank | Vault | TVL | APR |';
+  let separator = '|------|-------|-----|-----|';
+
+  if (hasFeeData) {
+    header += ' Mgmt Fee | Perf Fee |';
+    separator += '----------|----------|';
+  }
+
+  if (hasRiskData) {
+    header += ' Risk |';
+    separator += '------|';
+  }
+
+  header += ' Score | TVL Δ | APR Δ |';
+  separator += '-------|-------|-------|';
+
+  if (hasRiskData) {
+    header += ' Risk Δ |';
+    separator += '--------|';
+  }
+
+  header += '\n' + separator + '\n';
 
   const rows = vaults
     .map((v) => {
@@ -301,20 +333,33 @@ export function formatComparisonTable(vaults: NormalizedVault[]): string {
       const tvlDeltaFormatted = `${v.tvlDelta > 0 ? '+' : ''}${v.tvlDelta.toFixed(1)}%`;
       const aprDeltaFormatted = `${v.aprDelta > 0 ? '+' : ''}${v.aprDelta.toFixed(1)}%`;
 
+      let row = `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${aprFormatted} |`;
+
+      if (hasFeeData) {
+        const mgmtFeeFormatted = formatFee(v.fees?.managementFee);
+        const perfFeeFormatted = formatFee(v.fees?.performanceFee);
+        row += ` ${mgmtFeeFormatted} | ${perfFeeFormatted} |`;
+      }
+
       if (hasRiskData) {
         const riskFormatted =
           v.riskScore !== undefined
             ? `${riskEmoji(v.riskLevel)} ${(v.riskScore * 100).toFixed(1)}%`
             : 'N/A';
+        row += ` ${riskFormatted} |`;
+      }
+
+      row += ` ${scoreFormatted} | ${tvlDeltaFormatted} | ${aprDeltaFormatted} |`;
+
+      if (hasRiskData) {
         const riskDeltaFormatted =
           v.riskDelta !== undefined
             ? `${v.riskDelta > 0 ? '+' : ''}${v.riskDelta.toFixed(1)}%`
             : 'N/A';
-
-        return `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${aprFormatted} | ${riskFormatted} | ${scoreFormatted} | ${tvlDeltaFormatted} | ${aprDeltaFormatted} | ${riskDeltaFormatted} |`;
-      } else {
-        return `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${aprFormatted} | ${scoreFormatted} | ${tvlDeltaFormatted} | ${aprDeltaFormatted} |`;
+        row += ` ${riskDeltaFormatted} |`;
       }
+
+      return row;
     })
     .join('\n');
 

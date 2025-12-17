@@ -486,7 +486,14 @@ describe('get_vault_data Tool', () => {
       expect(responseText).toContain('\n'); // Pretty-printed JSON has newlines
       expect(responseText).toContain('  '); // Should have indentation
       const parsed = parseJsonWithDisclaimer(responseText);
-      expect(parsed).toEqual(mockResponse);
+      // Response now includes structured fees object for easier consumption
+      expect(parsed).toEqual({
+        ...mockResponse,
+        fees: {
+          managementFee: mockResponse.vaultByAddress.state.managementFee,
+          performanceFee: mockResponse.vaultByAddress.state.performanceFee,
+        },
+      });
     });
   });
 

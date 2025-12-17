@@ -296,9 +296,9 @@ describe('compare_vaults Tool', () => {
       expect(result.isError).toBe(false);
       const text = result.content[0].text as string;
       expect(text).toContain('Vaults Analyzed**: 5');
-      // Now includes risk columns since all vaults have risk data
+      // Now includes fee and risk columns since all vaults have fee and risk data
       expect(text).toContain(
-        '| Rank | Vault | TVL | APR | Risk | Score | TVL Δ | APR Δ | Risk Δ |'
+        '| Rank | Vault | TVL | APR | Mgmt Fee | Perf Fee | Risk | Score | TVL Δ | APR Δ | Risk Δ |'
       );
       // Check that all vaults are present
       expect(text).toContain('Vault A');

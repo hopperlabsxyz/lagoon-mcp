@@ -190,6 +190,11 @@ function convertToComparisonData(
     riskScore: riskBreakdown?.overallRisk,
     riskLevel: riskBreakdown?.riskLevel,
     riskBreakdown,
+    // Fee fields (values in basis points: 100 = 1%, 1000 = 10%)
+    fees: {
+      managementFee: vault.state?.managementFee ?? 0,
+      performanceFee: vault.state?.performanceFee ?? 0,
+    },
   };
 }
 
@@ -261,6 +266,8 @@ function buildComparisonMarkdown(
   markdown += `- **Score**: Overall performance score (0-100)\n`;
   markdown += `- **TVL Δ**: Delta from average TVL (%)\n`;
   markdown += `- **APR Δ**: Delta from average APR (%)\n`;
+  markdown += `- **Mgmt Fee**: Management fee (annual, in %)\n`;
+  markdown += `- **Perf Fee**: Performance fee (on profits, in %)\n`;
 
   if (hasRiskData) {
     markdown += `- **Risk**: 12-factor risk score (🟢 Low, 🟡 Medium, 🟠 High, 🔴 Critical)\n`;

@@ -37,6 +37,18 @@ interface VaultDataResponse {
 }
 
 /**
+ * Vault data response with structured fees for easier consumption
+ * Values in basis points (100 = 1%, 1000 = 10%)
+ */
+interface VaultDataResponseWithFees {
+  vaultByAddress: VaultData | null;
+  fees: {
+    managementFee: number;
+    performanceFee: number;
+  };
+}
+
+/**
  * Create the executeGetVaultData function with DI container
  *
  * @param container - Service container with dependencies
@@ -61,17 +73,25 @@ export function createExecuteGetVaultData(
       chainId: input.chainId,
     });
 
-    const cachedVault = container.cache.get(fragmentCacheKey);
+    const cachedVault = container.cache.get<VaultData>(fragmentCacheKey);
     if (cachedVault) {
       // Cache hit from search_vaults - return immediately without GraphQL query
-      return createSuccessResponse({ vaultByAddress: cachedVault });
+      // Add structured fees object for easier consumption
+      return createSuccessResponse({
+        vaultByAddress: cachedVault,
+        fees: {
+          managementFee: cachedVault.state?.managementFee ?? 0,
+          performanceFee: cachedVault.state?.performanceFee ?? 0,
+        },
+      });
     }
 
     // Cache miss - execute GraphQL query with standard caching
     const executor = executeToolWithCache<
       GetVaultDataInput,
       VaultDataResponse,
-      GetVaultDataVariables
+      GetVaultDataVariables,
+      VaultDataResponseWithFees
     >({
       container,
       cacheKey: (input) => cacheKeys.vaultData(input.vaultAddress, input.chainId),
@@ -86,6 +106,14 @@ export function createExecuteGetVaultData(
         message: data.vaultByAddress
           ? undefined
           : `Vault not found: address ${String(data)} on requested chain`,
+      }),
+      // Transform to add structured fees object for easier consumption
+      transformResult: (data) => ({
+        vaultByAddress: data.vaultByAddress,
+        fees: {
+          managementFee: data.vaultByAddress?.state?.managementFee ?? 0,
+          performanceFee: data.vaultByAddress?.state?.performanceFee ?? 0,
+        },
       }),
       toolName: 'get_vault_data',
     });
