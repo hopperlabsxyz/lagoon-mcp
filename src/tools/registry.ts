@@ -155,12 +155,13 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
     name: 'compare_vaults',
     description:
       'Compare multiple vaults side-by-side with normalized metrics and rankings (2-10 vaults). ' +
+      'Supports comparing vaults across different chains by passing chainIds array (or single chainId for backward compatibility). ' +
       'Provides comprehensive comparison including TVL, APR, overall performance scores, and percentile rankings. ' +
       'Calculates deltas from averages and identifies best/worst performers automatically. ' +
       'Returns formatted comparison table with summary statistics and individual vault rankings. ' +
       'Best for: evaluating investment opportunities, identifying top performers, risk-adjusted return analysis, portfolio construction. ' +
       'Performance: ~300 tokens per vault. ' +
-      'Features 15-minute caching based on vault address combinations.',
+      'Features 15-minute caching based on vault address and chain combinations.',
     schema: compareVaultsInputSchema,
     executorFactory: createExecuteCompareVaults,
   },

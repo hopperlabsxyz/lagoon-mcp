@@ -59,19 +59,20 @@ export const GET_VAULT_FOR_APR_QUERY = `
  * GraphQL query for batch vault comparison
  *
  * Fetches multiple vaults in a single request for side-by-side comparison.
+ * Supports cross-chain comparisons by accepting an array of chain IDs.
  * Used by: compare_vaults tool
  *
  * Usage:
  * ```typescript
  * const data = await graphqlClient.request<{ vaults: { items: VaultData[] } }>(
  *   COMPARE_VAULTS_QUERY,
- *   { addresses: ['0x...', '0x...'], chainId: 1 }
+ *   { addresses: ['0x...', '0x...'], chainIds: [1, 8453, 43114] }
  * );
  * ```
  */
 export const COMPARE_VAULTS_QUERY = `
-  query CompareVaults($addresses: [String!]!, $chainId: Int!) {
-    vaults(where: { address_in: $addresses, chainId_eq: $chainId }) {
+  query CompareVaults($addresses: [String!]!, $chainIds: [Int!]!) {
+    vaults(where: { address_in: $addresses, chainId_in: $chainIds }) {
       items {
         ...VaultFragment
       }

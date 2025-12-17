@@ -98,9 +98,10 @@ export const cacheKeys = {
 
   schema: (): string => 'schema:latest',
 
-  compareVaults: (addresses: string[], chainId: number): string => {
+  compareVaults: (addresses: string[], chainIds: number[]): string => {
     const sortedAddresses = [...addresses].sort().join(',');
-    return `compare:${sortedAddresses}:${chainId}`;
+    const sortedChainIds = [...chainIds].sort((a, b) => a - b).join(',');
+    return `compare:${sortedAddresses}:${sortedChainIds}`;
   },
 
   priceHistory: (address: string, chainId: number, range: string): string =>

@@ -2,19 +2,25 @@
  * compare_vaults Tool
  *
  * Side-by-side comparison of multiple vaults with normalized metrics and rankings.
- * Supports comparing 2-10 vaults simultaneously.
+ * Supports comparing 2-10 vaults simultaneously across one or multiple chains.
  *
  * Use cases:
  * - Evaluate investment opportunities across similar vaults
  * - Identify best/worst performers in a category
+ * - Cross-chain vault comparison (e.g., Ethereum vs Base vs Avalanche)
  * - Risk-adjusted return analysis
  * - Performance: ~300 tokens per vault
  *
  * Cache strategy:
  * - 15-minute TTL for comparison results
- * - Cache key: compare:{sorted_addresses}:{chainId}
+ * - Cache key: compare:{sorted_addresses}:{sorted_chainIds}
  * - Cache hit rate target: 70-80%
  * - Cache tags: [CacheTag.VAULT, CacheTag.ANALYTICS] for invalidation
+ *
+ * Multi-chain support:
+ * - Accepts either single `chainId` (backward compatible) or `chainIds` array
+ * - Single chainId is automatically converted to array internally
+ * - GraphQL query uses `chainId_in` filter for cross-chain queries
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -50,7 +56,7 @@ interface CompareVaultsResponse {
  */
 interface CompareVaultsVariables {
   addresses: string[];
-  chainId: number;
+  chainIds: number[];
 }
 
 /**
@@ -63,12 +69,11 @@ interface CompareVaultsOutput {
 /**
  * Convert VaultData to VaultComparisonData for metrics calculation
  * Now includes 12-factor risk analysis
+ * chainId is extracted from vault.chain.id for cross-chain support
  */
-function convertToComparisonData(
-  vault: VaultData,
-  chainId: number,
-  allVaults: VaultData[]
-): VaultComparisonData {
+function convertToComparisonData(vault: VaultData, allVaults: VaultData[]): VaultComparisonData {
+  // Extract chainId from vault data for cross-chain support
+  const chainId = vault.chain?.id ?? 0;
   // Extract APR from nested state structure with proper null checking
   // Use weekly or monthly linearNetApr as the primary APR metric
   const weeklyApr = vault.state?.weeklyApr?.linearNetApr;
@@ -200,11 +205,12 @@ function convertToComparisonData(
 
 /**
  * Build markdown output from comparison data
+ * Supports displaying multiple chains for cross-chain comparisons
  */
 function buildComparisonMarkdown(
   summary: ComparisonSummary,
   table: string,
-  chainId: number,
+  chainIds: number[],
   cached: boolean = false
 ): string {
   const hasRiskData =
@@ -214,7 +220,12 @@ function buildComparisonMarkdown(
     ? `# Vault Comparison Results (Cached)\n\n`
     : `# Vault Comparison Results\n\n`;
 
-  markdown += `**Chain ID**: ${chainId}\n`;
+  // Display chains - format nicely for single or multiple chains
+  if (chainIds.length === 1) {
+    markdown += `**Chain ID**: ${chainIds[0]}\n`;
+  } else {
+    markdown += `**Chains**: ${chainIds.join(', ')} (Cross-chain comparison)\n`;
+  }
   markdown += `**Vaults Analyzed**: ${summary.totalVaults}\n\n`;
 
   markdown += `## Summary Statistics\n\n`;
@@ -278,14 +289,24 @@ function buildComparisonMarkdown(
 }
 
 /**
+ * Helper to normalize input: convert single chainId to chainIds array for backward compatibility
+ */
+function normalizeChainIds(input: CompareVaultsInput): number[] {
+  return input.chainIds ?? (input.chainId ? [input.chainId] : []);
+}
+
+/**
  * Transform raw GraphQL response into comparison markdown output
  * Uses closure to capture input values
  */
 function createTransformComparisonData(input: CompareVaultsInput) {
   return (data: CompareVaultsResponse): CompareVaultsOutput => {
-    // Convert to comparison data
+    // Normalize chainIds for multi-chain support
+    const chainIds = normalizeChainIds(input);
+
+    // Convert to comparison data - chainId is now extracted from vault.chain.id
     const comparisonData: VaultComparisonData[] = data.vaults.items.map((vault) =>
-      convertToComparisonData(vault, input.chainId, data.vaults.items)
+      convertToComparisonData(vault, data.vaults.items)
     );
 
     // Normalize and rank vaults
@@ -297,8 +318,8 @@ function createTransformComparisonData(input: CompareVaultsInput) {
     // Format as markdown table
     const table = formatComparisonTable(normalizedVaults);
 
-    // Build output markdown
-    const markdown = buildComparisonMarkdown(summary, table, input.chainId, false);
+    // Build output markdown with all chainIds
+    const markdown = buildComparisonMarkdown(summary, table, chainIds, false);
 
     return { markdown };
   };
@@ -314,17 +335,27 @@ export function createExecuteCompareVaults(
   container: ServiceContainer
 ): (input: CompareVaultsInput) => Promise<CallToolResult> {
   return async (input: CompareVaultsInput): Promise<CallToolResult> => {
-    // NEW: Cache cascade pattern - check fragment cache for ALL vaults
+    // Normalize chainIds for multi-chain support (backward compatible)
+    const chainIds = normalizeChainIds(input);
+
+    // Cache cascade pattern - check fragment cache for ALL vaults across all chains
+    // For multi-chain, we need to check each vault against each possible chain
     const cachedVaults: VaultData[] = [];
     let allCached = true;
 
     for (const address of input.vaultAddresses) {
-      const vaultCacheKey = cacheKeys.vaultData(address, input.chainId);
-      const cachedVault = container.cache.get<VaultData>(vaultCacheKey);
-
-      if (cachedVault) {
-        cachedVaults.push(cachedVault);
-      } else {
+      let foundCached = false;
+      // Try each chain to find a cached vault
+      for (const chainId of chainIds) {
+        const vaultCacheKey = cacheKeys.vaultData(address, chainId);
+        const cachedVault = container.cache.get<VaultData>(vaultCacheKey);
+        if (cachedVault) {
+          cachedVaults.push(cachedVault);
+          foundCached = true;
+          break;
+        }
+      }
+      if (!foundCached) {
         allCached = false;
         break; // If any vault is missing, we need to query all
       }
@@ -333,13 +364,13 @@ export function createExecuteCompareVaults(
     // If ALL vaults are cached, return immediately without GraphQL query
     if (allCached && cachedVaults.length === input.vaultAddresses.length) {
       const comparisonData: VaultComparisonData[] = cachedVaults.map((vault) =>
-        convertToComparisonData(vault, input.chainId, cachedVaults)
+        convertToComparisonData(vault, cachedVaults)
       );
       const normalizedVaults = normalizeAndRankVaults(comparisonData);
       const summary = generateComparisonSummary(comparisonData);
       const table = formatComparisonTable(normalizedVaults);
 
-      const markdown = buildComparisonMarkdown(summary, table, input.chainId, true);
+      const markdown = buildComparisonMarkdown(summary, table, chainIds, true);
 
       return createSuccessResponse({ markdown });
     }
@@ -352,26 +383,26 @@ export function createExecuteCompareVaults(
       CompareVaultsOutput
     >({
       container,
-      cacheKey: (input) => cacheKeys.compareVaults(input.vaultAddresses, input.chainId),
+      cacheKey: () => cacheKeys.compareVaults(input.vaultAddresses, chainIds),
       cacheTTL: cacheTTL.comparison,
       query: COMPARE_VAULTS_QUERY,
-      variables: (input) => ({
+      variables: () => ({
         addresses: input.vaultAddresses,
-        chainId: input.chainId,
+        chainIds: chainIds,
       }),
       validateResult: (data) => ({
         valid: !!(data.vaults?.items && data.vaults.items.length > 0),
         message:
           data.vaults?.items && data.vaults.items.length > 0
             ? undefined
-            : `No vaults found for the provided addresses on chain ${input.chainId}`,
+            : `No vaults found for the provided addresses on chains ${chainIds.join(', ')}`,
       }),
       transformResult: createTransformComparisonData(input),
       toolName: 'compare_vaults',
     });
 
     // Register cache tags for invalidation
-    const cacheKey = cacheKeys.compareVaults(input.vaultAddresses, input.chainId);
+    const cacheKey = cacheKeys.compareVaults(input.vaultAddresses, chainIds);
     container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT, CacheTag.ANALYTICS]);
 
     // Execute GraphQL query for all vaults

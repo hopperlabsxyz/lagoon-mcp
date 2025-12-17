@@ -176,19 +176,27 @@ export const getTransactionsInputSchema = z.object({
 });
 
 // compare_vaults input
-export const compareVaultsInputSchema = z.object({
-  vaultAddresses: z
-    .array(ethereumAddressSchema)
-    .min(2, 'At least 2 vault addresses are required for comparison')
-    .max(10, 'Maximum 10 vaults can be compared at once'),
-  chainId: chainIdSchema,
-  responseFormat: z
-    .enum(['summary', 'full'])
-    .default('summary')
-    .describe(
-      'Response detail level: summary (~170 tokens/vault), full (~600 tokens/vault). Default: summary'
-    ),
-});
+// Supports both single chainId (backward compat) and chainIds array for cross-chain comparisons
+export const compareVaultsInputSchema = z
+  .object({
+    vaultAddresses: z
+      .array(ethereumAddressSchema)
+      .min(2, 'At least 2 vault addresses are required for comparison')
+      .max(10, 'Maximum 10 vaults can be compared at once'),
+    // Single chainId for backward compatibility
+    chainId: chainIdSchema.optional(),
+    // Array of chainIds for cross-chain comparisons
+    chainIds: z.array(chainIdSchema).optional(),
+    responseFormat: z
+      .enum(['summary', 'full'])
+      .default('summary')
+      .describe(
+        'Response detail level: summary (~170 tokens/vault), full (~600 tokens/vault). Default: summary'
+      ),
+  })
+  .refine((data) => data.chainId !== undefined || (data.chainIds && data.chainIds.length > 0), {
+    message: 'Either chainId or chainIds must be provided',
+  });
 
 // get_price_history input
 export const priceHistoryInputSchema = z.object({
