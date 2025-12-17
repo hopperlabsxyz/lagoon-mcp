@@ -156,6 +156,8 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
     description:
       'Compare multiple vaults side-by-side with normalized metrics and rankings (2-10 vaults). ' +
       'Supports comparing vaults across different chains by passing chainIds array (or single chainId for backward compatibility). ' +
+      'Cross-chain usage: provide chainIds array with one chain per vault address (positional mapping). ' +
+      'Example: vaultAddresses=[A,B,C] with chainIds=[1,8453,42161] compares vault A on Ethereum, B on Base, C on Arbitrum. ' +
       'Provides comprehensive comparison including TVL, APR, overall performance scores, and percentile rankings. ' +
       'Calculates deltas from averages and identifies best/worst performers automatically. ' +
       'Returns formatted comparison table with summary statistics and individual vault rankings. ' +

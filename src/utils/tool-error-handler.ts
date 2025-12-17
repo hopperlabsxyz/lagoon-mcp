@@ -17,10 +17,15 @@ import { ValidationError, errorResponse, logError } from './errors.js';
  * @returns Standardized error response
  */
 export function handleToolError(error: unknown, toolName: string): CallToolResult {
-  // Handle Zod validation errors
+  // Handle Zod validation errors with field path/index for better debugging
   if (error instanceof z.ZodError) {
+    const formattedErrors = error.errors.map((e) => {
+      // Include field path (e.g., "vaultAddresses.1") for array/nested errors
+      const path = e.path.length > 0 ? `${e.path.join('.')} - ` : '';
+      return `${path}${e.message}`;
+    });
     const validationError = new ValidationError(
-      `Input validation failed: ${error.errors.map((e) => e.message).join(', ')}`
+      `Input validation failed: ${formattedErrors.join('; ')}`
     );
     logError(validationError, toolName);
     return errorResponse(validationError);

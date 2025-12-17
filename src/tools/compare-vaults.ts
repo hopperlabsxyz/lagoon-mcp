@@ -502,13 +502,31 @@ ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
         chainIds: chainIds,
       }),
       validateResult: (data) => {
-        const hasVaults = !!(data.vaults?.items && data.vaults.items.length > 0);
+        const items = data.vaults?.items || [];
+        const foundAddresses = new Set(items.map((v) => v.address.toLowerCase()));
+        const notFoundAddresses = input.vaultAddresses.filter(
+          (addr) => !foundAddresses.has(addr.toLowerCase())
+        );
+
+        // All vaults found - success
+        if (notFoundAddresses.length === 0 && items.length > 0) {
+          return { valid: true };
+        }
+
+        // Partial results - some found, some not - proceed with available data
+        // (comparison can still be useful with subset of vaults)
+        if (notFoundAddresses.length > 0 && foundAddresses.size > 0) {
+          return { valid: true };
+        }
+
+        // No vaults found at all - error with helpful message listing requested addresses
         return {
-          valid: hasVaults,
-          message: hasVaults
-            ? undefined
-            : `No vaults found for the provided addresses on chains ${chainIds.join(', ')}`,
-          isError: !hasVaults,
+          valid: false,
+          message:
+            `No vaults found for addresses on chains [${chainIds.join(', ')}]. ` +
+            `Requested: ${input.vaultAddresses.join(', ')}. ` +
+            `Verify addresses exist on the specified chains.`,
+          isError: true,
         };
       },
       transformResult: createTransformComparisonData(input),
