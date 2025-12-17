@@ -210,28 +210,38 @@ export function createExecuteSearchVaults(
     // Execute query
     const result = await executor(input);
 
-    // NEW: Fragment-level caching - cache each vault individually for reuse
-    // This enables vault_data tool to reuse vaults from search results
+    // Post-process response to add flat chainId field for easier Claude extraction
+    // Also cache individual vaults for reuse by vault_data tool
     if (!result.isError && result.content[0]?.type === 'text') {
       try {
         const responseData = JSON.parse(result.content[0].text) as {
           vaults?: { items?: VaultData[] };
         };
         if (responseData.vaults?.items && Array.isArray(responseData.vaults.items)) {
-          // Cache each vault individually with vault-specific key
+          // Enrich each vault with flat chainId and cache individually
           const vaults = responseData.vaults.items;
           vaults.forEach((vault) => {
-            if (vault.address && vault.chain?.id) {
-              const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
-                address: String(vault.address),
-                chainId: Number(vault.chain.id),
-              });
-              container.cache.set(vaultCacheKey, vault, cacheTTL.vaultData);
+            if (vault.chain?.id) {
+              // Add flat chainId as integer for easier extraction by Claude
+              // This allows Claude to use vault.chainId directly instead of parseInt(vault.chain.id)
+              (vault as VaultData & { chainId: number }).chainId = Number(vault.chain.id);
+
+              // Cache each vault individually with vault-specific key
+              if (vault.address) {
+                const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
+                  address: String(vault.address),
+                  chainId: Number(vault.chain.id),
+                });
+                container.cache.set(vaultCacheKey, vault, cacheTTL.vaultData);
+              }
             }
           });
+
+          // Update the result content with enriched data
+          result.content[0].text = JSON.stringify(responseData);
         }
       } catch (error) {
-        // If parsing fails, just return the result without fragment caching
+        // If parsing fails, just return the result without enrichment
         // This is a non-critical optimization
       }
     }

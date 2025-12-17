@@ -201,28 +201,40 @@ export function createExecuteGetUserPortfolio(
     // Execute query
     const result = await executor(input);
 
-    // NEW: Fragment-level caching - cache each vault from positions for reuse
-    // This enables vault_data tool to reuse vaults from portfolio results
+    // Post-process response to add flat chainId field for easier Claude extraction
+    // Also cache individual vaults for reuse by vault_data tool
     if (!result.isError && result.content[0]?.type === 'text') {
       try {
         const responseData = JSON.parse(result.content[0].text) as {
           positions?: PortfolioPosition[];
         };
         if (responseData.positions && Array.isArray(responseData.positions)) {
-          // Cache each vault from positions individually with vault-specific key
+          // Enrich each vault with flat chainId and cache individually
           const positions = responseData.positions;
           positions.forEach((position: PortfolioPosition) => {
-            if (position.vault && position.vault.address && position.vault.chain?.id) {
-              const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
-                address: String(position.vault.address),
-                chainId: Number(position.vault.chain.id),
-              });
-              container.cache.set(vaultCacheKey, position.vault, cacheTTL.vaultData);
+            if (position.vault && position.vault.chain?.id) {
+              // Add flat chainId as integer for easier extraction by Claude
+              // This allows Claude to use vault.chainId directly instead of parseInt(vault.chain.id)
+              (position.vault as VaultData & { chainId: number }).chainId = Number(
+                position.vault.chain.id
+              );
+
+              // Cache each vault from positions individually with vault-specific key
+              if (position.vault.address) {
+                const vaultCacheKey = generateCacheKey(CacheTag.VAULT, {
+                  address: String(position.vault.address),
+                  chainId: Number(position.vault.chain.id),
+                });
+                container.cache.set(vaultCacheKey, position.vault, cacheTTL.vaultData);
+              }
             }
           });
+
+          // Update the result content with enriched data
+          result.content[0].text = JSON.stringify(responseData);
         }
       } catch (error) {
-        // If parsing fails, just return the result without fragment caching
+        // If parsing fails, just return the result without enrichment
         // This is a non-critical optimization
       }
     }
