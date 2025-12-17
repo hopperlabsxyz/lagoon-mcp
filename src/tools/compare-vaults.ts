@@ -60,10 +60,36 @@ interface CompareVaultsVariables {
 }
 
 /**
- * Comparison output with markdown
+ * Structured vault data for UI block rendering
+ * Contains all fields needed to construct comparison blocks without additional API calls
+ */
+interface StructuredVaultData {
+  address: string;
+  chainId: number;
+  name: string;
+  symbol: string;
+  logoUrl: string | null;
+  asset: string;
+  tvl: string; // Pre-formatted e.g. "$1.2M"
+  tvlUsd: number; // Raw USD value for calculations
+  apr: string; // Pre-formatted e.g. "12.5%"
+  aprValue: number; // Raw value (decimal) for calculations
+  curator: string | null;
+  risk: 'low' | 'medium' | 'high' | 'critical' | null;
+  fees: {
+    managementFee: number; // Basis points (100 = 1%)
+    performanceFee: number; // Basis points (1000 = 10%)
+  };
+}
+
+/**
+ * Comparison output with markdown and structured vault data
+ * markdown: Human-readable comparison for display
+ * vaults: Structured data for UI block construction (avoids parsing markdown)
  */
 interface CompareVaultsOutput {
   markdown: string;
+  vaults: StructuredVaultData[];
 }
 
 /**
@@ -296,6 +322,67 @@ function normalizeChainIds(input: CompareVaultsInput): number[] {
 }
 
 /**
+ * Format TVL as human-readable string
+ */
+function formatTvl(tvlUsd: number): string {
+  if (tvlUsd >= 1_000_000_000) {
+    return `$${(tvlUsd / 1_000_000_000).toFixed(2)}B`;
+  } else if (tvlUsd >= 1_000_000) {
+    return `$${(tvlUsd / 1_000_000).toFixed(2)}M`;
+  } else if (tvlUsd >= 1_000) {
+    return `$${(tvlUsd / 1_000).toFixed(2)}K`;
+  }
+  return `$${tvlUsd.toFixed(2)}`;
+}
+
+/**
+ * Format APR as percentage string
+ */
+function formatApr(apr: number): string {
+  return `${(apr * 100).toFixed(2)}%`;
+}
+
+/**
+ * Convert risk level to lowercase for UI block compatibility
+ */
+function normalizeRiskLevel(
+  riskLevel?: 'Low' | 'Medium' | 'High' | 'Critical'
+): 'low' | 'medium' | 'high' | 'critical' | null {
+  if (!riskLevel) return null;
+  return riskLevel.toLowerCase() as 'low' | 'medium' | 'high' | 'critical';
+}
+
+/**
+ * Convert VaultData to StructuredVaultData for UI block rendering
+ */
+function convertToStructuredVaultData(
+  vault: VaultData,
+  comparisonData: VaultComparisonData
+): StructuredVaultData {
+  const tvlUsd = comparisonData.tvl;
+  const aprValue = comparisonData.apr;
+
+  return {
+    address: vault.address,
+    chainId: vault.chain?.id ?? 0,
+    name: vault.name || 'Unknown Vault',
+    symbol: vault.symbol || 'N/A',
+    logoUrl: vault.logoUrl || null,
+    asset: vault.asset?.symbol || 'Unknown',
+    tvl: formatTvl(tvlUsd),
+    tvlUsd: tvlUsd,
+    apr: formatApr(aprValue),
+    aprValue: aprValue,
+    curator: vault.curators?.[0]?.name || null,
+    risk: normalizeRiskLevel(comparisonData.riskLevel),
+    fees: {
+      managementFee: vault.state?.managementFee ?? 0,
+      performanceFee: vault.state?.performanceFee ?? 0,
+    },
+  };
+}
+
+/**
  * Transform raw GraphQL response into comparison markdown output
  * Uses closure to capture input values
  */
@@ -321,7 +408,13 @@ function createTransformComparisonData(input: CompareVaultsInput) {
     // Build output markdown with all chainIds
     const markdown = buildComparisonMarkdown(summary, table, chainIds, false);
 
-    return { markdown };
+    // Build structured vault data for UI block rendering
+    // Maps each vault to its corresponding comparison data for risk level
+    const structuredVaults: StructuredVaultData[] = data.vaults.items.map((vault, index) =>
+      convertToStructuredVaultData(vault, comparisonData[index])
+    );
+
+    return { markdown, vaults: structuredVaults };
   };
 }
 
@@ -372,7 +465,24 @@ export function createExecuteCompareVaults(
 
       const markdown = buildComparisonMarkdown(summary, table, chainIds, true);
 
-      return createSuccessResponse({ markdown });
+      // Build structured vault data for UI block rendering (cached path)
+      const structuredVaults: StructuredVaultData[] = cachedVaults.map((vault, index) =>
+        convertToStructuredVaultData(vault, comparisonData[index])
+      );
+
+      // Build response with both markdown and structured vaults
+      const responseText = `${markdown}${getToolDisclaimer('compare_vaults')}
+
+---
+## Structured Vault Data (for UI blocks)
+The following JSON contains structured vault data for building comparison UI blocks.
+Use the \`vaults\` array directly - fees are in basis points (100 = 1%).
+
+\`\`\`json
+${JSON.stringify({ vaults: structuredVaults }, null, 2)}
+\`\`\``;
+
+      return createSuccessResponse(responseText);
     }
 
     // Not all vaults cached - execute normal GraphQL query for all vaults
@@ -408,16 +518,27 @@ export function createExecuteCompareVaults(
     // Execute GraphQL query for all vaults
     const result = await executor(input);
 
-    // Transform JSON output to markdown text format with legal disclaimer
+    // Transform JSON output to include both markdown and structured vaults
+    // The structured vaults array provides Claude with all data needed for UI blocks
     if (!result.isError && result.content[0]?.type === 'text') {
       try {
         const output = JSON.parse(result.content[0].text) as CompareVaultsOutput;
-        result.content[0].text = output.markdown + getToolDisclaimer('compare_vaults');
 
-        // NEW: Cache each vault individually for future reuse
-        // This enables vault_data and other tools to reuse these vaults
-        // Note: The raw vault data needs to be extracted before transformation
-        // For now, we rely on the comparison cache itself
+        // Build response with:
+        // 1. Human-readable markdown (with disclaimer)
+        // 2. Structured vaults array for UI block construction
+        const responseText = `${output.markdown}${getToolDisclaimer('compare_vaults')}
+
+---
+## Structured Vault Data (for UI blocks)
+The following JSON contains structured vault data for building comparison UI blocks.
+Use the \`vaults\` array directly - fees are in basis points (100 = 1%).
+
+\`\`\`json
+${JSON.stringify({ vaults: output.vaults }, null, 2)}
+\`\`\``;
+
+        result.content[0].text = responseText;
       } catch (error) {
         console.error('Failed to parse comparison output:', error);
       }
