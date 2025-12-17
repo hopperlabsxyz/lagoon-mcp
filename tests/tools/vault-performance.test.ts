@@ -480,7 +480,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('No transaction data found');
     });
 
@@ -498,7 +498,7 @@ describe('get_vault_performance Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('No transaction data found');
     });
   });

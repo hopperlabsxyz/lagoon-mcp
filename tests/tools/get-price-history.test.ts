@@ -483,7 +483,7 @@ describe('get_price_history Tool', () => {
         timeRange: '7d',
       });
 
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       expect(result.content[0].type).toBe('text');
       const text = result.content[0].text as string;
       expect(text).toContain('No price history data found');
@@ -500,7 +500,7 @@ describe('get_price_history Tool', () => {
         timeRange: '7d',
       });
 
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       const text = result.content[0].text as string;
       expect(text).toContain('No price history data found');
     });

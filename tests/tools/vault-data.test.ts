@@ -385,7 +385,7 @@ describe('get_vault_data Tool', () => {
       const result = await executeGetVaultData(input);
 
       // Assert
-      expect(result.isError).toBeFalsy(); // Not an error, just no data
+      expect(result.isError).toBe(true); // Now returns error for not found
       expect(result.content[0].text).toContain('Vault not found');
       expect(result.content[0].text).toContain('on requested chain');
     });

@@ -415,13 +415,16 @@ export function createExecuteGetVaultPerformance(
         orderDirection: 'asc',
         first: 1000, // GraphQL API limit: 1-1000
       }),
-      validateResult: (data) => ({
-        valid: !!(data.transactions && data.transactions.items.length > 0),
-        message:
-          data.transactions && data.transactions.items.length > 0
+      validateResult: (data) => {
+        const hasData = !!(data.transactions && data.transactions.items.length > 0);
+        return {
+          valid: hasData,
+          message: hasData
             ? undefined
             : `No transaction data found for vault ${input.vaultAddress} on chain ${input.chainId} in the ${input.timeRange} time range.`,
-      }),
+          isError: !hasData,
+        };
+      },
       transformResult: createTransformPerformanceData(input, timestampGte),
       toolName: 'get_vault_performance',
     });

@@ -325,12 +325,16 @@ export function createExecutePredictYield(
         vaultAddress: input.vaultAddress,
         chainId: input.chainId,
       }),
-      validateResult: (data) => ({
-        valid: !!data.vault,
-        message: data.vault
-          ? undefined
-          : `No vault found at address ${input.vaultAddress} on chain ${input.chainId}`,
-      }),
+      validateResult: (data) => {
+        const hasData = !!data.vault;
+        return {
+          valid: hasData,
+          message: hasData
+            ? undefined
+            : `No vault found at address ${input.vaultAddress} on chain ${input.chainId}`,
+          isError: !hasData,
+        };
+      },
       transformResult: createTransformYieldPredictionData(input, timestampThreshold),
       toolName: 'predict_yield',
     });

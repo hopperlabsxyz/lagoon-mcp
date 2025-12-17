@@ -501,13 +501,16 @@ ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
         addresses: input.vaultAddresses,
         chainIds: chainIds,
       }),
-      validateResult: (data) => ({
-        valid: !!(data.vaults?.items && data.vaults.items.length > 0),
-        message:
-          data.vaults?.items && data.vaults.items.length > 0
+      validateResult: (data) => {
+        const hasVaults = !!(data.vaults?.items && data.vaults.items.length > 0);
+        return {
+          valid: hasVaults,
+          message: hasVaults
             ? undefined
             : `No vaults found for the provided addresses on chains ${chainIds.join(', ')}`,
-      }),
+          isError: !hasVaults,
+        };
+      },
       transformResult: createTransformComparisonData(input),
       toolName: 'compare_vaults',
     });

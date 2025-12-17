@@ -196,13 +196,14 @@ export function createExecuteSearchVaults(
           where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
         };
       },
-      validateResult: (data) => ({
-        valid: !!(data.vaults && data.vaults.items.length > 0),
-        message:
-          data.vaults && data.vaults.items.length > 0
-            ? undefined
-            : 'No vaults found matching the specified criteria.',
-      }),
+      validateResult: (data) => {
+        const hasData = !!(data.vaults && data.vaults.items.length > 0);
+        return {
+          valid: hasData,
+          message: hasData ? undefined : 'No vaults found matching the specified criteria.',
+          isError: !hasData,
+        };
+      },
       toolName: 'search_vaults',
     });
 

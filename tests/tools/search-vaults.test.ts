@@ -531,7 +531,7 @@ describe('search_vaults Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       expect(result.content).toHaveLength(1);
       expect(result.content[0].text).toContain('No vaults found');
     });
@@ -548,7 +548,7 @@ describe('search_vaults Tool', () => {
       });
 
       // Assert
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('No vaults found');
     });
   });

@@ -183,13 +183,14 @@ export function createExecuteGetUserPortfolio(
           user_eq: input.userAddress,
         },
       }),
-      validateResult: (data) => ({
-        valid: !!(data.users.items && data.users.items.length > 0),
-        message:
-          data.users.items && data.users.items.length > 0
-            ? undefined
-            : `No portfolio data found for user: ${String(data)}`,
-      }),
+      validateResult: (data) => {
+        const hasData = !!(data.users.items && data.users.items.length > 0);
+        return {
+          valid: hasData,
+          message: hasData ? undefined : `No portfolio data found for user: ${String(data)}`,
+          isError: !hasData,
+        };
+      },
       transformResult: createTransformPortfolioData(input.userAddress),
       toolName: 'get_user_portfolio',
     });

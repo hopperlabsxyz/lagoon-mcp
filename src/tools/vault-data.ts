@@ -101,12 +101,16 @@ export function createExecuteGetVaultData(
         address: input.vaultAddress,
         chainId: input.chainId,
       }),
-      validateResult: (data) => ({
-        valid: !!data.vaultByAddress,
-        message: data.vaultByAddress
-          ? undefined
-          : `Vault not found: address ${String(data)} on requested chain`,
-      }),
+      validateResult: (data) => {
+        const hasData = !!data.vaultByAddress;
+        return {
+          valid: hasData,
+          message: hasData
+            ? undefined
+            : `Vault not found: address ${String(data)} on requested chain`,
+          isError: !hasData,
+        };
+      },
       // Transform to add structured fees object for easier consumption
       transformResult: (data) => ({
         vaultByAddress: data.vaultByAddress,

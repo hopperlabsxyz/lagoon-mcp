@@ -619,7 +619,7 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('No vaults found');
     });
 
@@ -634,7 +634,7 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('No vaults found');
     });
   });

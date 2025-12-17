@@ -313,7 +313,7 @@ describe('predict_yield Tool', () => {
         responseFormat: 'quick',
       });
 
-      expect(result.isError).toBe(false);
+      expect(result.isError).toBe(true);
       const text = (result.content[0] as { type: 'text'; text: string }).text;
       expect(text).toContain('No vault found');
     });
