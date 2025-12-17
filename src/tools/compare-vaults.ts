@@ -256,7 +256,7 @@ function buildComparisonMarkdown(
 
   markdown += `## Summary Statistics\n\n`;
   markdown += `- **Average TVL**: $${(summary.averageTvl / 1000000).toFixed(2)}M\n`;
-  markdown += `- **Average APR**: ${(summary.averageApr * 100).toFixed(2)}%\n`;
+  markdown += `- **Average APR**: ${summary.averageApr.toFixed(2)}%\n`;
 
   if (hasRiskData) {
     markdown += `- **Average Risk**: ${(summary.averageRisk! * 100).toFixed(1)}%\n`;
@@ -264,11 +264,11 @@ function buildComparisonMarkdown(
 
   markdown += `\n### Best Performer\n`;
   markdown += `- **Vault**: ${summary.bestPerformer.name}\n`;
-  markdown += `- **APR**: ${(summary.bestPerformer.apr * 100).toFixed(2)}%\n\n`;
+  markdown += `- **APR**: ${summary.bestPerformer.apr.toFixed(2)}%\n\n`;
 
   markdown += `### Worst Performer\n`;
   markdown += `- **Vault**: ${summary.worstPerformer.name}\n`;
-  markdown += `- **APR**: ${(summary.worstPerformer.apr * 100).toFixed(2)}%\n\n`;
+  markdown += `- **APR**: ${summary.worstPerformer.apr.toFixed(2)}%\n\n`;
 
   markdown += `### Highest TVL\n`;
   markdown += `- **Vault**: ${summary.highestTvl.name}\n`;
@@ -337,9 +337,10 @@ function formatTvl(tvlUsd: number): string {
 
 /**
  * Format APR as percentage string
+ * Note: APR values from the API are already percentages (e.g., 4.12 means 4.12%)
  */
 function formatApr(apr: number): string {
-  return `${(apr * 100).toFixed(2)}%`;
+  return `${apr.toFixed(2)}%`;
 }
 
 /**

@@ -47,8 +47,9 @@ function createMockVault(
     name: 'Test Vault',
     symbol: 'TEST',
     tvl: 1000000,
-    weeklyApr: 0.1,
-    monthlyApr: 0.12,
+    // APR values from the API are already percentages (e.g., 10 means 10%)
+    weeklyApr: 10,
+    monthlyApr: 12,
   };
 
   const merged = { ...defaults, ...overrides };
@@ -215,14 +216,14 @@ describe('compare_vaults Tool', () => {
           name: 'High Yield Vault',
           symbol: 'HIGH',
           tvl: 2000000,
-          weeklyApr: 0.15,
+          weeklyApr: 15, // 15%
         }),
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
           name: 'Stable Vault',
           symbol: 'STABLE',
           tvl: 1000000,
-          weeklyApr: 0.08,
+          weeklyApr: 8, // 8%
         }),
       ];
 
@@ -258,31 +259,31 @@ describe('compare_vaults Tool', () => {
           address: '0x1111111111111111111111111111111111111111',
           name: 'Vault A',
           tvl: 5000000,
-          weeklyApr: 0.2,
+          weeklyApr: 20, // 20%
         }),
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
           name: 'Vault B',
           tvl: 3000000,
-          weeklyApr: 0.15,
+          weeklyApr: 15, // 15%
         }),
         createMockVault({
           address: '0x3333333333333333333333333333333333333333',
           name: 'Vault C',
           tvl: 2000000,
-          weeklyApr: 0.12,
+          weeklyApr: 12, // 12%
         }),
         createMockVault({
           address: '0x4444444444444444444444444444444444444444',
           name: 'Vault D',
           tvl: 1000000,
-          weeklyApr: 0.08,
+          weeklyApr: 8, // 8%
         }),
         createMockVault({
           address: '0x5555555555555555555555555555555555555555',
           name: 'Vault E',
           tvl: 500000,
-          weeklyApr: 0.05,
+          weeklyApr: 5, // 5%
         }),
       ];
 
@@ -312,7 +313,7 @@ describe('compare_vaults Tool', () => {
           name: `Vault ${i + 1}`,
           symbol: `V${i + 1}`,
           tvl: 1000000 * (10 - i),
-          weeklyApr: 0.05 + i * 0.01,
+          weeklyApr: 5 + i * 1, // 5%, 6%, 7%, etc.
         })
       );
 
@@ -430,19 +431,19 @@ describe('compare_vaults Tool', () => {
           address: '0x1111111111111111111111111111111111111111',
           name: 'Low',
           tvl: 1000000,
-          weeklyApr: 0.05,
+          weeklyApr: 5, // 5%
         }),
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
           name: 'Mid',
           tvl: 2000000,
-          weeklyApr: 0.1,
+          weeklyApr: 10, // 10%
         }),
         createMockVault({
           address: '0x3333333333333333333333333333333333333333',
           name: 'High',
           tvl: 3000000,
-          weeklyApr: 0.15,
+          weeklyApr: 15, // 15%
         }),
       ];
 
@@ -471,12 +472,12 @@ describe('compare_vaults Tool', () => {
         createMockVault({
           address: '0x1111111111111111111111111111111111111111',
           tvl: 1000000,
-          weeklyApr: 0.05,
+          weeklyApr: 5, // 5%
         }),
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
           tvl: 2000000,
-          weeklyApr: 0.15,
+          weeklyApr: 15, // 15%
         }),
       ];
 
@@ -504,14 +505,14 @@ describe('compare_vaults Tool', () => {
           address: '0x1111111111111111111111111111111111111111',
           name: 'High TVL',
           tvl: 5000000,
-          weeklyApr: 0.05,
+          weeklyApr: 5, // 5%
         }),
         // Low TVL, high APR
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
           name: 'High APR',
           tvl: 1000000,
-          weeklyApr: 0.2,
+          weeklyApr: 20, // 20%
         }),
       ];
 
@@ -536,17 +537,17 @@ describe('compare_vaults Tool', () => {
         createMockVault({
           address: '0x1111111111111111111111111111111111111111',
           name: 'Best Vault',
-          weeklyApr: 0.25,
+          weeklyApr: 25, // 25%
         }),
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
           name: 'Mid Vault',
-          weeklyApr: 0.15,
+          weeklyApr: 15, // 15%
         }),
         createMockVault({
           address: '0x3333333333333333333333333333333333333333',
           name: 'Worst Vault',
-          weeklyApr: 0.05,
+          weeklyApr: 5, // 5%
         }),
       ];
 
@@ -722,11 +723,11 @@ describe('compare_vaults Tool', () => {
       const mockVaults = [
         createMockVault({
           address: '0x1111111111111111111111111111111111111111',
-          weeklyApr: 0.1234,
+          weeklyApr: 12.34, // 12.34%
         }),
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
-          weeklyApr: 0.0567,
+          weeklyApr: 5.67, // 5.67%
         }),
       ];
 
@@ -788,7 +789,7 @@ describe('compare_vaults Tool', () => {
         address: '0x1234567890123456789012345678901234567890',
         name: 'Test Vault',
         tvl: 1000000,
-        weeklyApr: 0.1,
+        weeklyApr: 10, // 10%
         riskScore: 0.3,
         riskLevel: 'Medium' as const,
         nativeYieldsApr: 0.08,
@@ -933,7 +934,7 @@ describe('compare_vaults Tool', () => {
           address: '0x1111111111111111111111111111111111111111',
           name: 'High APR Low Risk',
           tvl: 1000000,
-          weeklyApr: 0.2,
+          weeklyApr: 20, // 20%
           riskScore: 0.2,
           riskLevel: 'Low',
         }),
@@ -941,7 +942,7 @@ describe('compare_vaults Tool', () => {
           address: '0x2222222222222222222222222222222222222222',
           name: 'Medium Everything',
           tvl: 2000000,
-          weeklyApr: 0.1,
+          weeklyApr: 10, // 10%
           riskScore: 0.5,
           riskLevel: 'Medium',
         }),
@@ -967,13 +968,13 @@ describe('compare_vaults Tool', () => {
           address: '0x1111111111111111111111111111111111111111',
           name: 'Vault A',
           tvl: 1000000,
-          weeklyApr: 0.1,
+          weeklyApr: 10, // 10%
         }),
         createMockVault({
           address: '0x2222222222222222222222222222222222222222',
           name: 'Vault B',
           tvl: 2000000,
-          weeklyApr: 0.15,
+          weeklyApr: 15, // 15%
         }),
       ];
 
@@ -1126,8 +1127,8 @@ describe('compare_vaults Tool', () => {
     it('should use weekly APR when available', async () => {
       const mockVault = createMockVault({
         address: '0x1111111111111111111111111111111111111111',
-        weeklyApr: 0.15,
-        monthlyApr: 0.1,
+        weeklyApr: 15, // 15%
+        monthlyApr: 10, // 10%
       });
 
       graphqlClient.request.mockResolvedValueOnce({

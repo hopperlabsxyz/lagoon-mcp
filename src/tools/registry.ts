@@ -7,7 +7,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { ZodSchema, ZodObject, ZodRawShape } from 'zod';
+import { ZodSchema, ZodObject, ZodRawShape, ZodEffects } from 'zod';
 
 // Tool factory functions
 import { createExecuteDiscoverTools, discoverToolsInputSchema } from './discover-tools.js';
@@ -252,6 +252,32 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
 ];
 
 /**
+ * Extract the raw shape from a Zod schema, handling ZodEffects wrappers.
+ * ZodEffects is created by methods like .refine(), .transform(), .superRefine()
+ *
+ * @param schema - The Zod schema to extract the shape from
+ * @param toolName - Tool name for error messages
+ * @returns The raw shape definition for MCP registration
+ */
+function extractSchemaShape(schema: ZodSchema, toolName: string): ZodRawShape {
+  // Direct ZodObject - get shape directly
+  if (schema instanceof ZodObject) {
+    return schema.shape as ZodRawShape;
+  }
+
+  // ZodEffects wrapper (from .refine(), .transform(), etc.) - unwrap inner schema
+  if (schema instanceof ZodEffects) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const innerSchema: unknown = schema._def.schema;
+    if (innerSchema instanceof ZodObject) {
+      return innerSchema.shape as ZodRawShape;
+    }
+  }
+
+  throw new Error(`Tool ${toolName} schema must be a ZodObject or ZodEffects wrapping a ZodObject`);
+}
+
+/**
  * Register all tools with the MCP server
  * Converts registry entries to MCP tool registrations
  *
@@ -267,16 +293,8 @@ export function registerTools(server: McpServer, container: ServiceContainer): v
     const handler = createToolHandler(executor, tool.schema);
 
     // Extract raw shape from Zod schema for MCP registration
-    // The MCP SDK expects a ZodRawShape, not a complete schema or JSON Schema
-    // The SDK will wrap this with z.object() internally
-    // We use type assertion here because ZodObject's shape property is typed as any in the library
-    // but we know it's safe because we're checking the instance type
-    const inputShape: ZodRawShape =
-      tool.schema instanceof ZodObject
-        ? (tool.schema.shape as ZodRawShape)
-        : (() => {
-            throw new Error(`Tool ${tool.name} schema must be a ZodObject`);
-          })();
+    // Handles both direct ZodObject and ZodEffects wrappers (from .refine(), etc.)
+    const inputShape: ZodRawShape = extractSchemaShape(tool.schema, tool.name);
 
     // Register with server
     server.registerTool(

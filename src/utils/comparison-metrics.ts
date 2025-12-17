@@ -328,7 +328,8 @@ export function formatComparisonTable(vaults: NormalizedVault[]): string {
   const rows = vaults
     .map((v) => {
       const tvlFormatted = `$${(v.tvl / 1000000).toFixed(2)}M`;
-      const aprFormatted = `${(v.apr * 100).toFixed(2)}%`;
+      // APR values from API are already percentages (e.g., 4.12 means 4.12%)
+      const aprFormatted = `${v.apr.toFixed(2)}%`;
       const scoreFormatted = v.overallScore.toFixed(1);
       const tvlDeltaFormatted = `${v.tvlDelta > 0 ? '+' : ''}${v.tvlDelta.toFixed(1)}%`;
       const aprDeltaFormatted = `${v.aprDelta > 0 ? '+' : ''}${v.aprDelta.toFixed(1)}%`;
