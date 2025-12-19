@@ -5,12 +5,7 @@
  * Includes user portfolio data and portfolio optimization queries.
  */
 
-import {
-  VAULT_FRAGMENT,
-  VAULT_LIST_FRAGMENT,
-  VAULT_SUMMARY_FRAGMENT,
-  COMPOSITION_FRAGMENT,
-} from '../fragments/index.js';
+import { VAULT_FRAGMENT, VAULT_LIST_FRAGMENT, VAULT_SUMMARY_FRAGMENT } from '../fragments/index.js';
 
 /**
  * Response format type for user portfolio query
@@ -161,26 +156,28 @@ export const SINGLE_VAULT_OPTIMIZATION_QUERY = `
 /**
  * GraphQL query for single vault composition data
  *
- * Fetches composition data for a single vault, used in parallel
- * to aggregate portfolio-wide composition metrics.
+ * Fetches cross-chain composition data for a vault from Octav API.
+ * Returns a JSONObject with chain keys containing composition metrics.
+ *
+ * Note: Backend API changed - now uses `walletAddress` parameter and returns
+ * JSONObject type (no fragment needed). Response contains chains as keys with
+ * value, chainId, name, etc.
  *
  * Used by: get_user_portfolio tool (for composition aggregation)
+ *         compare_vaults tool (for diversification analysis)
  *
  * Usage:
  * ```typescript
- * const data = await graphqlClient.request<SingleVaultCompositionResponse>(
+ * const data = await graphqlClient.request<{ vaultComposition: RawVaultComposition | null }>(
  *   SINGLE_VAULT_COMPOSITION_QUERY,
- *   { vaultAddress: '0x...' }
+ *   { walletAddress: '0x...' }
  * );
  * ```
  */
 export const SINGLE_VAULT_COMPOSITION_QUERY = `
-  query SingleVaultComposition($vaultAddress: Address!) {
-    vaultComposition(vaultAddress: $vaultAddress) {
-      ...CompositionFragment
-    }
+  query SingleVaultComposition($walletAddress: Address!) {
+    vaultComposition(walletAddress: $walletAddress)
   }
-  ${COMPOSITION_FRAGMENT}
 `;
 
 /**

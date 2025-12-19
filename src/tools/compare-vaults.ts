@@ -26,7 +26,7 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { CompareVaultsInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
-import { VaultData, CompositionData } from '../graphql/fragments/index.js';
+import { VaultData, RawVaultComposition, ChainComposition } from '../graphql/fragments/index.js';
 import { COMPARE_VAULTS_QUERY } from '../graphql/queries/index.js';
 import { SINGLE_VAULT_COMPOSITION_QUERY } from '../graphql/queries/portfolio.queries.js';
 import {
@@ -62,20 +62,22 @@ interface CompareVaultsVariables {
 
 /**
  * Response type for single vault composition query
+ * Note: Backend returns JSONObject with chains as keys
  */
 interface SingleVaultCompositionResponse {
-  vaultComposition: CompositionData | null;
+  vaultComposition: RawVaultComposition | null;
 }
 
 /**
- * Composition metrics for a vault
+ * Composition metrics for a vault (now chain-based)
+ * Note: Backend API changed from protocol-based to chain-based composition
  */
 interface VaultCompositionMetrics {
   hhi: number; // Herfindahl-Hirschman Index (0-1)
   diversificationLevel: 'High' | 'Medium' | 'Low';
-  topProtocol: string | null;
-  topProtocolPercent: number | null;
-  protocolCount: number;
+  topChain: string | null;
+  topChainPercent: number | null;
+  chainCount: number;
 }
 
 /**
@@ -375,35 +377,58 @@ function normalizeRiskLevel(
 }
 
 /**
- * Calculate composition metrics from composition data
+ * Calculate composition metrics from raw composition data
+ * Note: Backend API changed from protocol-based to chain-based composition
  */
 function calculateCompositionMetrics(
-  compositionData: CompositionData | null
+  rawComposition: RawVaultComposition | null
 ): VaultCompositionMetrics | undefined {
-  if (!compositionData?.compositions?.length) {
+  if (!rawComposition || Object.keys(rawComposition).length === 0) {
     return undefined;
   }
 
-  const compositions = compositionData.compositions;
+  // Filter and transform to chain data with values
+  const activeChains = Object.entries(rawComposition)
+    .filter(([, chain]: [string, ChainComposition]) => {
+      const value = parseFloat(chain.value);
+      return !isNaN(value) && value > 0;
+    })
+    .map(([, chain]: [string, ChainComposition]) => ({
+      chainName: chain.name,
+      valueUsd: parseFloat(chain.value),
+      percentage: 0, // Calculate after total
+    }));
+
+  if (activeChains.length === 0) {
+    return undefined;
+  }
+
+  // Calculate total and percentages
+  const totalValue = activeChains.reduce((sum, c) => sum + c.valueUsd, 0);
+  activeChains.forEach((c) => {
+    c.percentage = totalValue > 0 ? (c.valueUsd / totalValue) * 100 : 0;
+  });
+
+  // Sort by value descending
+  activeChains.sort((a, b) => b.valueUsd - a.valueUsd);
 
   // Calculate HHI (Herfindahl-Hirschman Index)
-  const hhi = compositions.reduce((sum, c) => sum + Math.pow(c.repartition / 100, 2), 0);
+  const hhi = activeChains.reduce((sum, c) => sum + Math.pow(c.percentage / 100, 2), 0);
 
   // Determine diversification level
   const diversificationLevel: 'High' | 'Medium' | 'Low' =
     hhi < 0.15 ? 'High' : hhi < 0.25 ? 'Medium' : 'Low';
 
-  // Get top protocol
-  const sortedCompositions = [...compositions].sort((a, b) => b.repartition - a.repartition);
-  const topProtocol = sortedCompositions[0]?.protocol || null;
-  const topProtocolPercent = sortedCompositions[0]?.repartition || null;
+  // Get top chain
+  const topChain = activeChains[0]?.chainName || null;
+  const topChainPercent = activeChains[0]?.percentage || null;
 
   return {
     hhi,
     diversificationLevel,
-    topProtocol,
-    topProtocolPercent,
-    protocolCount: compositions.length,
+    topChain,
+    topChainPercent,
+    chainCount: activeChains.length,
   };
 }
 
@@ -526,12 +551,13 @@ export function createExecuteCompareVaults(
       );
 
       // Fetch composition data for each vault in parallel (cached path)
+      // Note: Backend API now uses walletAddress parameter
       const compositionPromises = structuredVaults.map(async (vault) => {
         try {
           const compResponse =
             await container.graphqlClient.request<SingleVaultCompositionResponse>(
               SINGLE_VAULT_COMPOSITION_QUERY,
-              { vaultAddress: vault.address }
+              { walletAddress: vault.address }
             );
           return {
             address: vault.address,
@@ -633,12 +659,13 @@ ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
 
         // Fetch composition data for each vault in parallel
         // This enables diversification comparison between vaults
+        // Note: Backend API now uses walletAddress parameter
         const compositionPromises = output.vaults.map(async (vault) => {
           try {
             const compResponse =
               await container.graphqlClient.request<SingleVaultCompositionResponse>(
                 SINGLE_VAULT_COMPOSITION_QUERY,
-                { vaultAddress: vault.address }
+                { walletAddress: vault.address }
               );
             return {
               address: vault.address,

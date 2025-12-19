@@ -1,24 +1,31 @@
 /**
  * get_vault_composition Tool
  *
- * Fetch vault protocol and token composition with diversification analysis.
- * Provides breakdown by protocol and by position/token.
+ * Fetch vault cross-chain composition data from Octav API with diversification analysis.
+ * Data is sourced from the backend's vaultComposition endpoint which aggregates
+ * positions across 60+ chains.
  *
  * Use cases:
- * - Understanding vault protocol exposure
+ * - Understanding vault cross-chain exposure
  * - Analyzing diversification levels via HHI score
- * - Identifying concentration risks
+ * - Identifying concentration risks across chains
  * - Portfolio composition visualization
+ *
+ * Response formats (for token optimization):
+ * - summary: Totals + top chains + analysis (~100 tokens)
+ * - chains: Non-zero chains only + analysis (~200-500 tokens)
+ * - full: All chain data including raw response (~1000+ tokens)
  *
  * Cache strategy:
  * - 15-minute TTL aligned with vault data freshness
  * - Cache key: composition:{address}
+ * - Full data cached, format filtering applied at response time
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetVaultCompositionInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
-import { CompositionData } from '../graphql/fragments/index.js';
+import { RawVaultComposition, ChainComposition } from '../graphql/fragments/index.js';
 import { GET_VAULT_COMPOSITION_QUERY } from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
@@ -27,18 +34,87 @@ import { cacheKeys, cacheTTL } from '../cache/index.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 
 /**
+ * Response format type for composition queries
+ */
+type CompositionResponseFormat = 'summary' | 'chains' | 'full';
+
+/**
  * GraphQL response type for composition query
+ * Note: Backend returns JSONObject, typed as RawVaultComposition
  */
 interface VaultCompositionResponse {
-  vaultComposition: CompositionData | null;
+  vaultComposition: RawVaultComposition | null;
 }
 
 /**
  * GraphQL variables type for composition query
+ * Note: Backend uses walletAddress parameter (the vault's address)
  */
 interface GetVaultCompositionVariables {
-  vaultAddress: string;
+  walletAddress: string;
 }
+
+/**
+ * Processed chain summary with calculated percentages
+ */
+interface ChainSummary {
+  chainKey: string;
+  chainName: string;
+  chainId: string;
+  valueUsd: number;
+  percentage: number;
+}
+
+/**
+ * Composition analysis metrics
+ */
+interface CompositionAnalysis {
+  totalValueUsd: number;
+  activeChainCount: number;
+  topChain: ChainSummary | null;
+  hhi: number;
+  diversificationLevel: 'High' | 'Medium' | 'Low';
+}
+
+/**
+ * Full composition data (cached internally, filtered for responses)
+ */
+interface FullCompositionData {
+  vaultAddress: string;
+  rawData: RawVaultComposition;
+  chains: ChainSummary[];
+  analysis: CompositionAnalysis;
+}
+
+/**
+ * Summary response format (~100 tokens)
+ */
+interface SummaryResponse {
+  vaultAddress: string;
+  analysis: CompositionAnalysis;
+  topChains: ChainSummary[];
+}
+
+/**
+ * Chains response format (~200-500 tokens)
+ */
+interface ChainsResponse {
+  vaultAddress: string;
+  chains: ChainSummary[];
+  analysis: CompositionAnalysis;
+}
+
+/**
+ * Full response format (~1000+ tokens)
+ */
+interface FullResponse {
+  vaultAddress: string;
+  rawData: RawVaultComposition;
+  chains: ChainSummary[];
+  analysis: CompositionAnalysis;
+}
+
+type CompositionOutput = SummaryResponse | ChainsResponse | FullResponse;
 
 /**
  * HHI (Herfindahl-Hirschman Index) calculation for diversification analysis
@@ -49,14 +125,14 @@ interface GetVaultCompositionVariables {
  * - 0.15 - 0.25: Moderate concentration
  * - > 0.25: High concentration
  *
- * @param compositions - Array of protocol compositions with repartition percentages
+ * @param chains - Array of chain summaries with percentage values
  * @returns HHI score between 0 and 1
  */
-function calculateHHI(compositions: Array<{ repartition: number }>): number {
-  if (compositions.length === 0) return 0;
+function calculateHHI(chains: ChainSummary[]): number {
+  if (chains.length === 0) return 0;
 
-  // HHI = sum of squared market shares (repartition is already in percentage, divide by 100)
-  return compositions.reduce((sum, c) => sum + Math.pow(c.repartition / 100, 2), 0);
+  // HHI = sum of squared market shares (percentage/100 to get decimal)
+  return chains.reduce((sum, c) => sum + Math.pow(c.percentage / 100, 2), 0);
 }
 
 /**
@@ -69,79 +145,107 @@ function getDiversificationLevel(hhi: number): 'High' | 'Medium' | 'Low' {
 }
 
 /**
- * Enhanced composition response with analysis
+ * Transform raw Octav API response into structured composition data
+ *
+ * @param raw - Raw JSONObject with chains as keys
+ * @param vaultAddress - Vault address for reference
+ * @returns Full composition data with analysis
  */
-interface EnhancedCompositionResponse {
-  vaultAddress: string;
-  compositions: CompositionData['compositions'];
-  tokenCompositions: CompositionData['tokenCompositions'];
-  analysis: {
-    protocolCount: number;
-    positionCount: number;
-    hhi: number;
-    diversificationLevel: 'High' | 'Medium' | 'Low';
-    topProtocol: string | null;
-    topProtocolPercent: number | null;
-    hasOtherCategory: boolean;
-  };
-}
-
-/**
- * Transform raw composition data into enhanced response with analysis
- */
-function transformToEnhancedResponse(
-  data: VaultCompositionResponse,
+function transformRawComposition(
+  raw: RawVaultComposition | null,
   vaultAddress: string
-): EnhancedCompositionResponse {
-  const composition = data.vaultComposition;
-
-  if (!composition) {
+): FullCompositionData {
+  // Handle null/empty response
+  if (!raw || Object.keys(raw).length === 0) {
     return {
       vaultAddress,
-      compositions: [],
-      tokenCompositions: [],
+      rawData: {},
+      chains: [],
       analysis: {
-        protocolCount: 0,
-        positionCount: 0,
+        totalValueUsd: 0,
+        activeChainCount: 0,
+        topChain: null,
         hhi: 0,
         diversificationLevel: 'High',
-        topProtocol: null,
-        topProtocolPercent: null,
-        hasOtherCategory: false,
       },
     };
   }
 
-  const { compositions, tokenCompositions } = composition;
+  // 1. Filter out chains with value "0" or empty and transform to ChainSummary
+  const activeChains: ChainSummary[] = Object.entries(raw)
+    .filter(([, chain]: [string, ChainComposition]) => {
+      const value = parseFloat(chain.value);
+      return !isNaN(value) && value > 0;
+    })
+    .map(([key, chain]: [string, ChainComposition]) => ({
+      chainKey: key,
+      chainName: chain.name,
+      chainId: chain.chainId,
+      valueUsd: parseFloat(chain.value),
+      percentage: 0, // Calculate after total
+    }));
 
-  // Calculate HHI from protocol compositions (excluding "Other" for accurate HHI)
-  const mainCompositions = compositions.filter((c) => c.protocol !== 'Other');
-  const hhi = calculateHHI(mainCompositions);
-  const diversificationLevel = getDiversificationLevel(hhi);
+  // 2. Calculate total and percentages
+  const totalValueUsd = activeChains.reduce((sum, c) => sum + c.valueUsd, 0);
+  activeChains.forEach((c) => {
+    c.percentage = totalValueUsd > 0 ? (c.valueUsd / totalValueUsd) * 100 : 0;
+  });
 
-  // Find top protocol
-  const topProtocol =
-    mainCompositions.length > 0
-      ? mainCompositions.reduce((max, c) => (c.repartition > max.repartition ? c : max))
-      : null;
+  // 3. Sort by value descending
+  activeChains.sort((a, b) => b.valueUsd - a.valueUsd);
 
-  // Check for "Other" category
-  const hasOtherCategory = compositions.some((c) => c.protocol === 'Other');
+  // 4. Calculate HHI
+  const hhi = calculateHHI(activeChains);
 
   return {
     vaultAddress,
-    compositions,
-    tokenCompositions,
+    rawData: raw,
+    chains: activeChains,
     analysis: {
-      protocolCount: mainCompositions.length,
-      positionCount: tokenCompositions.filter((t) => t.symbol !== 'Other').length,
+      totalValueUsd: parseFloat(totalValueUsd.toFixed(2)),
+      activeChainCount: activeChains.length,
+      topChain: activeChains[0] || null,
       hhi: parseFloat(hhi.toFixed(4)),
-      diversificationLevel,
-      topProtocol: topProtocol?.protocol ?? null,
-      topProtocolPercent: topProtocol?.repartition ?? null,
-      hasOtherCategory,
+      diversificationLevel: getDiversificationLevel(hhi),
     },
   };
+}
+
+/**
+ * Filter full data based on requested response format
+ *
+ * @param data - Full composition data
+ * @param format - Requested response format
+ * @returns Filtered response based on format
+ */
+function filterByFormat(
+  data: FullCompositionData,
+  format: CompositionResponseFormat
+): CompositionOutput {
+  switch (format) {
+    case 'summary':
+      return {
+        vaultAddress: data.vaultAddress,
+        analysis: data.analysis,
+        topChains: data.chains.slice(0, 5), // Top 5 chains for summary
+      } as SummaryResponse;
+
+    case 'chains':
+      return {
+        vaultAddress: data.vaultAddress,
+        chains: data.chains, // Only non-zero chains (already filtered)
+        analysis: data.analysis,
+      } as ChainsResponse;
+
+    case 'full':
+    default:
+      return {
+        vaultAddress: data.vaultAddress,
+        rawData: data.rawData,
+        chains: data.chains,
+        analysis: data.analysis,
+      } as FullResponse;
+  }
 }
 
 /**
@@ -154,30 +258,32 @@ export function createExecuteGetVaultComposition(
   container: ServiceContainer
 ): (input: GetVaultCompositionInput) => Promise<CallToolResult> {
   return async (input: GetVaultCompositionInput): Promise<CallToolResult> => {
-    // Check fragment-level cache first
-    const fragmentCacheKey = cacheKeys.composition(input.vaultAddress);
-    const cachedComposition = container.cache.get<EnhancedCompositionResponse>(fragmentCacheKey);
+    const responseFormat = (input.responseFormat ?? 'summary') as CompositionResponseFormat;
+    const vaultAddress = input.vaultAddress;
+
+    // Check fragment-level cache first (always cache full data)
+    const fragmentCacheKey = cacheKeys.composition(vaultAddress);
+    const cachedComposition = container.cache.get<FullCompositionData>(fragmentCacheKey);
 
     if (cachedComposition) {
-      return createSuccessResponse(cachedComposition);
+      // Apply format filtering to cached data
+      const filteredResponse = filterByFormat(cachedComposition, responseFormat);
+      return createSuccessResponse(filteredResponse);
     }
-
-    // Capture vaultAddress for use in transformResult closure
-    const vaultAddress = input.vaultAddress;
 
     // Cache miss - execute GraphQL query with standard caching
     const executor = executeToolWithCache<
       GetVaultCompositionInput,
       VaultCompositionResponse,
       GetVaultCompositionVariables,
-      EnhancedCompositionResponse
+      FullCompositionData
     >({
       container,
-      cacheKey: () => cacheKeys.composition(vaultAddress),
+      cacheKey: () => fragmentCacheKey,
       cacheTTL: cacheTTL.composition,
       query: GET_VAULT_COMPOSITION_QUERY,
-      variables: (toolInput) => ({
-        vaultAddress: toolInput.vaultAddress,
+      variables: () => ({
+        walletAddress: vaultAddress,
       }),
       validateResult: (data) => {
         // Composition might be null if vault doesn't have data yet - that's okay
@@ -189,7 +295,7 @@ export function createExecuteGetVaultComposition(
           isError: false,
         };
       },
-      transformResult: (data) => transformToEnhancedResponse(data, vaultAddress),
+      transformResult: (data) => transformRawComposition(data.vaultComposition, vaultAddress),
       toolName: 'get_vault_composition',
     });
 
@@ -198,8 +304,17 @@ export function createExecuteGetVaultComposition(
 
     const result = await executor(input);
 
-    // Add legal disclaimer to output
+    // If successful, apply format filtering to the response
     if (!result.isError && result.content[0]?.type === 'text') {
+      try {
+        const fullData = JSON.parse(result.content[0].text) as FullCompositionData;
+        const filteredResponse = filterByFormat(fullData, responseFormat);
+        result.content[0].text = JSON.stringify(filteredResponse, null, 2);
+      } catch {
+        // If parsing fails, leave original response
+      }
+
+      // Add legal disclaimer to output
       result.content[0].text = result.content[0].text + getToolDisclaimer('vault_composition');
     }
 

@@ -290,6 +290,12 @@ export const optimizePortfolioInputSchema = z.object({
 // get_vault_composition input
 export const getVaultCompositionInputSchema = z.object({
   vaultAddress: ethereumAddressSchema,
+  responseFormat: z
+    .enum(['summary', 'chains', 'full'])
+    .default('summary')
+    .describe(
+      'Response detail level: summary (totals + top chains ~100 tokens), chains (non-zero chains only ~200-500 tokens), full (all chain data ~1000+ tokens). Default: summary'
+    ),
 });
 
 /**

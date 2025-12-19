@@ -21,7 +21,7 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetUserPortfolioInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
-import { VaultData, ProtocolComposition, CompositionData } from '../graphql/fragments/index.js';
+import { VaultData, RawVaultComposition, ChainComposition } from '../graphql/fragments/index.js';
 import {
   createGetUserPortfolioQuery,
   SINGLE_VAULT_COMPOSITION_QUERY,
@@ -76,20 +76,24 @@ interface PortfolioPosition {
 }
 
 /**
- * Protocol exposure in portfolio
+ * Chain exposure in portfolio
+ * Note: Backend API changed from protocol-based to chain-based composition
  */
-interface ProtocolExposure {
-  protocol: string;
+interface ChainExposure {
+  chainKey: string;
+  chainName: string;
+  chainId: string;
   valueUsd: number;
   repartition: number;
   vaultCount: number;
 }
 
 /**
- * Accidental concentration warning
+ * Accidental concentration warning (cross-chain)
  */
 interface AccidentalConcentration {
-  protocol: string;
+  chainKey: string;
+  chainName: string;
   vaultCount: number;
   totalExposure: number;
   vaultAddresses: string[];
@@ -97,13 +101,14 @@ interface AccidentalConcentration {
 
 /**
  * Portfolio composition summary with diversification metrics
+ * Note: Now uses chain-based composition from Octav API
  */
 interface PortfolioCompositionSummary {
-  protocolExposure: ProtocolExposure[];
+  chainExposure: ChainExposure[];
   portfolioHHI: number;
   diversificationLevel: 'High' | 'Medium' | 'Low';
-  topProtocol: string | null;
-  topProtocolPercent: number | null;
+  topChain: string | null;
+  topChainPercent: number | null;
   accidentalConcentration: AccidentalConcentration[];
 }
 
@@ -128,26 +133,75 @@ interface GetUserPortfolioVariables {
 }
 
 /**
+ * Processed chain summary from raw composition data
+ */
+interface ProcessedChainSummary {
+  chainKey: string;
+  chainName: string;
+  chainId: string;
+  valueUsd: number;
+  percentage: number;
+}
+
+/**
  * Vault composition data with vault address for aggregation
+ * Note: Now uses chain-based structure from Octav API
  */
 interface VaultCompositionEntry {
   vaultAddress: string;
   positionValueUsd: number;
-  compositions: ProtocolComposition[];
+  chains: ProcessedChainSummary[];
 }
 
 /**
  * Response type for single vault composition query
+ * Note: Backend returns JSONObject with chains as keys
  */
 interface SingleVaultCompositionResponse {
-  vaultComposition: CompositionData | null;
+  vaultComposition: RawVaultComposition | null;
+}
+
+/**
+ * Transform raw composition data to processed chain summaries
+ */
+function transformRawCompositionToChains(raw: RawVaultComposition | null): ProcessedChainSummary[] {
+  if (!raw || Object.keys(raw).length === 0) {
+    return [];
+  }
+
+  // Filter and transform to chain summaries
+  const chains: ProcessedChainSummary[] = Object.entries(raw)
+    .filter(([, chain]: [string, ChainComposition]) => {
+      const value = parseFloat(chain.value);
+      return !isNaN(value) && value > 0;
+    })
+    .map(([key, chain]: [string, ChainComposition]) => ({
+      chainKey: key,
+      chainName: chain.name,
+      chainId: chain.chainId,
+      valueUsd: parseFloat(chain.value),
+      percentage: 0, // Calculate after total
+    }));
+
+  // Calculate percentages
+  const totalValue = chains.reduce((sum, c) => sum + c.valueUsd, 0);
+  chains.forEach((c) => {
+    c.percentage = totalValue > 0 ? (c.valueUsd / totalValue) * 100 : 0;
+  });
+
+  // Sort by value descending
+  chains.sort((a, b) => b.valueUsd - a.valueUsd);
+
+  return chains;
 }
 
 /**
  * Aggregate composition data across all portfolio positions
  *
- * Calculates portfolio-wide protocol exposure weighted by position size,
+ * Calculates portfolio-wide chain exposure weighted by position size,
  * portfolio-level HHI, and detects accidental concentration across vaults.
+ *
+ * Note: Backend API changed from protocol-based to chain-based composition
  *
  * @param vaultCompositions - Array of vault compositions with position values
  * @param totalPortfolioValue - Total portfolio value in USD
@@ -157,15 +211,18 @@ function aggregatePortfolioComposition(
   vaultCompositions: VaultCompositionEntry[],
   totalPortfolioValue: number
 ): PortfolioCompositionSummary {
-  // Track protocol exposure across all vaults
-  const protocolExposureMap = new Map<string, { valueUsd: number; vaultAddresses: string[] }>();
+  // Track chain exposure across all vaults
+  const chainExposureMap = new Map<
+    string,
+    { chainName: string; chainId: string; valueUsd: number; vaultAddresses: string[] }
+  >();
 
   // Aggregate weighted exposure from each vault
   for (const entry of vaultCompositions) {
-    for (const comp of entry.compositions) {
-      // Weight the protocol exposure by position size
-      const weightedExposure = (comp.repartition / 100) * entry.positionValueUsd;
-      const existing = protocolExposureMap.get(comp.protocol);
+    for (const chain of entry.chains) {
+      // Weight the chain exposure by position size
+      const weightedExposure = (chain.percentage / 100) * entry.positionValueUsd;
+      const existing = chainExposureMap.get(chain.chainKey);
 
       if (existing) {
         existing.valueUsd += weightedExposure;
@@ -173,7 +230,9 @@ function aggregatePortfolioComposition(
           existing.vaultAddresses.push(entry.vaultAddress);
         }
       } else {
-        protocolExposureMap.set(comp.protocol, {
+        chainExposureMap.set(chain.chainKey, {
+          chainName: chain.chainName,
+          chainId: chain.chainId,
           valueUsd: weightedExposure,
           vaultAddresses: [entry.vaultAddress],
         });
@@ -182,9 +241,11 @@ function aggregatePortfolioComposition(
   }
 
   // Convert to array and calculate repartition percentages
-  const exposures: ProtocolExposure[] = Array.from(protocolExposureMap.entries())
-    .map(([protocol, data]) => ({
-      protocol,
+  const exposures: ChainExposure[] = Array.from(chainExposureMap.entries())
+    .map(([chainKey, data]) => ({
+      chainKey,
+      chainName: data.chainName,
+      chainId: data.chainId,
       valueUsd: data.valueUsd,
       repartition: totalPortfolioValue > 0 ? (data.valueUsd / totalPortfolioValue) * 100 : 0,
       vaultCount: data.vaultAddresses.length,
@@ -198,13 +259,14 @@ function aggregatePortfolioComposition(
   const diversificationLevel: 'High' | 'Medium' | 'Low' =
     portfolioHHI < 0.15 ? 'High' : portfolioHHI < 0.25 ? 'Medium' : 'Low';
 
-  // Detect accidental concentration (same protocol in 3+ vaults with >20% total exposure)
+  // Detect accidental concentration (same chain in 3+ vaults with >20% total exposure)
   const accidentalConcentration: AccidentalConcentration[] = [];
-  for (const [protocol, data] of protocolExposureMap.entries()) {
+  for (const [chainKey, data] of chainExposureMap.entries()) {
     const totalExposure = totalPortfolioValue > 0 ? (data.valueUsd / totalPortfolioValue) * 100 : 0;
     if (data.vaultAddresses.length >= 3 && totalExposure >= 20) {
       accidentalConcentration.push({
-        protocol,
+        chainKey,
+        chainName: data.chainName,
         vaultCount: data.vaultAddresses.length,
         totalExposure,
         vaultAddresses: data.vaultAddresses,
@@ -213,11 +275,11 @@ function aggregatePortfolioComposition(
   }
 
   return {
-    protocolExposure: exposures.slice(0, 10), // Top 10 protocols
+    chainExposure: exposures.slice(0, 10), // Top 10 chains
     portfolioHHI,
     diversificationLevel,
-    topProtocol: exposures[0]?.protocol || null,
-    topProtocolPercent: exposures[0]?.repartition || null,
+    topChain: exposures[0]?.chainName || null,
+    topChainPercent: exposures[0]?.repartition || null,
     accidentalConcentration,
   };
 }
@@ -362,19 +424,21 @@ export function createExecuteGetUserPortfolio(
 
           // Fetch composition data for each vault in parallel
           // This enables portfolio-wide diversification analysis
+          // Note: Backend API now uses walletAddress parameter and returns chain-based data
           const compositionPromises = positions.map(async (position) => {
             try {
               const compResponse =
                 await container.graphqlClient.request<SingleVaultCompositionResponse>(
                   SINGLE_VAULT_COMPOSITION_QUERY,
-                  { vaultAddress: position.vaultAddress }
+                  { walletAddress: position.vaultAddress }
                 );
 
-              if (compResponse.vaultComposition?.compositions) {
+              const chains = transformRawCompositionToChains(compResponse.vaultComposition);
+              if (chains.length > 0) {
                 return {
                   vaultAddress: position.vaultAddress,
                   positionValueUsd: parseFloat(position.sharesUsd || '0'),
-                  compositions: compResponse.vaultComposition.compositions,
+                  chains,
                 } as VaultCompositionEntry;
               }
               return null;

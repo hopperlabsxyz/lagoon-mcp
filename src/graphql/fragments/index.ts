@@ -25,8 +25,11 @@ export { VAULT_FRAGMENT, type VaultData } from './vault.fragment.js';
 export { VAULT_LIST_FRAGMENT, type VaultListData } from './vault-list.fragment.js';
 export { VAULT_SUMMARY_FRAGMENT, type VaultSummaryData } from './vault-summary.fragment.js';
 
-// Composition Fragment
+// Composition Fragment - new chain-based types
 export {
+  type ChainComposition,
+  type RawVaultComposition,
+  // Legacy types (deprecated - kept for backward compatibility)
   COMPOSITION_FRAGMENT,
   type ProtocolComposition,
   type TokenComposition,
