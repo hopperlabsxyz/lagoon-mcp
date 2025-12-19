@@ -24,6 +24,7 @@ import { createExecuteAnalyzeRisk } from './analyze-risk.js';
 import { createExecutePredictYield } from './predict-yield.js';
 import { createExecuteOptimizePortfolio } from './optimize-portfolio.js';
 import { createExecuteSimulateVault, simulateVaultInputSchema } from './simulate-vault.js';
+import { createExecuteGetVaultComposition } from './vault-composition.js';
 
 // Service container
 import { ServiceContainer } from '../core/container.js';
@@ -42,6 +43,7 @@ import {
   analyzeRiskInputSchema,
   predictYieldInputSchema,
   optimizePortfolioInputSchema,
+  getVaultCompositionInputSchema,
 } from '../utils/validators.js';
 
 // Tool utilities
@@ -250,6 +252,20 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'No caching (simulations are scenario-specific).',
     schema: simulateVaultInputSchema,
     executorFactory: createExecuteSimulateVault,
+  },
+  {
+    name: 'get_vault_composition',
+    description:
+      'Fetch vault protocol and token composition with diversification analysis. ' +
+      'Returns breakdown by protocol (e.g., Aave, Morpho, Compound) and by position/token. ' +
+      'Calculates HHI (Herfindahl-Hirschman Index) for diversification scoring. ' +
+      'Diversification levels: High (HHI < 0.15), Medium (0.15-0.25), Low (> 0.25). ' +
+      'Small allocations (<1%) are grouped into "Other" category with details. ' +
+      'Best for: understanding protocol exposure, identifying concentration risks, portfolio composition analysis. ' +
+      'Performance: ~300-500 tokens per vault. ' +
+      'Features 15-minute caching (backend caches Octav API data for 6 hours).',
+    schema: getVaultCompositionInputSchema,
+    executorFactory: createExecuteGetVaultComposition,
   },
 ];
 

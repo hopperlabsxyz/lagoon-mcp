@@ -90,6 +90,20 @@ RISK FACTOR BREAKDOWN
    - Curator Track Record: [Assessment]
    - Communication Quality: [Assessment]
    - Strategy Execution: [Assessment]
+
+6. Protocol Diversification Risk (Weight: 5%)
+   Score: [X]/100
+   Analysis: [Interpretation of protocol concentration]
+   - HHI Score: [X] ([Well/Moderately/Highly] diversified)
+   - Protocol Count: [X] protocols
+   - Diversification Level: [High/Medium/Low]
+
+7. Top Protocol Concentration Risk (Weight: 5%)
+   Score: [X]/100
+   Analysis: [Interpretation of top protocol exposure]
+   - Top Protocol: [Protocol Name]
+   - Top Protocol Exposure: [X]%
+   - Concentration Assessment: [Healthy/Moderate/High/Dangerous]
 \`\`\`
 
 ## Step 2: Historical Performance Analysis
@@ -299,14 +313,23 @@ const RISK_FRAMEWORKS = `# Risk Analysis Frameworks
 
 ## Risk Scoring Methodology
 
-### Factor Weights
+### Factor Weights (14-Factor Model)
 | Factor | Weight | Rationale |
 |--------|--------|-----------|
-| TVL Risk | 25% | Liquidity and market validation |
-| Concentration Risk | 20% | Diversification and exposure |
-| Volatility Risk | 20% | Price stability and predictability |
-| Age Risk | 15% | Operational maturity |
-| Curator Risk | 20% | Management quality |
+| TVL Risk | 8% | Liquidity and market validation |
+| Concentration Risk | 8% | Portfolio-level vault exposure |
+| Volatility Risk | 14% | Price stability and predictability |
+| Age Risk | 9% | Operational maturity |
+| Curator Risk | 9% | Management quality |
+| Fee Risk | 9% | Cost structure impact |
+| Liquidity Risk | 9% | Safe assets coverage |
+| APR Consistency | 14% | Yield stability |
+| Yield Sustainability | 5% | Long-term yield viability |
+| Settlement Risk | 5% | Redemption processing |
+| Integration Complexity | 5% | DeFi protocol integrations |
+| Capacity Utilization | 5% | Vault capacity usage |
+| **Protocol Diversification** | 5% | HHI-based concentration |
+| **Top Protocol Concentration** | 5% | Single protocol exposure |
 
 ### Risk Score Interpretation
 | Score Range | Risk Level | Description |
@@ -349,6 +372,39 @@ const RISK_FRAMEWORKS = `# Risk Analysis Frameworks
 - **Recovery Factor**: Return / Max Drawdown
 - **Recovery Time**: Days to recover previous high
 - **Ulcer Index**: Measure of downside risk duration
+
+## Protocol Composition Analysis
+
+### HHI (Herfindahl-Hirschman Index) Interpretation
+The HHI measures concentration across protocols within a vault.
+
+| HHI Score | Diversification | Risk Level |
+|-----------|----------------|------------|
+| <0.15 | High | Low - Well distributed across protocols |
+| 0.15-0.25 | Medium | Moderate - Acceptable concentration |
+| 0.25-0.50 | Low | High - Significant concentration risk |
+| >0.50 | Very Low | Very High - Dangerous concentration |
+
+### Top Protocol Concentration
+| Top Protocol % | Assessment | Implication |
+|---------------|------------|-------------|
+| <30% | Healthy | Good distribution across protocols |
+| 30-50% | Moderate | Acceptable but monitor |
+| 50-70% | High | Significant single-protocol dependency |
+| >70% | Dangerous | Critical concentration risk |
+
+### Composition Risk Factors
+When evaluating composition risk, consider:
+1. **Protocol Quality**: Are underlying protocols battle-tested?
+2. **Protocol Correlation**: Do protocols share similar risk profiles?
+3. **Smart Contract Risk**: Multiple protocols = multiple attack surfaces
+4. **Liquidity Depth**: Protocol exposure vs. available liquidity
+
+### Accidental Concentration Warning
+For portfolio analysis, watch for:
+- Same protocol appearing in 3+ vaults
+- Total protocol exposure >40% of portfolio
+- Hidden concentration through derivative positions
 
 ## Correlation Analysis
 
@@ -444,6 +500,10 @@ export const lagoonRiskExpertSkill: LagoonSkill = {
     'correlation analysis',
     'risk-adjusted returns',
     'sharpe ratio',
+    'protocol concentration',
+    'composition risk',
+    'hhi score',
+    'diversification risk',
   ],
   audience: 'customer-advanced',
   instructions: INSTRUCTIONS,
@@ -451,11 +511,17 @@ export const lagoonRiskExpertSkill: LagoonSkill = {
     riskFrameworks: RISK_FRAMEWORKS,
   },
   metadata: {
-    version: '1.0.0',
+    version: '1.1.0',
     category: 'risk',
-    primaryTools: ['analyze_risk', 'get_vault_performance', 'get_price_history', 'compare_vaults'],
-    estimatedTokens: 2200,
-    lastUpdated: '2024-12-15',
+    primaryTools: [
+      'analyze_risk',
+      'get_vault_performance',
+      'get_price_history',
+      'compare_vaults',
+      'get_vault_composition',
+    ],
+    estimatedTokens: 2500,
+    lastUpdated: '2025-01-15',
   },
 };
 

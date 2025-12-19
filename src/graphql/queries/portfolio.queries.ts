@@ -5,7 +5,12 @@
  * Includes user portfolio data and portfolio optimization queries.
  */
 
-import { VAULT_FRAGMENT, VAULT_LIST_FRAGMENT, VAULT_SUMMARY_FRAGMENT } from '../fragments/index.js';
+import {
+  VAULT_FRAGMENT,
+  VAULT_LIST_FRAGMENT,
+  VAULT_SUMMARY_FRAGMENT,
+  COMPOSITION_FRAGMENT,
+} from '../fragments/index.js';
 
 /**
  * Response format type for user portfolio query
@@ -151,6 +156,31 @@ export const SINGLE_VAULT_OPTIMIZATION_QUERY = `
     }
   }
   ${VAULT_FRAGMENT}
+`;
+
+/**
+ * GraphQL query for single vault composition data
+ *
+ * Fetches composition data for a single vault, used in parallel
+ * to aggregate portfolio-wide composition metrics.
+ *
+ * Used by: get_user_portfolio tool (for composition aggregation)
+ *
+ * Usage:
+ * ```typescript
+ * const data = await graphqlClient.request<SingleVaultCompositionResponse>(
+ *   SINGLE_VAULT_COMPOSITION_QUERY,
+ *   { vaultAddress: '0x...' }
+ * );
+ * ```
+ */
+export const SINGLE_VAULT_COMPOSITION_QUERY = `
+  query SingleVaultComposition($vaultAddress: Address!) {
+    vaultComposition(vaultAddress: $vaultAddress) {
+      ...CompositionFragment
+    }
+  }
+  ${COMPOSITION_FRAGMENT}
 `;
 
 /**

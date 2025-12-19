@@ -287,6 +287,11 @@ export const optimizePortfolioInputSchema = z.object({
     ),
 });
 
+// get_vault_composition input
+export const getVaultCompositionInputSchema = z.object({
+  vaultAddress: ethereumAddressSchema,
+});
+
 /**
  * Type inference helpers
  */
@@ -303,3 +308,4 @@ export type ExportDataInput = z.infer<typeof exportDataInputSchema>;
 export type AnalyzeRiskInput = z.infer<typeof analyzeRiskInputSchema>;
 export type PredictYieldInput = z.infer<typeof predictYieldInputSchema>;
 export type OptimizePortfolioInput = z.infer<typeof optimizePortfolioInputSchema>;
+export type GetVaultCompositionInput = z.infer<typeof getVaultCompositionInputSchema>;

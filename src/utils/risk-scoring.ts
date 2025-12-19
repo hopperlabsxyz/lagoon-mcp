@@ -21,6 +21,8 @@ export interface RiskScoreBreakdown {
   settlementRisk: number;
   integrationComplexityRisk: number;
   capacityUtilizationRisk: number;
+  protocolDiversificationRisk: number; // NEW: HHI-based diversification
+  topProtocolConcentrationRisk: number; // NEW: Top protocol exposure
   overallRisk: number;
   riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
 }
@@ -435,6 +437,57 @@ export function calculateIntegrationComplexityRisk(integrationCount: number): nu
 }
 
 /**
+ * Calculate protocol diversification risk based on HHI (Herfindahl-Hirschman Index)
+ *
+ * HHI measures concentration: sum of squared market shares
+ * - HHI < 0.15: Well diversified across protocols
+ * - HHI 0.15-0.25: Moderate concentration
+ * - HHI 0.25-0.50: High concentration
+ * - HHI > 0.50: Very high concentration (single protocol dominance)
+ *
+ * @param compositions - Array of protocol compositions with repartition (0-100%)
+ * @returns Risk score 0-1 (lower = better diversification)
+ */
+export function calculateProtocolDiversificationRisk(
+  compositions: Array<{ repartition: number }> | null | undefined
+): number {
+  if (!compositions?.length) {
+    return 0.5; // Unknown composition = medium risk
+  }
+
+  // Calculate HHI: sum of squared shares (repartition is 0-100, convert to 0-1)
+  const hhi = compositions.reduce((sum, c) => sum + Math.pow(c.repartition / 100, 2), 0);
+
+  // Map HHI to risk score
+  if (hhi < 0.15) return 0.1; // Well diversified
+  if (hhi < 0.25) return 0.35; // Moderate concentration
+  if (hhi < 0.5) return 0.65; // High concentration
+  return 0.9; // Very high concentration
+}
+
+/**
+ * Calculate top protocol concentration risk
+ *
+ * Evaluates the risk of having too much exposure to a single protocol.
+ * Complements HHI by specifically flagging dominant protocol exposure.
+ *
+ * @param topProtocolPercent - Percentage allocation to top protocol (0-100 or null)
+ * @returns Risk score 0-1 (lower = healthier distribution)
+ */
+export function calculateTopProtocolConcentrationRisk(
+  topProtocolPercent: number | null | undefined
+): number {
+  if (topProtocolPercent === null || topProtocolPercent === undefined) {
+    return 0.5; // Unknown = medium risk
+  }
+
+  if (topProtocolPercent < 30) return 0.1; // Healthy distribution
+  if (topProtocolPercent < 50) return 0.35; // Moderate top holding
+  if (topProtocolPercent < 70) return 0.65; // High concentration
+  return 0.9; // Dangerous concentration
+}
+
+/**
  * Calculate capacity utilization risk score
  * Assesses deposit headroom and demand signals
  *
@@ -476,20 +529,22 @@ export function calculateOverallRisk(
   overallRisk: number;
   riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
 } {
-  // Weighted average of 12 risk factors (updated distribution)
+  // Weighted average of 14 risk factors (updated to include composition)
   const weights = {
-    tvl: 0.1,
-    concentration: 0.1,
-    volatility: 0.15,
-    age: 0.1,
-    curator: 0.1,
-    fee: 0.1,
-    liquidity: 0.1,
-    aprConsistency: 0.15, // NEW - Performance predictability
-    yieldSustainability: 0.05, // NEW - APR quality
-    settlement: 0.05, // NEW - Operational efficiency (combined with liquidity)
-    integrationComplexity: 0.05, // NEW - Technical risk
-    capacityUtilization: 0.05, // NEW - Operational signal
+    tvl: 0.08, // Reduced from 0.1
+    concentration: 0.08, // Reduced from 0.1
+    volatility: 0.14, // Reduced from 0.15
+    age: 0.08, // Reduced from 0.1
+    curator: 0.08, // Reduced from 0.1
+    fee: 0.08, // Reduced from 0.1
+    liquidity: 0.08, // Reduced from 0.1
+    aprConsistency: 0.13, // Reduced from 0.15
+    yieldSustainability: 0.05,
+    settlement: 0.05,
+    integrationComplexity: 0.05,
+    capacityUtilization: 0.05,
+    protocolDiversification: 0.05, // NEW: Composition-based
+    topProtocolConcentration: 0.05, // NEW: Composition-based
   };
 
   const overallRisk =
@@ -504,7 +559,9 @@ export function calculateOverallRisk(
     breakdown.yieldSustainabilityRisk * weights.yieldSustainability +
     breakdown.settlementRisk * weights.settlement +
     breakdown.integrationComplexityRisk * weights.integrationComplexity +
-    breakdown.capacityUtilizationRisk * weights.capacityUtilization;
+    breakdown.capacityUtilizationRisk * weights.capacityUtilization +
+    breakdown.protocolDiversificationRisk * weights.protocolDiversification +
+    breakdown.topProtocolConcentrationRisk * weights.topProtocolConcentration;
 
   // Determine risk level
   let riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
@@ -545,7 +602,7 @@ export function analyzeRisk(params: {
   performanceFeeActive: boolean;
   safeAssets: number;
   pendingRedemptions: number;
-  // New parameters for enhanced risk factors
+  // Parameters for enhanced risk factors
   aprData?: {
     weeklyApr?: number;
     monthlyApr?: number;
@@ -566,6 +623,11 @@ export function analyzeRisk(params: {
   capacityData?: {
     totalAssets: number;
     maxCapacity: number | null;
+  };
+  // NEW: Composition data for protocol diversification analysis
+  compositionData?: {
+    compositions?: Array<{ repartition: number }>;
+    topProtocolPercent?: number | null;
   };
 }): RiskScoreBreakdown {
   const tvlRisk = calculateTVLRisk(params.tvl);
@@ -604,6 +666,15 @@ export function analyzeRisk(params: {
     ? calculateCapacityUtilizationRisk(params.capacityData)
     : 0.2; // Default to low risk (no capacity limit)
 
+  // NEW: Calculate composition-based risk factors
+  const protocolDiversificationRisk = calculateProtocolDiversificationRisk(
+    params.compositionData?.compositions
+  );
+
+  const topProtocolConcentrationRisk = calculateTopProtocolConcentrationRisk(
+    params.compositionData?.topProtocolPercent
+  );
+
   const { overallRisk, riskLevel } = calculateOverallRisk({
     tvlRisk,
     concentrationRisk,
@@ -617,6 +688,8 @@ export function analyzeRisk(params: {
     settlementRisk,
     integrationComplexityRisk,
     capacityUtilizationRisk,
+    protocolDiversificationRisk,
+    topProtocolConcentrationRisk,
   });
 
   return {
@@ -632,6 +705,8 @@ export function analyzeRisk(params: {
     settlementRisk,
     integrationComplexityRisk,
     capacityUtilizationRisk,
+    protocolDiversificationRisk,
+    topProtocolConcentrationRisk,
     overallRisk,
     riskLevel,
   };

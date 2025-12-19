@@ -215,7 +215,7 @@ describe('get_user_portfolio Tool', () => {
       expect((cachedData as any).users).toHaveProperty('items');
     });
 
-    it('should return cached data without querying GraphQL', async () => {
+    it('should return cached data without querying main portfolio GraphQL', async () => {
       // Arrange - Cache raw GraphQL response (not transformed)
       const cachedGraphQLResponse = {
         users: {
@@ -240,6 +240,11 @@ describe('get_user_portfolio Tool', () => {
       const cacheKey = cacheKeys.userPortfolio(mockUserAddress);
       cache.set(cacheKey, cachedGraphQLResponse);
 
+      // Mock composition query for the cached vault (composition enrichment happens after cache hit)
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValueOnce({
+        vaultComposition: null,
+      });
+
       const input = {
         userAddress: mockUserAddress,
       };
@@ -251,7 +256,9 @@ describe('get_user_portfolio Tool', () => {
       expect(result.isError).toBe(false);
       const data = parseJsonWithDisclaimer(result.content[0].text as string);
       expect(data.positions[0].vaultSymbol).toBe('CACHED');
-      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+      // Main portfolio query should not be called (cache hit), but composition query is made for enrichment
+      // Only 1 call for the composition query, not the main portfolio query
+      expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -26,8 +26,9 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { CompareVaultsInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
-import { VaultData } from '../graphql/fragments/index.js';
+import { VaultData, CompositionData } from '../graphql/fragments/index.js';
 import { COMPARE_VAULTS_QUERY } from '../graphql/queries/index.js';
+import { SINGLE_VAULT_COMPOSITION_QUERY } from '../graphql/queries/portfolio.queries.js';
 import {
   VaultComparisonData,
   normalizeAndRankVaults,
@@ -60,6 +61,24 @@ interface CompareVaultsVariables {
 }
 
 /**
+ * Response type for single vault composition query
+ */
+interface SingleVaultCompositionResponse {
+  vaultComposition: CompositionData | null;
+}
+
+/**
+ * Composition metrics for a vault
+ */
+interface VaultCompositionMetrics {
+  hhi: number; // Herfindahl-Hirschman Index (0-1)
+  diversificationLevel: 'High' | 'Medium' | 'Low';
+  topProtocol: string | null;
+  topProtocolPercent: number | null;
+  protocolCount: number;
+}
+
+/**
  * Structured vault data for UI block rendering
  * Contains all fields needed to construct comparison blocks without additional API calls
  */
@@ -80,6 +99,8 @@ interface StructuredVaultData {
     managementFee: number; // Basis points (100 = 1%)
     performanceFee: number; // Basis points (1000 = 10%)
   };
+  // Composition metrics for diversification analysis
+  composition?: VaultCompositionMetrics;
 }
 
 /**
@@ -354,6 +375,39 @@ function normalizeRiskLevel(
 }
 
 /**
+ * Calculate composition metrics from composition data
+ */
+function calculateCompositionMetrics(
+  compositionData: CompositionData | null
+): VaultCompositionMetrics | undefined {
+  if (!compositionData?.compositions?.length) {
+    return undefined;
+  }
+
+  const compositions = compositionData.compositions;
+
+  // Calculate HHI (Herfindahl-Hirschman Index)
+  const hhi = compositions.reduce((sum, c) => sum + Math.pow(c.repartition / 100, 2), 0);
+
+  // Determine diversification level
+  const diversificationLevel: 'High' | 'Medium' | 'Low' =
+    hhi < 0.15 ? 'High' : hhi < 0.25 ? 'Medium' : 'Low';
+
+  // Get top protocol
+  const sortedCompositions = [...compositions].sort((a, b) => b.repartition - a.repartition);
+  const topProtocol = sortedCompositions[0]?.protocol || null;
+  const topProtocolPercent = sortedCompositions[0]?.repartition || null;
+
+  return {
+    hhi,
+    diversificationLevel,
+    topProtocol,
+    topProtocolPercent,
+    protocolCount: compositions.length,
+  };
+}
+
+/**
  * Convert VaultData to StructuredVaultData for UI block rendering
  */
 function convertToStructuredVaultData(
@@ -471,6 +525,36 @@ export function createExecuteCompareVaults(
         convertToStructuredVaultData(vault, comparisonData[index])
       );
 
+      // Fetch composition data for each vault in parallel (cached path)
+      const compositionPromises = structuredVaults.map(async (vault) => {
+        try {
+          const compResponse =
+            await container.graphqlClient.request<SingleVaultCompositionResponse>(
+              SINGLE_VAULT_COMPOSITION_QUERY,
+              { vaultAddress: vault.address }
+            );
+          return {
+            address: vault.address,
+            metrics: calculateCompositionMetrics(compResponse.vaultComposition),
+          };
+        } catch {
+          return { address: vault.address, metrics: undefined };
+        }
+      });
+
+      const compositionResults = await Promise.all(compositionPromises);
+      const compositionMap = new Map(
+        compositionResults.map((r) => [r.address.toLowerCase(), r.metrics])
+      );
+
+      // Enrich structured vaults with composition data
+      for (const vault of structuredVaults) {
+        const metrics = compositionMap.get(vault.address.toLowerCase());
+        if (metrics) {
+          vault.composition = metrics;
+        }
+      }
+
       // Build response with both markdown and structured vaults
       const responseText = `${markdown}${getToolDisclaimer('compare_vaults')}
 
@@ -478,6 +562,7 @@ export function createExecuteCompareVaults(
 ## Structured Vault Data (for UI blocks)
 The following JSON contains structured vault data for building comparison UI blocks.
 Use the \`vaults\` array directly - fees are in basis points (100 = 1%).
+Composition metrics include HHI (0-1), diversification level, and top protocol exposure.
 
 \`\`\`json
 ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
@@ -546,15 +631,50 @@ ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
       try {
         const output = JSON.parse(result.content[0].text) as CompareVaultsOutput;
 
+        // Fetch composition data for each vault in parallel
+        // This enables diversification comparison between vaults
+        const compositionPromises = output.vaults.map(async (vault) => {
+          try {
+            const compResponse =
+              await container.graphqlClient.request<SingleVaultCompositionResponse>(
+                SINGLE_VAULT_COMPOSITION_QUERY,
+                { vaultAddress: vault.address }
+              );
+            return {
+              address: vault.address,
+              metrics: calculateCompositionMetrics(compResponse.vaultComposition),
+            };
+          } catch {
+            // If composition fetch fails, skip it
+            return { address: vault.address, metrics: undefined };
+          }
+        });
+
+        const compositionResults = await Promise.all(compositionPromises);
+
+        // Create a map for quick lookup
+        const compositionMap = new Map(
+          compositionResults.map((r) => [r.address.toLowerCase(), r.metrics])
+        );
+
+        // Enrich structured vaults with composition data
+        for (const vault of output.vaults) {
+          const metrics = compositionMap.get(vault.address.toLowerCase());
+          if (metrics) {
+            vault.composition = metrics;
+          }
+        }
+
         // Build response with:
         // 1. Human-readable markdown (with disclaimer)
-        // 2. Structured vaults array for UI block construction
+        // 2. Structured vaults array for UI block construction (now with composition)
         const responseText = `${output.markdown}${getToolDisclaimer('compare_vaults')}
 
 ---
 ## Structured Vault Data (for UI blocks)
 The following JSON contains structured vault data for building comparison UI blocks.
 Use the \`vaults\` array directly - fees are in basis points (100 = 1%).
+Composition metrics include HHI (0-1), diversification level, and top protocol exposure.
 
 \`\`\`json
 ${JSON.stringify({ vaults: output.vaults }, null, 2)}

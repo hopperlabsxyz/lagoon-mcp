@@ -53,6 +53,7 @@ export const cacheTTL = {
   riskAnalysis: 900, // 15 minutes - multi-factor calculation, moderate cost
   yieldPrediction: 3600, // 60 minutes - ML-based forecast, expensive computation
   portfolioOptimization: 300, // 5 minutes - user-specific, interactive use case
+  composition: 900, // 15 minutes - protocol composition from Octav API (backend caches 6h)
 } as const;
 
 /**
@@ -106,6 +107,8 @@ export const cacheKeys = {
 
   priceHistory: (address: string, chainId: number, range: string): string =>
     `price_history:${address}:${chainId}:${range}`,
+
+  composition: (address: string): string => `composition:${address.toLowerCase()}`,
 };
 
 /**

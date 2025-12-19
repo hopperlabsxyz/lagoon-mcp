@@ -24,3 +24,11 @@ export { TRANSACTION_BASE_FRAGMENT } from './transaction-base.fragment.js';
 export { VAULT_FRAGMENT, type VaultData } from './vault.fragment.js';
 export { VAULT_LIST_FRAGMENT, type VaultListData } from './vault-list.fragment.js';
 export { VAULT_SUMMARY_FRAGMENT, type VaultSummaryData } from './vault-summary.fragment.js';
+
+// Composition Fragment
+export {
+  COMPOSITION_FRAGMENT,
+  type ProtocolComposition,
+  type TokenComposition,
+  type CompositionData,
+} from './composition.fragment.js';

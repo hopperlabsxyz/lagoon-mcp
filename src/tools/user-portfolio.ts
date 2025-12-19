@@ -21,8 +21,11 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetUserPortfolioInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
-import { VaultData } from '../graphql/fragments/index.js';
-import { createGetUserPortfolioQuery } from '../graphql/queries/portfolio.queries.js';
+import { VaultData, ProtocolComposition, CompositionData } from '../graphql/fragments/index.js';
+import {
+  createGetUserPortfolioQuery,
+  SINGLE_VAULT_COMPOSITION_QUERY,
+} from '../graphql/queries/portfolio.queries.js';
 import type { PortfolioResponseFormat } from '../graphql/queries/portfolio.queries.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
@@ -73,6 +76,38 @@ interface PortfolioPosition {
 }
 
 /**
+ * Protocol exposure in portfolio
+ */
+interface ProtocolExposure {
+  protocol: string;
+  valueUsd: number;
+  repartition: number;
+  vaultCount: number;
+}
+
+/**
+ * Accidental concentration warning
+ */
+interface AccidentalConcentration {
+  protocol: string;
+  vaultCount: number;
+  totalExposure: number;
+  vaultAddresses: string[];
+}
+
+/**
+ * Portfolio composition summary with diversification metrics
+ */
+interface PortfolioCompositionSummary {
+  protocolExposure: ProtocolExposure[];
+  portfolioHHI: number;
+  diversificationLevel: 'High' | 'Medium' | 'Low';
+  topProtocol: string | null;
+  topProtocolPercent: number | null;
+  accidentalConcentration: AccidentalConcentration[];
+}
+
+/**
  * Aggregated portfolio data
  */
 interface AggregatedPortfolio {
@@ -80,6 +115,7 @@ interface AggregatedPortfolio {
   positions: PortfolioPosition[];
   totalValueUsd: string;
   positionCount: number;
+  compositionSummary?: PortfolioCompositionSummary;
 }
 
 /**
@@ -88,6 +124,101 @@ interface AggregatedPortfolio {
 interface GetUserPortfolioVariables {
   where: {
     user_eq: string;
+  };
+}
+
+/**
+ * Vault composition data with vault address for aggregation
+ */
+interface VaultCompositionEntry {
+  vaultAddress: string;
+  positionValueUsd: number;
+  compositions: ProtocolComposition[];
+}
+
+/**
+ * Response type for single vault composition query
+ */
+interface SingleVaultCompositionResponse {
+  vaultComposition: CompositionData | null;
+}
+
+/**
+ * Aggregate composition data across all portfolio positions
+ *
+ * Calculates portfolio-wide protocol exposure weighted by position size,
+ * portfolio-level HHI, and detects accidental concentration across vaults.
+ *
+ * @param vaultCompositions - Array of vault compositions with position values
+ * @param totalPortfolioValue - Total portfolio value in USD
+ * @returns Portfolio composition summary with diversification metrics
+ */
+function aggregatePortfolioComposition(
+  vaultCompositions: VaultCompositionEntry[],
+  totalPortfolioValue: number
+): PortfolioCompositionSummary {
+  // Track protocol exposure across all vaults
+  const protocolExposureMap = new Map<string, { valueUsd: number; vaultAddresses: string[] }>();
+
+  // Aggregate weighted exposure from each vault
+  for (const entry of vaultCompositions) {
+    for (const comp of entry.compositions) {
+      // Weight the protocol exposure by position size
+      const weightedExposure = (comp.repartition / 100) * entry.positionValueUsd;
+      const existing = protocolExposureMap.get(comp.protocol);
+
+      if (existing) {
+        existing.valueUsd += weightedExposure;
+        if (!existing.vaultAddresses.includes(entry.vaultAddress)) {
+          existing.vaultAddresses.push(entry.vaultAddress);
+        }
+      } else {
+        protocolExposureMap.set(comp.protocol, {
+          valueUsd: weightedExposure,
+          vaultAddresses: [entry.vaultAddress],
+        });
+      }
+    }
+  }
+
+  // Convert to array and calculate repartition percentages
+  const exposures: ProtocolExposure[] = Array.from(protocolExposureMap.entries())
+    .map(([protocol, data]) => ({
+      protocol,
+      valueUsd: data.valueUsd,
+      repartition: totalPortfolioValue > 0 ? (data.valueUsd / totalPortfolioValue) * 100 : 0,
+      vaultCount: data.vaultAddresses.length,
+    }))
+    .sort((a, b) => b.repartition - a.repartition);
+
+  // Calculate portfolio-level HHI
+  const portfolioHHI = exposures.reduce((sum, e) => sum + Math.pow(e.repartition / 100, 2), 0);
+
+  // Determine diversification level
+  const diversificationLevel: 'High' | 'Medium' | 'Low' =
+    portfolioHHI < 0.15 ? 'High' : portfolioHHI < 0.25 ? 'Medium' : 'Low';
+
+  // Detect accidental concentration (same protocol in 3+ vaults with >20% total exposure)
+  const accidentalConcentration: AccidentalConcentration[] = [];
+  for (const [protocol, data] of protocolExposureMap.entries()) {
+    const totalExposure = totalPortfolioValue > 0 ? (data.valueUsd / totalPortfolioValue) * 100 : 0;
+    if (data.vaultAddresses.length >= 3 && totalExposure >= 20) {
+      accidentalConcentration.push({
+        protocol,
+        vaultCount: data.vaultAddresses.length,
+        totalExposure,
+        vaultAddresses: data.vaultAddresses,
+      });
+    }
+  }
+
+  return {
+    protocolExposure: exposures.slice(0, 10), // Top 10 protocols
+    portfolioHHI,
+    diversificationLevel,
+    topProtocol: exposures[0]?.protocol || null,
+    topProtocolPercent: exposures[0]?.repartition || null,
+    accidentalConcentration,
   };
 }
 
@@ -203,11 +334,10 @@ export function createExecuteGetUserPortfolio(
 
     // Post-process response to add flat chainId field for easier Claude extraction
     // Also cache individual vaults for reuse by vault_data tool
+    // And fetch composition data for portfolio-level diversification analysis
     if (!result.isError && result.content[0]?.type === 'text') {
       try {
-        const responseData = JSON.parse(result.content[0].text) as {
-          positions?: PortfolioPosition[];
-        };
+        const responseData = JSON.parse(result.content[0].text) as AggregatedPortfolio;
         if (responseData.positions && Array.isArray(responseData.positions)) {
           // Enrich each vault with flat chainId and cache individually
           const positions = responseData.positions;
@@ -229,6 +359,45 @@ export function createExecuteGetUserPortfolio(
               }
             }
           });
+
+          // Fetch composition data for each vault in parallel
+          // This enables portfolio-wide diversification analysis
+          const compositionPromises = positions.map(async (position) => {
+            try {
+              const compResponse =
+                await container.graphqlClient.request<SingleVaultCompositionResponse>(
+                  SINGLE_VAULT_COMPOSITION_QUERY,
+                  { vaultAddress: position.vaultAddress }
+                );
+
+              if (compResponse.vaultComposition?.compositions) {
+                return {
+                  vaultAddress: position.vaultAddress,
+                  positionValueUsd: parseFloat(position.sharesUsd || '0'),
+                  compositions: compResponse.vaultComposition.compositions,
+                } as VaultCompositionEntry;
+              }
+              return null;
+            } catch {
+              // If composition fetch fails for a vault, skip it
+              return null;
+            }
+          });
+
+          // Wait for all composition fetches (with timeout protection)
+          const compositionResults = await Promise.all(compositionPromises);
+          const validCompositions = compositionResults.filter(
+            (c): c is VaultCompositionEntry => c !== null
+          );
+
+          // If we have composition data, calculate portfolio-level diversification
+          if (validCompositions.length > 0) {
+            const totalPortfolioValue = parseFloat(responseData.totalValueUsd || '0');
+            responseData.compositionSummary = aggregatePortfolioComposition(
+              validCompositions,
+              totalPortfolioValue
+            );
+          }
 
           // Update the result content with enriched data
           result.content[0].text = JSON.stringify(responseData);

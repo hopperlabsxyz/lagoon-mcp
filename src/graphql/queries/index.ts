@@ -51,3 +51,6 @@ export {
   createSearchVaultsQuery,
   type SearchVaultsResponseFormat,
 } from './search.queries.js';
+
+// Composition Queries
+export { GET_VAULT_COMPOSITION_QUERY } from './composition.queries.js';

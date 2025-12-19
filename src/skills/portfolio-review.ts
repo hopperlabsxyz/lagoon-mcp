@@ -83,6 +83,38 @@ Diversification Score: [X]/10
 (Based on asset types, chains, curators, strategies)
 \`\`\`
 
+### Portfolio Composition Analysis
+
+The \`get_user_portfolio\` tool returns a \`compositionSummary\` field with portfolio-wide protocol exposure:
+
+\`\`\`
+PORTFOLIO COMPOSITION
+=====================
+
+Portfolio-Level Diversification:
+- Portfolio HHI: [X] ([High/Medium/Low] diversification)
+- Protocol Count: [X] unique protocols across all vaults
+
+Top Protocol Exposures:
+| Protocol | Exposure | Value | Vault Count |
+|----------|----------|-------|-------------|
+| [Name] | [X]% | $[X] | [N] vaults |
+| [Name] | [X]% | $[X] | [N] vaults |
+
+ACCIDENTAL CONCENTRATION WARNINGS
+---------------------------------
+⚠️ [Protocol] appears in [N] vaults with [X]% total exposure
+   - Consider: Single protocol failure affects [X]% of portfolio
+   - Vaults affected: [list]
+
+COMPOSITION HEALTH ASSESSMENT
+-----------------------------
+[x] Portfolio HHI >0.25 (high concentration)
+[ ] Single protocol >40% exposure
+[x] Same protocol in 3+ vaults
+[ ] Top 3 protocols >70% exposure
+\`\`\`
+
 ## Step 3: Performance Analysis
 
 ### Historical Performance
@@ -277,6 +309,14 @@ const REVIEW_FRAMEWORK = `# Portfolio Review Framework
   - [ ] Chains (Ethereum, Arbitrum, etc.)
   - [ ] Curators (strategy managers)
   - [ ] Strategy types (lending, LP, derivatives)
+  - [ ] **Protocols (Aave, Compound, Uniswap, etc.)**
+
+### Phase 2.5: Composition Analysis
+- [ ] Review portfolio-wide protocol exposure from compositionSummary
+- [ ] Calculate portfolio HHI for diversification level
+- [ ] Check for accidental concentration (same protocol in 3+ vaults)
+- [ ] Identify top protocol exposure (>40% is concerning)
+- [ ] Map hidden correlations (e.g., multiple vaults using Aave)
 
 ### Phase 3: Performance Review
 - [ ] Calculate absolute returns (USD)
@@ -304,6 +344,9 @@ const REVIEW_FRAMEWORK = `# Portfolio Review Framework
 | Diversification Score | # unique assets/chains/curators | High |
 | APR Achievement | Realized APR / Expected APR | >90% |
 | Risk Stability | Risk score change (30d) | <15 points |
+| **Portfolio HHI** | Sum of squared protocol weights | <0.25 |
+| **Top Protocol Exposure** | Largest protocol % | <40% |
+| **Protocol Spread** | # unique protocols in portfolio | ≥5 |
 
 ## Review Frequency Guide
 
@@ -329,7 +372,19 @@ const REVIEW_FRAMEWORK = `# Portfolio Review Framework
    - Assess liquidity risk
 
 5. **Curator issues**
-   - Research and consider exit`;
+   - Research and consider exit
+
+6. **Portfolio HHI >0.35 (Low diversification)**
+   - Protocol concentration creates correlated risk
+   - Consider vaults with different underlying protocols
+
+7. **Single protocol >50% of portfolio**
+   - Hidden concentration across multiple vaults
+   - Protocol failure could impact majority of holdings
+
+8. **Same protocol in 4+ vaults**
+   - Accidental concentration detected
+   - Review if diversification is illusory`;
 
 /**
  * Rebalancing criteria resource
@@ -362,6 +417,21 @@ const REBALANCING_CRITERIA = `# Rebalancing Criteria Guide
 | Underperforming | 70-90% | >30 days | Review |
 | Significant | <70% | >30 days | Consider exit |
 | Critical | <50% | >14 days | Urgent review |
+
+### Protocol Composition Thresholds
+| Level | Portfolio HHI | Top Protocol % | Action |
+|-------|---------------|----------------|--------|
+| Well Diversified | <0.15 | <30% | No action |
+| Moderate | 0.15-0.25 | 30-40% | Monitor |
+| Concentrated | 0.25-0.35 | 40-50% | Plan rebalancing |
+| Critical | >0.35 | >50% | Immediate review |
+
+### Accidental Concentration Thresholds
+| Indicator | Threshold | Action |
+|-----------|-----------|--------|
+| Same protocol in vaults | 3+ vaults | Flag for review |
+| Same protocol exposure | >40% total | Rebalance consideration |
+| Hidden correlation | Same 2+ protocols in 3+ vaults | Correlation warning |
 
 ## Rebalancing Strategies
 
@@ -446,6 +516,11 @@ export const lagoonPortfolioReviewSkill: LagoonSkill = {
     'how are my investments doing',
     'portfolio assessment',
     'quarterly review',
+    'portfolio diversification',
+    'am i diversified',
+    'protocol exposure',
+    'concentration risk',
+    'portfolio composition',
   ],
   audience: 'customer-existing',
   instructions: INSTRUCTIONS,
@@ -454,7 +529,7 @@ export const lagoonPortfolioReviewSkill: LagoonSkill = {
     rebalancing: REBALANCING_CRITERIA,
   },
   metadata: {
-    version: '1.0.0',
+    version: '1.1.0',
     category: 'portfolio',
     primaryTools: [
       'get_user_portfolio',
@@ -462,9 +537,10 @@ export const lagoonPortfolioReviewSkill: LagoonSkill = {
       'get_vault_performance',
       'predict_yield',
       'optimize_portfolio',
+      'get_vault_composition',
     ],
-    estimatedTokens: 3200,
-    lastUpdated: '2024-12-15',
+    estimatedTokens: 3500,
+    lastUpdated: '2025-01-15',
   },
 };
 

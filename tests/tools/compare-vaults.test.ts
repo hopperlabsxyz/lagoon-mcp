@@ -337,7 +337,15 @@ describe('compare_vaults Tool', () => {
         createMockVault({ address: '0x2222222222222222222222222222222222222222', name: 'Vault 2' }),
       ];
 
-      graphqlClient.request.mockResolvedValueOnce({ vaults: { items: mockVaults } });
+      // Mock vault comparison query and composition queries for each vault
+      // First call: 1 vault query + 2 composition queries
+      // Second call (cache hit on vault comparison): 2 composition queries (not cached separately)
+      graphqlClient.request
+        .mockResolvedValueOnce({ vaults: { items: mockVaults } }) // First call: vault comparison query
+        .mockResolvedValueOnce({ vaultComposition: null }) // First call: composition for vault 1
+        .mockResolvedValueOnce({ vaultComposition: null }) // First call: composition for vault 2
+        .mockResolvedValueOnce({ vaultComposition: null }) // Second call: composition for vault 1 (vault data cached, but composition not)
+        .mockResolvedValueOnce({ vaultComposition: null }); // Second call: composition for vault 2
 
       // First call - cache miss
       await executeCompareVaults({
@@ -348,9 +356,10 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
-      expect(graphqlClient.request).toHaveBeenCalledTimes(1);
+      // Should make 1 vault query + 2 composition queries = 3 calls
+      expect(graphqlClient.request).toHaveBeenCalledTimes(3);
 
-      // Second call - cache hit
+      // Second call - vault comparison cached, but composition queries still made
       await executeCompareVaults({
         vaultAddresses: [
           '0x1111111111111111111111111111111111111111',
@@ -359,8 +368,9 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
-      // Should not make another GraphQL request
-      expect(graphqlClient.request).toHaveBeenCalledTimes(1);
+      // Vault comparison cached (no additional vault query), but composition queries still made
+      // Total: 3 (first call) + 2 (second call composition) = 5 calls
+      expect(graphqlClient.request).toHaveBeenCalledTimes(5);
     });
 
     it('should use same cache key regardless of address order', async () => {
@@ -369,7 +379,15 @@ describe('compare_vaults Tool', () => {
         createMockVault({ address: '0x2222222222222222222222222222222222222222', name: 'Vault 2' }),
       ];
 
-      graphqlClient.request.mockResolvedValue({ vaults: { items: mockVaults } });
+      // Mock vault comparison query and composition queries for each vault
+      // First call: 1 vault query + 2 composition queries
+      // Second call (cache hit on vault comparison): 2 composition queries (composition not cached with comparison)
+      graphqlClient.request
+        .mockResolvedValueOnce({ vaults: { items: mockVaults } }) // First call: vault comparison query
+        .mockResolvedValueOnce({ vaultComposition: null }) // First call: composition for vault 1
+        .mockResolvedValueOnce({ vaultComposition: null }) // First call: composition for vault 2
+        .mockResolvedValueOnce({ vaultComposition: null }) // Second call: composition for vault 1
+        .mockResolvedValueOnce({ vaultComposition: null }); // Second call: composition for vault 2
 
       // First call with one order
       await executeCompareVaults({
@@ -380,7 +398,7 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
-      // Second call with reversed order - should hit cache
+      // Second call with reversed order - should hit cache for vault comparison
       await executeCompareVaults({
         vaultAddresses: [
           '0x2222222222222222222222222222222222222222',
@@ -389,8 +407,9 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
-      // Should only make one GraphQL request
-      expect(graphqlClient.request).toHaveBeenCalledTimes(1);
+      // Vault comparison cached (no additional vault query), but composition queries still made each call
+      // Total: 3 (first call) + 2 (second call composition) = 5 calls
+      expect(graphqlClient.request).toHaveBeenCalledTimes(5);
     });
 
     it('should use different cache keys for different chain IDs', async () => {
@@ -399,7 +418,15 @@ describe('compare_vaults Tool', () => {
         createMockVault({ address: '0x2222222222222222222222222222222222222222' }),
       ];
 
-      graphqlClient.request.mockResolvedValue({ vaults: { items: mockVaults } });
+      // Mock for first chain (1 vault query + 2 composition queries)
+      graphqlClient.request
+        .mockResolvedValueOnce({ vaults: { items: mockVaults } }) // Chain 1 vault query
+        .mockResolvedValueOnce({ vaultComposition: null }) // Chain 1 composition 1
+        .mockResolvedValueOnce({ vaultComposition: null }) // Chain 1 composition 2
+        // Mock for second chain (1 vault query + 2 composition queries)
+        .mockResolvedValueOnce({ vaults: { items: mockVaults } }) // Chain 137 vault query
+        .mockResolvedValueOnce({ vaultComposition: null }) // Chain 137 composition 1
+        .mockResolvedValueOnce({ vaultComposition: null }); // Chain 137 composition 2
 
       // Chain ID 1
       await executeCompareVaults({
@@ -419,8 +446,8 @@ describe('compare_vaults Tool', () => {
         chainId: 137,
       });
 
-      // Should make two GraphQL requests
-      expect(graphqlClient.request).toHaveBeenCalledTimes(2);
+      // Should make 2 vault queries + 4 composition queries = 6 calls total
+      expect(graphqlClient.request).toHaveBeenCalledTimes(6);
     });
   });
 

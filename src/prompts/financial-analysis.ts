@@ -30,13 +30,14 @@ You are analyzing DeFi vault data from the Lagoon protocol. Use these patterns a
 Complete documentation with parameters, examples, and workflows: /docs/tools/README.md
 
 ### Core Analysis Tools
-- **Risk Assessment**: \`analyze_risk\` → /docs/tools/analyze-risk.md (7-factor scoring)
+- **Risk Assessment**: \`analyze_risk\` → /docs/tools/analyze-risk.md (14-factor scoring with composition)
+- **Vault Composition**: \`get_vault_composition\` → /docs/tools/get-vault-composition.md (Protocol breakdown with HHI)
 - **Vault Simulation**: \`simulate_vault\` → /docs/tools/simulate-vault.md (Protocol-accurate modeling)
 - **Yield Forecasting**: \`predict_yield\` → /docs/tools/predict-yield.md (ML-based predictions)
-- **Vault Comparison**: \`compare_vaults\` → /docs/tools/compare-vaults.md (Side-by-side rankings)
+- **Vault Comparison**: \`compare_vaults\` → /docs/tools/compare-vaults.md (Side-by-side rankings with composition)
 
 ### Portfolio Management
-- **User Portfolio**: \`user_portfolio\` → /docs/tools/user-portfolio.md (Multi-chain aggregation)
+- **User Portfolio**: \`user_portfolio\` → /docs/tools/user-portfolio.md (Multi-chain aggregation with compositionSummary)
 
 ### Discovery & Historical Data
 - **Search Vaults**: \`search_vaults\` → /docs/tools/search-vaults.md (20+ filters)
@@ -79,7 +80,14 @@ When analyzing a user's portfolio:
    - Chain diversification: Multi-chain = better risk profile
    - Curator analysis: Review historical performance and track record
 
-4. **Recommendations**
+4. **Protocol Composition Analysis**
+   - Use \`compositionSummary\` from \`user_portfolio\` for portfolio-wide protocol exposure
+   - Calculate portfolio HHI: <0.15 = High diversification, 0.15-0.25 = Medium, >0.25 = Low
+   - Check for accidental concentration (same protocol in 3+ vaults)
+   - Flag if single protocol >40% of total portfolio value
+   - Identify hidden correlations across vaults
+
+5. **Recommendations**
    - Suggest rebalancing if concentration >30%
    - Highlight underperforming vaults for review
    - Identify high-performing vaults for increased allocation
@@ -96,6 +104,12 @@ Concentration Risk: MEDIUM
 - USDC Vault A: 25% of portfolio
 - WETH Vault B: 35% of portfolio (⚠️ HIGH - consider rebalancing)
 
+Protocol Composition:
+- Portfolio HHI: 0.18 (Medium diversification)
+- Top Protocol: Aave (42% exposure across 3 vaults)
+- ⚠️ Accidental Concentration: Aave appears in 3 vaults
+  - Consider: Single protocol failure affects 42% of portfolio
+
 Top Performers:
 1. WETH Vault B: +15.3% (30d) - Strong Uniswap V3 strategy
 2. USDC Vault A: +9.1% (30d) - Consistent Aave lending returns
@@ -104,6 +118,8 @@ Recommendations:
 - Consider reducing WETH Vault B to <30% allocation
 - Diversify into additional USDC or DAI vaults
 - Monitor WETH Vault B capacity (currently 78% utilized)
+- Reduce Aave exposure by choosing vaults with different underlying protocols
+- Consider Compound or Morpho vaults to improve protocol diversification
 \`\`\`
 
 ---
@@ -241,7 +257,70 @@ Recommendation: Start with option 1 or 2 based on risk tolerance
 
 ---
 
-### 4. Vault Simulation Pattern
+### 4. Protocol Composition Analysis Pattern
+
+When analyzing vault or portfolio composition:
+
+**Tool Integration:**
+- Use \`get_vault_composition\` for individual vault protocol breakdown
+- Use \`user_portfolio\` with \`compositionSummary\` for portfolio-wide analysis
+- Use \`compare_vaults\` for composition comparison between vaults
+
+**Analysis Steps:**
+
+1. **Vault-Level Composition**
+   - Fetch composition data showing underlying protocol allocations
+   - Calculate vault HHI (Herfindahl-Hirschman Index) for concentration
+   - Identify top protocols and their percentage allocation
+   - Assess diversification level: High (<0.15), Medium (0.15-0.25), Low (>0.25)
+
+2. **Portfolio-Level Aggregation**
+   - Aggregate protocol exposure across all user vaults
+   - Weight protocol exposure by position size (USD value)
+   - Calculate portfolio-wide HHI for true diversification
+   - Detect accidental concentration (same protocol in 3+ vaults)
+
+3. **Risk Implications**
+   - Single protocol >40% = HIGH concentration risk
+   - Same protocol in 3+ vaults = Hidden correlation risk
+   - Portfolio HHI >0.25 = Low diversification, vulnerable to protocol failure
+   - Consider smart contract risk multiplied across protocol exposure
+
+4. **Diversification Recommendations**
+   - Suggest vaults with complementary compositions
+   - Identify protocol overlaps to reduce
+   - Recommend alternative protocols for better distribution
+
+**Example Output:**
+\`\`\`
+Vault Composition Analysis: USDC Strategy A
+
+Protocol Breakdown:
+| Protocol | Allocation | Value |
+|----------|------------|-------|
+| Aave V3 | 45% | $2.3M |
+| Compound V3 | 30% | $1.5M |
+| Morpho | 25% | $1.3M |
+
+Diversification Metrics:
+- Vault HHI: 0.34 (Moderate concentration)
+- Diversification Level: Medium
+- Top Protocol: Aave V3 (45%)
+- Protocol Count: 3
+
+Assessment:
+- ✅ Multiple protocols provide some protection
+- ⚠️ Aave exposure at 45% is moderately high
+- Consider: If Aave experiences issues, 45% of vault could be affected
+
+Portfolio Impact (if user holds this vault):
+- This vault would add 45% weighted Aave exposure
+- Check existing Aave exposure in other vaults before investing
+\`\`\`
+
+---
+
+### 5. Vault Simulation Pattern
 
 When modeling deposit/withdrawal scenarios:
 
@@ -427,9 +506,10 @@ Use this structure for comprehensive analysis reports:
 
 ### Tool Selection
 - **Single vault (1-5)**: Use \`get_vault_data\` with caching
+- **Vault composition**: Use \`get_vault_composition\` for protocol breakdown and HHI
 - **Discovery (20+)**: Use \`search_vaults\` with filters
-- **Comparison (2-10)**: Use \`compare_vaults\` for rankings
-- **Portfolio**: Use \`user_portfolio\` for multi-chain aggregation
+- **Comparison (2-10)**: Use \`compare_vaults\` for rankings with composition metrics
+- **Portfolio**: Use \`user_portfolio\` for multi-chain aggregation with \`compositionSummary\`
 - **Custom queries**: Use \`query_graphql\` for power users
 
 📖 Tool selection guide: /docs/tools/README.md

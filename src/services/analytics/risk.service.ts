@@ -27,6 +27,10 @@ export interface RiskAnalysisData {
       };
     }>;
   };
+  composition: {
+    compositions: Array<{ protocol: string; repartition: number; valueInUsd: number }>;
+    tokenCompositions: Array<{ symbol: string; repartition: number; valueInUsd: number }>;
+  } | null;
 }
 
 /**
@@ -166,6 +170,17 @@ export class RiskService extends BaseService {
       maxCapacity,
     };
 
+    // Extract composition data for protocol diversification risk
+    const compositions = data.composition?.compositions;
+    const topProtocol = compositions?.[0];
+    const topProtocolPercent = topProtocol?.repartition ?? null;
+    const compositionData = compositions
+      ? {
+          compositions: compositions.map((c) => ({ repartition: c.repartition })),
+          topProtocolPercent,
+        }
+      : undefined;
+
     // Perform risk analysis using utility function
     return analyzeRisk({
       tvl: vaultTVL,
@@ -185,6 +200,7 @@ export class RiskService extends BaseService {
       settlementData,
       integrationCount,
       capacityData,
+      compositionData,
     });
   }
 
@@ -361,6 +377,8 @@ export class RiskService extends BaseService {
         { name: 'Settlement', score: breakdown.settlementRisk },
         { name: 'Integration Complexity', score: breakdown.integrationComplexityRisk },
         { name: 'Capacity Utilization', score: breakdown.capacityUtilizationRisk },
+        { name: 'Protocol Diversification', score: breakdown.protocolDiversificationRisk },
+        { name: 'Top Protocol Concentration', score: breakdown.topProtocolConcentrationRisk },
       ];
 
       const topRisks = riskFactors.sort((a, b) => b.score - a.score).slice(0, 3);
@@ -405,6 +423,8 @@ ${comparativeSection}
 | Fees | ${scoreToPercentage(breakdown.feeRisk)} | ${scoreToEmoji(breakdown.feeRisk)} |
 | Integration Complexity | ${scoreToPercentage(breakdown.integrationComplexityRisk)} | ${scoreToEmoji(breakdown.integrationComplexityRisk)} |
 | Capacity Utilization | ${scoreToPercentage(breakdown.capacityUtilizationRisk)} | ${scoreToEmoji(breakdown.capacityUtilizationRisk)} |
+| Protocol Diversification | ${scoreToPercentage(breakdown.protocolDiversificationRisk)} | ${scoreToEmoji(breakdown.protocolDiversificationRisk)} |
+| Top Protocol Concentration | ${scoreToPercentage(breakdown.topProtocolConcentrationRisk)} | ${scoreToEmoji(breakdown.topProtocolConcentrationRisk)} |
 `;
     }
 
@@ -453,6 +473,12 @@ ${comparativeDetailedSection}## Risk Analysis Breakdown
 | **Concentration** | ${scoreToPercentage(breakdown.concentrationRisk)} | ${scoreToEmoji(breakdown.concentrationRisk)} |
 | **Liquidity** | ${scoreToPercentage(breakdown.liquidityRisk)} | ${scoreToEmoji(breakdown.liquidityRisk)} |
 
+### Composition Risk
+| Risk Factor | Score | Level |
+|-------------|-------|-------|
+| **Protocol Diversification** | ${scoreToPercentage(breakdown.protocolDiversificationRisk)} | ${scoreToEmoji(breakdown.protocolDiversificationRisk)} |
+| **Top Protocol Concentration** | ${scoreToPercentage(breakdown.topProtocolConcentrationRisk)} | ${scoreToEmoji(breakdown.topProtocolConcentrationRisk)} |
+
 ### Operational Risk
 | Risk Factor | Score | Level |
 |-------------|-------|-------|
@@ -491,6 +517,11 @@ ${comparativeDetailedSection}## Risk Analysis Breakdown
 **Concentration**: Vault's share of total protocol TVL. High concentration means protocol-wide risk if vault fails.
 
 **Liquidity**: Ability to meet redemption requests. Based on safe asset coverage of pending redemptions.
+
+#### Composition
+**Protocol Diversification**: Measures how well the vault's funds are distributed across DeFi protocols using HHI (Herfindahl-Hirschman Index). Lower concentration = better diversification.
+
+**Top Protocol Concentration**: Evaluates risk from having too much exposure to a single protocol. A top protocol exceeding 50% of allocation signals elevated concentration risk.
 
 #### Operational
 **Settlement Time**: Average time to process redemptions plus pending operations burden. Longer delays increase exit risk.
