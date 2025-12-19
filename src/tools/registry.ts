@@ -20,7 +20,7 @@ import { createExecuteGetTransactions } from './get-transactions.js';
 import { createExecuteCompareVaults } from './compare-vaults.js';
 import { createExecuteGetPriceHistory } from './get-price-history.js';
 import { createExecuteExportData } from './export-data.js';
-import { createExecuteAnalyzeRisk } from './analyze-risk.js';
+import { createExecuteAnalyzeRisk, createExecuteAnalyzeRisks } from './analyze-risk.js';
 import { createExecutePredictYield } from './predict-yield.js';
 import { createExecuteOptimizePortfolio } from './optimize-portfolio.js';
 import { createExecuteSimulateVault, simulateVaultInputSchema } from './simulate-vault.js';
@@ -41,6 +41,7 @@ import {
   priceHistoryInputSchema,
   exportDataInputSchema,
   analyzeRiskInputSchema,
+  analyzeRisksInputSchema,
   predictYieldInputSchema,
   optimizePortfolioInputSchema,
   getVaultCompositionInputSchema,
@@ -213,6 +214,21 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
     executorFactory: createExecuteAnalyzeRisk,
   },
   {
+    name: 'analyze_risks',
+    description:
+      'Batch risk analysis for 2-10 vaults in a single operation. ' +
+      'Significantly more efficient than multiple analyze_risk calls when analyzing multiple vaults. ' +
+      'Supports both same-chain (single chainId) and cross-chain analysis (chainIds array with positional mapping). ' +
+      'Cross-chain usage: provide chainIds array with one chain per vault address. ' +
+      'Example: vaultAddresses=[A,B,C] with chainIds=[1,8453,42161] analyzes vault A on Ethereum, B on Base, C on Arbitrum. ' +
+      'Returns comparative risk scores, summary statistics (lowest/highest/average risk), and top risk factors for each vault. ' +
+      'Best for: portfolio risk assessment, comparing investment opportunities, batch due diligence. ' +
+      'Performance: ~300-500 tokens total (vs ~400-600 per vault with individual calls). ' +
+      'Features 15-minute caching for risk stability.',
+    schema: analyzeRisksInputSchema,
+    executorFactory: createExecuteAnalyzeRisks,
+  },
+  {
     name: 'predict_yield',
     description:
       'Predict vault yield with ML-based forecasting using trend analysis and historical performance. ' +
@@ -287,12 +303,13 @@ function extractSchemaShape(schema: ZodSchema, toolName: string): ZodRawShape {
     return schema.shape as ZodRawShape;
   }
 
-  // ZodEffects wrapper (from .refine(), .transform(), etc.) - unwrap inner schema
+  // ZodEffects wrapper (from .refine(), .transform(), etc.) - unwrap inner schema recursively
   if (schema instanceof ZodEffects) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const innerSchema: unknown = schema._def.schema;
-    if (innerSchema instanceof ZodObject) {
-      return innerSchema.shape as ZodRawShape;
+    // Recursively unwrap nested ZodEffects (from chained .refine() calls)
+    if (innerSchema instanceof ZodEffects || innerSchema instanceof ZodObject) {
+      return extractSchemaShape(innerSchema as ZodSchema, toolName);
     }
   }
 

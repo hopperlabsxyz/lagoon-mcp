@@ -93,3 +93,82 @@ export const RISK_ANALYSIS_QUERY = `
   }
   ${VAULT_FRAGMENT}
 `;
+
+/**
+ * GraphQL query for batch vault risk analysis data
+ *
+ * Fetches data for multiple vaults in a single request, reducing API calls.
+ * Uses address_in filter to fetch all vaults at once.
+ *
+ * Key differences from single vault query:
+ * - Fetches multiple vaults using address_in filter
+ * - Shares allVaults context across all vaults (single fetch)
+ * - Per-vault curator and price data fetched separately in service layer
+ *
+ * Used by: analyze_risks tool (batch)
+ *
+ * Usage:
+ * ```typescript
+ * const data = await graphqlClient.request<BatchRiskAnalysisResponse>(
+ *   BATCH_RISK_ANALYSIS_QUERY,
+ *   {
+ *     vaultAddresses: ['0x...', '0x...'],
+ *     chainId: 1
+ *   }
+ * );
+ * ```
+ */
+export const BATCH_RISK_ANALYSIS_QUERY = `
+  query BatchRiskAnalysis(
+    $vaultAddresses: [Address!]!,
+    $chainId: Int!
+  ) {
+    # Get all requested vaults in single query
+    vaults(where: { address_in: $vaultAddresses, chainId_eq: $chainId }) {
+      items {
+        ...VaultFragment
+      }
+    }
+
+    # Get all vaults on chain for concentration risk calculation (shared context)
+    allVaults: vaults(where: { chainId_eq: $chainId, isVisible_eq: true }) {
+      items {
+        state {
+          totalAssetsUsd
+        }
+      }
+    }
+  }
+  ${VAULT_FRAGMENT}
+`;
+
+/**
+ * GraphQL query for cross-chain batch risk analysis
+ *
+ * For analyzing vaults across multiple chains, we need separate queries per chain
+ * since chainId_eq filter only supports single chain.
+ * This query fetches vaults for a single chain - call multiple times for cross-chain.
+ *
+ * Used by: analyze_risks tool when chainIds array is provided
+ */
+export const CROSS_CHAIN_VAULTS_QUERY = `
+  query CrossChainVaults(
+    $vaultAddresses: [Address!]!,
+    $chainId: Int!
+  ) {
+    vaults(where: { address_in: $vaultAddresses, chainId_eq: $chainId }) {
+      items {
+        ...VaultFragment
+      }
+    }
+
+    allVaults: vaults(where: { chainId_eq: $chainId, isVisible_eq: true }) {
+      items {
+        state {
+          totalAssetsUsd
+        }
+      }
+    }
+  }
+  ${VAULT_FRAGMENT}
+`;

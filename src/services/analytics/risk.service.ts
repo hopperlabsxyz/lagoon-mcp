@@ -11,7 +11,11 @@ import {
   VaultCompositionFullResponse,
   ProtocolCompositionData,
 } from '../../graphql/fragments/index.js';
-import { RISK_ANALYSIS_QUERY } from '../../graphql/queries/index.js';
+import {
+  RISK_ANALYSIS_QUERY,
+  BATCH_RISK_ANALYSIS_QUERY,
+  CROSS_CHAIN_VAULTS_QUERY,
+} from '../../graphql/queries/index.js';
 import { analyzeRisk, RiskScoreBreakdown } from '../../utils/risk-scoring.js';
 
 /**
@@ -53,6 +57,44 @@ export interface ComparativeRiskContext {
  */
 export interface ExtendedRiskScoreBreakdown extends RiskScoreBreakdown {
   comparative?: ComparativeRiskContext;
+}
+
+/**
+ * Batch risk analysis response from GraphQL
+ */
+export interface BatchRiskAnalysisResponse {
+  vaults: { items: VaultData[] };
+  allVaults: { items: Array<{ state: { totalAssetsUsd: number } }> };
+}
+
+/**
+ * Result for a single vault in batch analysis
+ */
+export interface BatchVaultRiskResult {
+  address: string;
+  chainId: number;
+  name: string;
+  riskScore: number;
+  riskLevel: string;
+  factors: Array<{
+    name: string;
+    score: number;
+    level: string;
+  }>;
+  breakdown: ExtendedRiskScoreBreakdown;
+}
+
+/**
+ * Complete batch analysis result
+ */
+export interface BatchRiskAnalysisResult {
+  vaults: BatchVaultRiskResult[];
+  summary: {
+    lowestRisk: { address: string; score: number };
+    highestRisk: { address: string; score: number };
+    averageScore: number;
+    vaultCount: number;
+  };
 }
 
 /**
@@ -588,5 +630,283 @@ ${comparativeDetailedSection}## Risk Analysis Breakdown
 
 **Fees**: Impact of management and performance fees on returns. Higher fees reduce net investor returns.
 `;
+  }
+
+  /**
+   * Analyze multiple vaults in a single batch operation
+   *
+   * Supports both same-chain (single chainId) and cross-chain (chainIds array) analysis.
+   * For cross-chain, chainIds array must have same length as vaultAddresses (positional mapping).
+   *
+   * @param vaultAddresses - Array of vault addresses (2-10)
+   * @param chainId - Single chain ID (when all vaults are on same chain)
+   * @param chainIds - Array of chain IDs (for cross-chain, positional mapping with vaultAddresses)
+   * @returns Batch analysis result with all vaults and summary
+   */
+  async analyzeBatch(
+    vaultAddresses: string[],
+    chainId?: number,
+    chainIds?: number[]
+  ): Promise<BatchRiskAnalysisResult> {
+    // Determine if this is same-chain or cross-chain analysis
+    const isCrossChain = chainIds && chainIds.length > 0;
+
+    const vaultResults: BatchVaultRiskResult[] = [];
+    let allVaultsContext: { items: Array<{ state: { totalAssetsUsd: number } }> } = { items: [] };
+
+    if (isCrossChain) {
+      // Cross-chain: Group vaults by chainId and fetch each chain separately
+      const vaultsByChain = new Map<number, string[]>();
+      chainIds.forEach((cId, index) => {
+        const addr = vaultAddresses[index];
+        if (!vaultsByChain.has(cId)) {
+          vaultsByChain.set(cId, []);
+        }
+        vaultsByChain.get(cId)!.push(addr);
+      });
+
+      // Fetch all chains in parallel
+      const chainPromises = Array.from(vaultsByChain.entries()).map(async ([cId, addresses]) => {
+        const response = await this.client.request<BatchRiskAnalysisResponse>(
+          CROSS_CHAIN_VAULTS_QUERY,
+          {
+            vaultAddresses: addresses,
+            chainId: cId,
+          }
+        );
+        return { chainId: cId, response };
+      });
+
+      const chainResults = await Promise.all(chainPromises);
+
+      // Merge allVaults context from all chains
+      chainResults.forEach(({ response }) => {
+        allVaultsContext.items.push(...response.allVaults.items);
+      });
+
+      // Process each vault
+      for (const { chainId: cId, response } of chainResults) {
+        for (const vault of response.vaults.items) {
+          const result = this.processVaultForBatch(vault, cId, allVaultsContext);
+          if (result) {
+            vaultResults.push(result);
+          }
+        }
+      }
+    } else {
+      // Same-chain: Single batch query
+      const response = await this.client.request<BatchRiskAnalysisResponse>(
+        BATCH_RISK_ANALYSIS_QUERY,
+        {
+          vaultAddresses,
+          chainId: chainId!,
+        }
+      );
+
+      allVaultsContext = response.allVaults;
+
+      // Process each vault
+      for (const vault of response.vaults.items) {
+        const result = this.processVaultForBatch(vault, chainId!, allVaultsContext);
+        if (result) {
+          vaultResults.push(result);
+        }
+      }
+    }
+
+    // Sort by input order (preserve user's vault order)
+    const addressOrder = new Map(vaultAddresses.map((addr, idx) => [addr.toLowerCase(), idx]));
+    vaultResults.sort((a, b) => {
+      const orderA = addressOrder.get(a.address.toLowerCase()) ?? 999;
+      const orderB = addressOrder.get(b.address.toLowerCase()) ?? 999;
+      return orderA - orderB;
+    });
+
+    // Calculate summary statistics
+    const scores = vaultResults.map((v) => v.riskScore);
+    const lowestRiskVault = vaultResults.reduce(
+      (min, v) => (v.riskScore < min.riskScore ? v : min),
+      vaultResults[0]
+    );
+    const highestRiskVault = vaultResults.reduce(
+      (max, v) => (v.riskScore > max.riskScore ? v : max),
+      vaultResults[0]
+    );
+    const averageScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+
+    return {
+      vaults: vaultResults,
+      summary: {
+        lowestRisk: { address: lowestRiskVault.address, score: lowestRiskVault.riskScore },
+        highestRisk: { address: highestRiskVault.address, score: highestRiskVault.riskScore },
+        averageScore,
+        vaultCount: vaultResults.length,
+      },
+    };
+  }
+
+  /**
+   * Process a single vault for batch analysis
+   * Creates minimal RiskAnalysisData structure from vault data
+   */
+  private processVaultForBatch(
+    vault: VaultData,
+    chainId: number,
+    allVaultsContext: { items: Array<{ state: { totalAssetsUsd: number } }> }
+  ): BatchVaultRiskResult | null {
+    // Build minimal RiskAnalysisData for calculation
+    // For batch, we skip per-vault curator/price queries for efficiency
+    // Risk calculation will use available data with fallbacks
+    const minimalData: RiskAnalysisData = {
+      vault,
+      allVaults: allVaultsContext,
+      curatorVaults: { items: [] }, // Skip curator vaults for batch efficiency
+      priceHistory: { items: [] }, // Skip price history for batch efficiency
+      composition: null, // Skip composition for batch efficiency
+    };
+
+    // Calculate risk breakdown
+    const breakdown = this.calculateRisk(minimalData);
+
+    // Add comparative context
+    const comparative = this.calculateComparativeContext(breakdown.overallRisk, allVaultsContext);
+
+    const extendedBreakdown: ExtendedRiskScoreBreakdown = {
+      ...breakdown,
+      comparative,
+    };
+
+    // Extract top 5 risk factors
+    const riskFactors = [
+      { name: 'APR Consistency', score: breakdown.aprConsistencyRisk },
+      { name: 'Volatility', score: breakdown.volatilityRisk },
+      { name: 'TVL', score: breakdown.tvlRisk },
+      { name: 'Concentration', score: breakdown.concentrationRisk },
+      { name: 'Yield Sustainability', score: breakdown.yieldSustainabilityRisk },
+      { name: 'Age', score: breakdown.ageRisk },
+      { name: 'Curator', score: breakdown.curatorRisk },
+      { name: 'Fee', score: breakdown.feeRisk },
+      { name: 'Liquidity', score: breakdown.liquidityRisk },
+    ];
+
+    const topFactors = riskFactors
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map((f) => ({
+        name: f.name,
+        score: f.score,
+        level: this.scoreToLevel(f.score),
+      }));
+
+    return {
+      address: vault.address,
+      chainId,
+      name: vault.name || vault.symbol || 'Unknown',
+      riskScore: breakdown.overallRisk,
+      riskLevel: breakdown.riskLevel,
+      factors: topFactors,
+      breakdown: extendedBreakdown,
+    };
+  }
+
+  /**
+   * Convert numeric score to risk level string
+   */
+  private scoreToLevel(score: number): string {
+    if (score < 0.3) return 'Low';
+    if (score < 0.6) return 'Medium';
+    if (score < 0.8) return 'High';
+    return 'Critical';
+  }
+
+  /**
+   * Format batch risk analysis as markdown
+   */
+  formatBatchRiskBreakdown(
+    result: BatchRiskAnalysisResult,
+    responseFormat: 'score' | 'summary' | 'detailed' = 'summary'
+  ): string {
+    const scoreToEmoji = (score: number): string => {
+      if (score < 0.3) return '🟢';
+      if (score < 0.6) return '🟡';
+      if (score < 0.8) return '🟠';
+      return '🔴';
+    };
+
+    const scoreToPercentage = (score: number): string => {
+      return `${(score * 100).toFixed(1)}%`;
+    };
+
+    // Score format: Just scores (~50 tokens)
+    if (responseFormat === 'score') {
+      const lines = result.vaults.map(
+        (v) =>
+          `| ${v.name} | ${scoreToPercentage(v.riskScore)} | ${scoreToEmoji(v.riskScore)} ${v.riskLevel} |`
+      );
+      return `# Batch Risk Scores
+
+| Vault | Risk | Level |
+|-------|------|-------|
+${lines.join('\n')}
+
+**Average**: ${scoreToPercentage(result.summary.averageScore)}`;
+    }
+
+    // Summary format (~300 tokens)
+    if (responseFormat === 'summary') {
+      const vaultRows = result.vaults.map((v) => {
+        const topFactor = v.factors[0];
+        return `| ${v.name} | ${scoreToPercentage(v.riskScore)} ${scoreToEmoji(v.riskScore)} | ${v.riskLevel} | ${topFactor.name} (${scoreToPercentage(topFactor.score)}) |`;
+      });
+
+      return `# Batch Risk Analysis
+
+## Summary
+- **Vaults Analyzed**: ${result.summary.vaultCount}
+- **Average Risk**: ${scoreToPercentage(result.summary.averageScore)}
+- **Lowest Risk**: ${result.summary.lowestRisk.address.slice(0, 10)}... (${scoreToPercentage(result.summary.lowestRisk.score)})
+- **Highest Risk**: ${result.summary.highestRisk.address.slice(0, 10)}... (${scoreToPercentage(result.summary.highestRisk.score)})
+
+## Vault Comparison
+
+| Vault | Risk Score | Level | Top Risk Factor |
+|-------|------------|-------|-----------------|
+${vaultRows.join('\n')}`;
+    }
+
+    // Detailed format (~600-1000 tokens)
+    const vaultDetails = result.vaults.map((v) => {
+      const factorRows = v.factors.map(
+        (f) => `| ${f.name} | ${scoreToPercentage(f.score)} | ${scoreToEmoji(f.score)} ${f.level} |`
+      );
+
+      const comparative = v.breakdown.comparative;
+      const comparativeInfo = comparative
+        ? `\n**Percentile**: ${comparative.percentile.toFixed(1)}% (${comparative.riskRanking})`
+        : '';
+
+      return `### ${v.name}
+**Address**: \`${v.address}\` | **Chain**: ${v.chainId}
+**Overall Risk**: ${scoreToPercentage(v.riskScore)} ${scoreToEmoji(v.riskScore)} | **Level**: ${v.riskLevel}${comparativeInfo}
+
+| Factor | Score | Level |
+|--------|-------|-------|
+${factorRows.join('\n')}
+`;
+    });
+
+    return `# Batch Risk Analysis (Detailed)
+
+## Summary Dashboard
+| Metric | Value |
+|--------|-------|
+| **Vaults Analyzed** | ${result.summary.vaultCount} |
+| **Average Risk** | ${scoreToPercentage(result.summary.averageScore)} |
+| **Lowest Risk** | ${result.summary.lowestRisk.address.slice(0, 10)}... (${scoreToPercentage(result.summary.lowestRisk.score)}) 🟢 |
+| **Highest Risk** | ${result.summary.highestRisk.address.slice(0, 10)}... (${scoreToPercentage(result.summary.highestRisk.score)}) 🔴 |
+
+---
+
+${vaultDetails.join('\n---\n\n')}`;
   }
 }

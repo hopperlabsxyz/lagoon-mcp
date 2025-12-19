@@ -28,7 +28,11 @@ export {
 } from './portfolio.queries.js';
 
 // Risk Queries
-export { RISK_ANALYSIS_QUERY } from './risk.queries.js';
+export {
+  RISK_ANALYSIS_QUERY,
+  BATCH_RISK_ANALYSIS_QUERY,
+  CROSS_CHAIN_VAULTS_QUERY,
+} from './risk.queries.js';
 
 // Prediction Queries
 export {

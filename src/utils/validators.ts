@@ -227,7 +227,7 @@ export const exportDataInputSchema = z.object({
   }),
 });
 
-// analyze_risk input
+// analyze_risk input (single vault)
 export const analyzeRiskInputSchema = z.object({
   vaultAddress: ethereumAddressSchema,
   chainId: chainIdSchema,
@@ -238,6 +238,40 @@ export const analyzeRiskInputSchema = z.object({
       'Response detail level: score (risk score only ~30 tokens), summary (risk score with key metrics ~200 tokens), detailed (comprehensive risk analysis ~400-600 tokens). Default: summary'
     ),
 });
+
+// analyze_risks input (batch - 2 to 10 vaults)
+// Supports both single chainId (same chain) and chainIds array for cross-chain analysis
+export const analyzeRisksInputSchema = z
+  .object({
+    vaultAddresses: z
+      .array(ethereumAddressSchema)
+      .min(2, 'At least 2 vault addresses are required for batch analysis')
+      .max(10, 'Maximum 10 vaults can be analyzed at once'),
+    // Single chainId for all vaults on same chain
+    chainId: chainIdSchema.optional(),
+    // Array of chainIds for cross-chain analysis (positional mapping with vaultAddresses)
+    chainIds: z.array(chainIdSchema).optional(),
+    responseFormat: z
+      .enum(['score', 'summary', 'detailed'])
+      .default('summary')
+      .describe(
+        'Response detail level: score (risk scores only ~50 tokens), summary (risk scores with key metrics ~300 tokens), detailed (comprehensive risk analysis ~600-1000 tokens). Default: summary'
+      ),
+  })
+  .refine((data) => data.chainId !== undefined || (data.chainIds && data.chainIds.length > 0), {
+    message: 'Either chainId or chainIds must be provided',
+  })
+  .refine(
+    (data) => {
+      if (data.chainIds) {
+        return data.chainIds.length === data.vaultAddresses.length;
+      }
+      return true;
+    },
+    {
+      message: 'chainIds array must have same length as vaultAddresses (positional mapping)',
+    }
+  );
 
 // predict_yield input
 export const predictYieldInputSchema = z.object({
@@ -312,6 +346,7 @@ export type CompareVaultsInput = z.infer<typeof compareVaultsInputSchema>;
 export type PriceHistoryInput = z.infer<typeof priceHistoryInputSchema>;
 export type ExportDataInput = z.infer<typeof exportDataInputSchema>;
 export type AnalyzeRiskInput = z.infer<typeof analyzeRiskInputSchema>;
+export type AnalyzeRisksInput = z.infer<typeof analyzeRisksInputSchema>;
 export type PredictYieldInput = z.infer<typeof predictYieldInputSchema>;
 export type OptimizePortfolioInput = z.infer<typeof optimizePortfolioInputSchema>;
 export type GetVaultCompositionInput = z.infer<typeof getVaultCompositionInputSchema>;
