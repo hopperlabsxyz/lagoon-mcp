@@ -6,13 +6,17 @@
  */
 
 import { BaseService } from '../base.service.js';
-import { VaultData, RawVaultComposition, ChainComposition } from '../../graphql/fragments/index.js';
+import {
+  VaultData,
+  VaultCompositionFullResponse,
+  ProtocolCompositionData,
+} from '../../graphql/fragments/index.js';
 import { RISK_ANALYSIS_QUERY } from '../../graphql/queries/index.js';
 import { analyzeRisk, RiskScoreBreakdown } from '../../utils/risk-scoring.js';
 
 /**
  * Risk analysis input data extracted from GraphQL
- * Note: composition now uses chain-based data from Octav API
+ * Uses assetByProtocols from Octav API for protocol-based diversification analysis
  */
 export interface RiskAnalysisData {
   vault: VaultData;
@@ -28,8 +32,8 @@ export interface RiskAnalysisData {
       };
     }>;
   };
-  // Note: Backend API changed - now returns JSONObject with chains as keys
-  composition: RawVaultComposition | null;
+  // Note: Backend API returns full response with assetByProtocols for protocol analysis
+  composition: VaultCompositionFullResponse | null;
 }
 
 /**
@@ -169,38 +173,55 @@ export class RiskService extends BaseService {
       maxCapacity,
     };
 
-    // Extract composition data for chain diversification risk
-    // Transform RawVaultComposition (chain-keyed JSONObject) to risk analysis format
+    // Extract composition data for protocol diversification risk
+    // Uses assetByProtocols from VaultCompositionFullResponse for DeFi protocol analysis
+    // "wallet" protocol (idle assets) is excluded from diversification calculation
     let compositionData:
       | { compositions: Array<{ repartition: number }>; topProtocolPercent: number | null }
       | undefined;
-    if (data.composition && Object.keys(data.composition).length > 0) {
-      // Filter active chains (value > 0) and calculate percentages
-      const activeChains = Object.entries(data.composition)
-        .filter(([, chain]: [string, ChainComposition]) => {
-          const value = parseFloat(chain.value);
+    if (
+      data.composition &&
+      data.composition.assetByProtocols &&
+      Object.keys(data.composition.assetByProtocols).length > 0
+    ) {
+      // Filter active protocols (value > 0) and transform to risk format
+      const allProtocols = Object.entries(data.composition.assetByProtocols)
+        .filter(([, protocol]: [string, ProtocolCompositionData]) => {
+          const value = parseFloat(protocol.value);
           return !isNaN(value) && value > 0;
         })
-        .map(([, chain]: [string, ChainComposition]) => ({
-          value: parseFloat(chain.value),
+        .map(([key, protocol]: [string, ProtocolCompositionData]) => ({
+          key,
+          value: parseFloat(protocol.value),
           repartition: 0, // Will calculate after total
         }));
 
-      const totalValue = activeChains.reduce((sum, c) => sum + c.value, 0);
+      // Calculate total value (including wallet)
+      const totalValue = allProtocols.reduce((sum, p) => sum + p.value, 0);
 
-      // Calculate repartition (percentage) for each chain
-      activeChains.forEach((c) => {
-        c.repartition = totalValue > 0 ? (c.value / totalValue) * 100 : 0;
+      // Calculate repartition (percentage) for each protocol
+      allProtocols.forEach((p) => {
+        p.repartition = totalValue > 0 ? (p.value / totalValue) * 100 : 0;
       });
 
-      // Sort by value descending to get top chain
-      activeChains.sort((a, b) => b.value - a.value);
+      // Exclude wallet (idle assets) from diversification analysis
+      // Wallet represents undeployed capital, not DeFi protocol concentration
+      const defiProtocols = allProtocols.filter((p) => p.key !== 'wallet');
 
-      const topChainPercent = activeChains[0]?.repartition ?? null;
+      // Recalculate percentages for DeFi-only (for HHI calculation)
+      const defiTotalValue = defiProtocols.reduce((sum, p) => sum + p.value, 0);
+      defiProtocols.forEach((p) => {
+        p.repartition = defiTotalValue > 0 ? (p.value / defiTotalValue) * 100 : 0;
+      });
+
+      // Sort by value descending to get top protocol
+      defiProtocols.sort((a, b) => b.value - a.value);
+
+      const topProtocolPercent = defiProtocols[0]?.repartition ?? null;
 
       compositionData = {
-        compositions: activeChains.map((c) => ({ repartition: c.repartition })),
-        topProtocolPercent: topChainPercent,
+        compositions: defiProtocols.map((p) => ({ repartition: p.repartition })),
+        topProtocolPercent,
       };
     }
 

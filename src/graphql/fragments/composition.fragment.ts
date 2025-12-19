@@ -47,6 +47,99 @@ export interface ChainComposition {
 export type RawVaultComposition = Record<string, ChainComposition>;
 
 // ============================================================================
+// Protocol-based composition types (NEW - preferred for analysis)
+// The assetByProtocols field provides DeFi protocol-level breakdown
+// ============================================================================
+
+/**
+ * Position category within a chain (e.g., LENDING, YIELD, DEPOSIT, SPOT)
+ */
+export interface ProtocolPositionCategory {
+  /** Category name (e.g., "Lending", "Yield", "Deposit", "Spot") */
+  name: string;
+  /** Total USD value in this category */
+  totalValue: string;
+}
+
+/**
+ * Chain-level breakdown within a protocol
+ */
+export interface ProtocolChainData {
+  /** Chain display name (e.g., "Ethereum") */
+  name: string;
+  /** Chain key (e.g., "ethereum") */
+  key: string;
+  /** USD value on this chain */
+  value: string;
+  /** Total cost basis (may be "N/A") */
+  totalCostBasis: string;
+  /** Total closed PnL (may be "N/A") */
+  totalClosedPnl: string;
+  /** Total open PnL (may be "N/A") */
+  totalOpenPnl: string;
+  /** Position categories on this chain (keyed by category type) */
+  protocolPositions: Record<string, ProtocolPositionCategory>;
+}
+
+/**
+ * Protocol-level composition data from Octav API
+ * Represents a DeFi protocol like Spark, Morpho, Yield Basis, or "wallet" for idle assets
+ *
+ * Example protocols: spark, morphoblue, yieldbasis, lagoon, hyperliquid, wallet
+ */
+export interface ProtocolCompositionData {
+  /** Protocol display name (e.g., "Spark", "Morpho", "Yield Basis", "Wallet") */
+  name: string;
+  /** Protocol key/identifier (e.g., "spark", "morphoblue", "wallet") */
+  key: string;
+  /** Total USD value in this protocol */
+  value: string;
+  /** Total cost basis (may be "N/A") */
+  totalCostBasis: string;
+  /** Total closed PnL (may be "N/A") */
+  totalClosedPnl: string;
+  /** Total open PnL (may be "N/A") */
+  totalOpenPnl: string;
+  /** Chain-level breakdown within this protocol */
+  chains: Record<string, ProtocolChainData>;
+}
+
+/**
+ * Full vaultComposition response structure from Octav API
+ *
+ * Contains two main sections:
+ * - assetByProtocols: Protocol-level breakdown (preferred for analysis)
+ * - chains: Chain-level summary (legacy, kept for backward compatibility)
+ *
+ * Example:
+ * ```typescript
+ * {
+ *   address: "0x...",
+ *   networth: "4970636.89",
+ *   assetByProtocols: {
+ *     "spark": { name: "Spark", value: "1324461.98", chains: { ethereum: {...} } },
+ *     "wallet": { name: "Wallet", value: "6356.97", chains: { ethereum: {...} } },
+ *     // ... other protocols
+ *   },
+ *   chains: {
+ *     "ethereum": { name: "Ethereum", chainId: "1", value: "4970455.03", ... },
+ *     // ... other chains
+ *   }
+ * }
+ * ```
+ */
+export interface VaultCompositionFullResponse {
+  /** Vault/wallet address */
+  address: string;
+  /** Total portfolio net worth in USD */
+  networth: string;
+  /** Protocol-level breakdown (PRIMARY - use for diversification analysis) */
+  assetByProtocols: Record<string, ProtocolCompositionData>;
+  /** Chain-level summary (LEGACY - kept for backward compatibility) */
+  chains: Record<string, ChainComposition>;
+}
+
+// ============================================================================
 // Legacy types - kept for backward compatibility during migration
 // These will be removed once all dependent tools are updated
 // ============================================================================

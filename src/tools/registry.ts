@@ -256,16 +256,16 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
   {
     name: 'get_vault_composition',
     description:
-      'Fetch vault cross-chain composition with diversification analysis from Octav API. ' +
-      'Returns breakdown by chain (e.g., Ethereum, Arbitrum, Base) with USD values. ' +
-      'Calculates HHI (Herfindahl-Hirschman Index) for cross-chain diversification scoring. ' +
+      'Fetch vault DeFi protocol composition with diversification analysis from Octav API. ' +
+      'Returns breakdown by protocol (e.g., Spark, Morpho, Yield Basis, Lagoon) with USD values. ' +
+      'Calculates HHI (Herfindahl-Hirschman Index) for protocol diversification scoring. ' +
+      '"wallet" protocol represents idle assets not deployed in DeFi (excluded from HHI, tracked as idleAssetsPercent). ' +
       'Diversification levels: High (HHI < 0.15), Medium (0.15-0.25), Low (> 0.25). ' +
       'Supports 3 response formats for token optimization: ' +
-      'summary (totals + top 5 chains ~100 tokens), ' +
-      'chains (all non-zero chains ~200-500 tokens), ' +
+      'summary (totals + top 5 protocols ~100 tokens), ' +
+      'protocols (all non-zero protocols ~200-500 tokens), ' +
       'full (all data including raw ~1000+ tokens). ' +
-      'Filters out 60+ empty chains (value=0) in summary/chains modes. ' +
-      'Best for: understanding cross-chain exposure, identifying concentration risks, portfolio composition analysis. ' +
+      'Best for: understanding DeFi protocol exposure, identifying concentration risks, capital efficiency analysis. ' +
       'Default: summary for token efficiency. ' +
       'Features 15-minute caching (backend caches Octav API data for 6 hours).',
     schema: getVaultCompositionInputSchema,

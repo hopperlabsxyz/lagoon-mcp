@@ -1,20 +1,21 @@
 /**
  * get_vault_composition Tool
  *
- * Fetch vault cross-chain composition data from Octav API with diversification analysis.
+ * Fetch vault protocol composition data from Octav API with diversification analysis.
  * Data is sourced from the backend's vaultComposition endpoint which aggregates
- * positions across 60+ chains.
+ * positions across DeFi protocols (Spark, Morpho, Yield Basis, etc.).
  *
  * Use cases:
- * - Understanding vault cross-chain exposure
+ * - Understanding vault DeFi protocol exposure
  * - Analyzing diversification levels via HHI score
- * - Identifying concentration risks across chains
+ * - Identifying concentration risks across protocols
+ * - Tracking idle assets (wallet protocol)
  * - Portfolio composition visualization
  *
  * Response formats (for token optimization):
- * - summary: Totals + top chains + analysis (~100 tokens)
- * - chains: Non-zero chains only + analysis (~200-500 tokens)
- * - full: All chain data including raw response (~1000+ tokens)
+ * - summary: Totals + top protocols + analysis (~100 tokens)
+ * - protocols: Non-zero protocols only + analysis (~200-500 tokens)
+ * - full: All protocol data including raw response (~1000+ tokens)
  *
  * Cache strategy:
  * - 15-minute TTL aligned with vault data freshness
@@ -25,7 +26,10 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetVaultCompositionInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
-import { RawVaultComposition, ChainComposition } from '../graphql/fragments/index.js';
+import {
+  VaultCompositionFullResponse,
+  ProtocolCompositionData,
+} from '../graphql/fragments/index.js';
 import { GET_VAULT_COMPOSITION_QUERY } from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
@@ -35,15 +39,18 @@ import { createSuccessResponse } from '../utils/tool-response.js';
 
 /**
  * Response format type for composition queries
+ * - summary: Totals + top protocols (~100 tokens)
+ * - protocols: Non-zero protocols only (~200-500 tokens)
+ * - full: All protocol data (~1000+ tokens)
  */
-type CompositionResponseFormat = 'summary' | 'chains' | 'full';
+type CompositionResponseFormat = 'summary' | 'protocols' | 'full';
 
 /**
  * GraphQL response type for composition query
- * Note: Backend returns JSONObject, typed as RawVaultComposition
+ * Note: Backend returns JSONObject, typed as VaultCompositionFullResponse
  */
 interface VaultCompositionResponse {
-  vaultComposition: RawVaultComposition | null;
+  vaultComposition: VaultCompositionFullResponse | null;
 }
 
 /**
@@ -55,25 +62,39 @@ interface GetVaultCompositionVariables {
 }
 
 /**
- * Processed chain summary with calculated percentages
+ * Processed protocol summary with calculated percentages
  */
-interface ChainSummary {
-  chainKey: string;
-  chainName: string;
-  chainId: string;
+interface ProtocolSummary {
+  /** Protocol key/identifier (e.g., "spark", "morphoblue") */
+  protocolKey: string;
+  /** Protocol display name (e.g., "Spark", "Morpho") */
+  protocolName: string;
+  /** Total USD value in this protocol */
   valueUsd: number;
+  /** Percentage of total portfolio */
   percentage: number;
+  /** Position types in this protocol (e.g., ["LENDING", "YIELD"]) */
+  positionTypes: string[];
+  /** Number of chains this protocol is deployed on */
+  chainCount: number;
 }
 
 /**
- * Composition analysis metrics
+ * Composition analysis metrics (protocol-based)
  */
 interface CompositionAnalysis {
+  /** Total portfolio value in USD */
   totalValueUsd: number;
-  activeChainCount: number;
-  topChain: ChainSummary | null;
+  /** Number of active DeFi protocols (excluding wallet) */
+  activeProtocolCount: number;
+  /** Top protocol by value */
+  topProtocol: ProtocolSummary | null;
+  /** HHI score for protocol concentration (0-1, lower = more diversified) */
   hhi: number;
+  /** Diversification level based on HHI */
   diversificationLevel: 'High' | 'Medium' | 'Low';
+  /** Percentage of assets in "wallet" (idle, not deployed in DeFi) */
+  idleAssetsPercent: number;
 }
 
 /**
@@ -81,8 +102,9 @@ interface CompositionAnalysis {
  */
 interface FullCompositionData {
   vaultAddress: string;
-  rawData: RawVaultComposition;
-  chains: ChainSummary[];
+  networth: string;
+  rawData: VaultCompositionFullResponse;
+  protocols: ProtocolSummary[];
   analysis: CompositionAnalysis;
 }
 
@@ -92,15 +114,15 @@ interface FullCompositionData {
 interface SummaryResponse {
   vaultAddress: string;
   analysis: CompositionAnalysis;
-  topChains: ChainSummary[];
+  topProtocols: ProtocolSummary[];
 }
 
 /**
- * Chains response format (~200-500 tokens)
+ * Protocols response format (~200-500 tokens)
  */
-interface ChainsResponse {
+interface ProtocolsResponse {
   vaultAddress: string;
-  chains: ChainSummary[];
+  protocols: ProtocolSummary[];
   analysis: CompositionAnalysis;
 }
 
@@ -109,12 +131,13 @@ interface ChainsResponse {
  */
 interface FullResponse {
   vaultAddress: string;
-  rawData: RawVaultComposition;
-  chains: ChainSummary[];
+  networth: string;
+  rawData: VaultCompositionFullResponse;
+  protocols: ProtocolSummary[];
   analysis: CompositionAnalysis;
 }
 
-type CompositionOutput = SummaryResponse | ChainsResponse | FullResponse;
+type CompositionOutput = SummaryResponse | ProtocolsResponse | FullResponse;
 
 /**
  * HHI (Herfindahl-Hirschman Index) calculation for diversification analysis
@@ -125,14 +148,17 @@ type CompositionOutput = SummaryResponse | ChainsResponse | FullResponse;
  * - 0.15 - 0.25: Moderate concentration
  * - > 0.25: High concentration
  *
- * @param chains - Array of chain summaries with percentage values
+ * Note: "wallet" protocol (idle assets) is EXCLUDED from HHI calculation
+ * as it represents undeployed capital, not DeFi protocol concentration.
+ *
+ * @param protocols - Array of protocol summaries with percentage values (excluding wallet)
  * @returns HHI score between 0 and 1
  */
-function calculateHHI(chains: ChainSummary[]): number {
-  if (chains.length === 0) return 0;
+function calculateHHI(protocols: ProtocolSummary[]): number {
+  if (protocols.length === 0) return 0;
 
   // HHI = sum of squared market shares (percentage/100 to get decimal)
-  return chains.reduce((sum, c) => sum + Math.pow(c.percentage / 100, 2), 0);
+  return protocols.reduce((sum, p) => sum + Math.pow(p.percentage / 100, 2), 0);
 }
 
 /**
@@ -145,68 +171,114 @@ function getDiversificationLevel(hhi: number): 'High' | 'Medium' | 'Low' {
 }
 
 /**
- * Transform raw Octav API response into structured composition data
+ * Extract position types from a protocol's chain data
  *
- * @param raw - Raw JSONObject with chains as keys
+ * @param protocol - Protocol composition data
+ * @returns Array of unique position type names (e.g., ["LENDING", "YIELD"])
+ */
+function extractPositionTypes(protocol: ProtocolCompositionData): string[] {
+  const positionTypes = new Set<string>();
+
+  for (const chainData of Object.values(protocol.chains)) {
+    if (chainData.protocolPositions) {
+      for (const positionKey of Object.keys(chainData.protocolPositions)) {
+        positionTypes.add(positionKey);
+      }
+    }
+  }
+
+  return Array.from(positionTypes);
+}
+
+/**
+ * Transform raw Octav API response into structured protocol composition data
+ *
+ * @param raw - Raw VaultCompositionFullResponse with assetByProtocols
  * @param vaultAddress - Vault address for reference
- * @returns Full composition data with analysis
+ * @returns Full composition data with protocol-based analysis
  */
 function transformRawComposition(
-  raw: RawVaultComposition | null,
+  raw: VaultCompositionFullResponse | null,
   vaultAddress: string
 ): FullCompositionData {
   // Handle null/empty response
-  if (!raw || Object.keys(raw).length === 0) {
+  if (!raw || !raw.assetByProtocols || Object.keys(raw.assetByProtocols).length === 0) {
     return {
       vaultAddress,
-      rawData: {},
-      chains: [],
+      networth: '0',
+      rawData: raw || { address: vaultAddress, networth: '0', assetByProtocols: {}, chains: {} },
+      protocols: [],
       analysis: {
         totalValueUsd: 0,
-        activeChainCount: 0,
-        topChain: null,
+        activeProtocolCount: 0,
+        topProtocol: null,
         hhi: 0,
         diversificationLevel: 'High',
+        idleAssetsPercent: 0,
       },
     };
   }
 
-  // 1. Filter out chains with value "0" or empty and transform to ChainSummary
-  const activeChains: ChainSummary[] = Object.entries(raw)
-    .filter(([, chain]: [string, ChainComposition]) => {
-      const value = parseFloat(chain.value);
+  // 1. Filter out protocols with value "0" or empty and transform to ProtocolSummary
+  const allProtocols: ProtocolSummary[] = Object.entries(raw.assetByProtocols)
+    .filter(([, protocol]: [string, ProtocolCompositionData]) => {
+      const value = parseFloat(protocol.value);
       return !isNaN(value) && value > 0;
     })
-    .map(([key, chain]: [string, ChainComposition]) => ({
-      chainKey: key,
-      chainName: chain.name,
-      chainId: chain.chainId,
-      valueUsd: parseFloat(chain.value),
+    .map(([key, protocol]: [string, ProtocolCompositionData]) => ({
+      protocolKey: key,
+      protocolName: protocol.name,
+      valueUsd: parseFloat(protocol.value),
       percentage: 0, // Calculate after total
+      positionTypes: extractPositionTypes(protocol),
+      chainCount: Object.keys(protocol.chains).length,
     }));
 
-  // 2. Calculate total and percentages
-  const totalValueUsd = activeChains.reduce((sum, c) => sum + c.valueUsd, 0);
-  activeChains.forEach((c) => {
-    c.percentage = totalValueUsd > 0 ? (c.valueUsd / totalValueUsd) * 100 : 0;
+  // 2. Calculate total value (including wallet)
+  const totalValueUsd = allProtocols.reduce((sum, p) => sum + p.valueUsd, 0);
+
+  // 3. Calculate percentages for all protocols
+  allProtocols.forEach((p) => {
+    p.percentage = totalValueUsd > 0 ? (p.valueUsd / totalValueUsd) * 100 : 0;
   });
 
-  // 3. Sort by value descending
-  activeChains.sort((a, b) => b.valueUsd - a.valueUsd);
+  // 4. Sort by value descending
+  allProtocols.sort((a, b) => b.valueUsd - a.valueUsd);
 
-  // 4. Calculate HHI
-  const hhi = calculateHHI(activeChains);
+  // 5. Separate wallet (idle assets) from DeFi protocols for HHI calculation
+  const walletProtocol = allProtocols.find((p) => p.protocolKey === 'wallet');
+  const defiProtocols = allProtocols.filter((p) => p.protocolKey !== 'wallet');
+
+  // 6. Recalculate percentages for DeFi protocols only (for HHI)
+  const defiTotalValue = defiProtocols.reduce((sum, p) => sum + p.valueUsd, 0);
+  const defiProtocolsForHHI = defiProtocols.map((p) => ({
+    ...p,
+    // Recalculate percentage based on DeFi-only total for HHI
+    percentage: defiTotalValue > 0 ? (p.valueUsd / defiTotalValue) * 100 : 0,
+  }));
+
+  // 7. Calculate HHI (excluding wallet)
+  const hhi = calculateHHI(defiProtocolsForHHI);
+
+  // 8. Calculate idle assets percentage
+  const idleAssetsPercent = walletProtocol
+    ? totalValueUsd > 0
+      ? (walletProtocol.valueUsd / totalValueUsd) * 100
+      : 0
+    : 0;
 
   return {
     vaultAddress,
+    networth: raw.networth || totalValueUsd.toFixed(2),
     rawData: raw,
-    chains: activeChains,
+    protocols: allProtocols, // Include all protocols (wallet included for transparency)
     analysis: {
       totalValueUsd: parseFloat(totalValueUsd.toFixed(2)),
-      activeChainCount: activeChains.length,
-      topChain: activeChains[0] || null,
+      activeProtocolCount: defiProtocols.length, // DeFi protocols only
+      topProtocol: defiProtocols[0] || null, // Top DeFi protocol (not wallet)
       hhi: parseFloat(hhi.toFixed(4)),
       diversificationLevel: getDiversificationLevel(hhi),
+      idleAssetsPercent: parseFloat(idleAssetsPercent.toFixed(2)),
     },
   };
 }
@@ -227,22 +299,23 @@ function filterByFormat(
       return {
         vaultAddress: data.vaultAddress,
         analysis: data.analysis,
-        topChains: data.chains.slice(0, 5), // Top 5 chains for summary
+        topProtocols: data.protocols.slice(0, 5), // Top 5 protocols for summary
       } as SummaryResponse;
 
-    case 'chains':
+    case 'protocols':
       return {
         vaultAddress: data.vaultAddress,
-        chains: data.chains, // Only non-zero chains (already filtered)
+        protocols: data.protocols, // Only non-zero protocols (already filtered)
         analysis: data.analysis,
-      } as ChainsResponse;
+      } as ProtocolsResponse;
 
     case 'full':
     default:
       return {
         vaultAddress: data.vaultAddress,
+        networth: data.networth,
         rawData: data.rawData,
-        chains: data.chains,
+        protocols: data.protocols,
         analysis: data.analysis,
       } as FullResponse;
   }

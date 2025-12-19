@@ -26,7 +26,11 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { CompareVaultsInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
-import { VaultData, RawVaultComposition, ChainComposition } from '../graphql/fragments/index.js';
+import {
+  VaultData,
+  VaultCompositionFullResponse,
+  ProtocolCompositionData,
+} from '../graphql/fragments/index.js';
 import { COMPARE_VAULTS_QUERY } from '../graphql/queries/index.js';
 import { SINGLE_VAULT_COMPOSITION_QUERY } from '../graphql/queries/portfolio.queries.js';
 import {
@@ -62,22 +66,24 @@ interface CompareVaultsVariables {
 
 /**
  * Response type for single vault composition query
- * Note: Backend returns JSONObject with chains as keys
+ * Note: Backend returns full response with assetByProtocols
  */
 interface SingleVaultCompositionResponse {
-  vaultComposition: RawVaultComposition | null;
+  vaultComposition: VaultCompositionFullResponse | null;
 }
 
 /**
- * Composition metrics for a vault (now chain-based)
- * Note: Backend API changed from protocol-based to chain-based composition
+ * Composition metrics for a vault (protocol-based)
+ * Uses assetByProtocols from Octav API for DeFi protocol analysis
+ * "wallet" protocol (idle assets) is excluded from HHI but tracked as idlePercent
  */
 interface VaultCompositionMetrics {
-  hhi: number; // Herfindahl-Hirschman Index (0-1)
+  hhi: number; // Herfindahl-Hirschman Index (0-1), excludes wallet
   diversificationLevel: 'High' | 'Medium' | 'Low';
-  topChain: string | null;
-  topChainPercent: number | null;
-  chainCount: number;
+  topProtocol: string | null;
+  topProtocolPercent: number | null;
+  protocolCount: number; // DeFi protocols only (excludes wallet)
+  idlePercent: number; // Percentage in "wallet" protocol (not deployed in DeFi)
 }
 
 /**
@@ -380,55 +386,85 @@ function normalizeRiskLevel(
  * Calculate composition metrics from raw composition data
  * Note: Backend API changed from protocol-based to chain-based composition
  */
+/**
+ * Calculate composition metrics from protocol-based data
+ *
+ * Uses assetByProtocols from Octav API for DeFi protocol analysis.
+ * "wallet" protocol (idle assets) is excluded from HHI calculation
+ * but tracked separately as idlePercent for capital efficiency analysis.
+ *
+ * @param rawComposition - Full vault composition response from Octav API
+ * @returns Composition metrics with protocol-based diversification
+ */
 function calculateCompositionMetrics(
-  rawComposition: RawVaultComposition | null
+  rawComposition: VaultCompositionFullResponse | null
 ): VaultCompositionMetrics | undefined {
-  if (!rawComposition || Object.keys(rawComposition).length === 0) {
+  if (
+    !rawComposition ||
+    !rawComposition.assetByProtocols ||
+    Object.keys(rawComposition.assetByProtocols).length === 0
+  ) {
     return undefined;
   }
 
-  // Filter and transform to chain data with values
-  const activeChains = Object.entries(rawComposition)
-    .filter(([, chain]: [string, ChainComposition]) => {
-      const value = parseFloat(chain.value);
+  // Filter and transform to protocol data with values
+  const allProtocols = Object.entries(rawComposition.assetByProtocols)
+    .filter(([, protocol]: [string, ProtocolCompositionData]) => {
+      const value = parseFloat(protocol.value);
       return !isNaN(value) && value > 0;
     })
-    .map(([, chain]: [string, ChainComposition]) => ({
-      chainName: chain.name,
-      valueUsd: parseFloat(chain.value),
+    .map(([key, protocol]: [string, ProtocolCompositionData]) => ({
+      protocolKey: key,
+      protocolName: protocol.name,
+      valueUsd: parseFloat(protocol.value),
       percentage: 0, // Calculate after total
     }));
 
-  if (activeChains.length === 0) {
+  if (allProtocols.length === 0) {
     return undefined;
   }
 
-  // Calculate total and percentages
-  const totalValue = activeChains.reduce((sum, c) => sum + c.valueUsd, 0);
-  activeChains.forEach((c) => {
-    c.percentage = totalValue > 0 ? (c.valueUsd / totalValue) * 100 : 0;
+  // Calculate total and percentages (including wallet)
+  const totalValue = allProtocols.reduce((sum, p) => sum + p.valueUsd, 0);
+  allProtocols.forEach((p) => {
+    p.percentage = totalValue > 0 ? (p.valueUsd / totalValue) * 100 : 0;
   });
 
   // Sort by value descending
-  activeChains.sort((a, b) => b.valueUsd - a.valueUsd);
+  allProtocols.sort((a, b) => b.valueUsd - a.valueUsd);
 
-  // Calculate HHI (Herfindahl-Hirschman Index)
-  const hhi = activeChains.reduce((sum, c) => sum + Math.pow(c.percentage / 100, 2), 0);
+  // Separate wallet (idle assets) from DeFi protocols for HHI calculation
+  const walletProtocol = allProtocols.find((p) => p.protocolKey === 'wallet');
+  const defiProtocols = allProtocols.filter((p) => p.protocolKey !== 'wallet');
+
+  // Recalculate percentages for DeFi-only (for HHI)
+  const defiTotalValue = defiProtocols.reduce((sum, p) => sum + p.valueUsd, 0);
+  const defiProtocolsForHHI = defiProtocols.map((p) => ({
+    ...p,
+    percentage: defiTotalValue > 0 ? (p.valueUsd / defiTotalValue) * 100 : 0,
+  }));
+
+  // Calculate HHI (Herfindahl-Hirschman Index) - excluding wallet
+  const hhi = defiProtocolsForHHI.reduce((sum, p) => sum + Math.pow(p.percentage / 100, 2), 0);
 
   // Determine diversification level
   const diversificationLevel: 'High' | 'Medium' | 'Low' =
     hhi < 0.15 ? 'High' : hhi < 0.25 ? 'Medium' : 'Low';
 
-  // Get top chain
-  const topChain = activeChains[0]?.chainName || null;
-  const topChainPercent = activeChains[0]?.percentage || null;
+  // Get top DeFi protocol (not wallet)
+  const topProtocol = defiProtocols[0]?.protocolName || null;
+  const topProtocolPercent = defiProtocols[0]?.percentage || null;
+
+  // Calculate idle assets percentage
+  const idlePercent = walletProtocol?.percentage || 0;
 
   return {
-    hhi,
+    hhi: parseFloat(hhi.toFixed(4)),
     diversificationLevel,
-    topChain,
-    topChainPercent,
-    chainCount: activeChains.length,
+    topProtocol,
+    topProtocolPercent: topProtocolPercent ? parseFloat(topProtocolPercent.toFixed(2)) : null,
+    protocolCount: defiProtocols.length,
+    idlePercent: parseFloat(idlePercent.toFixed(2)),
   };
 }
 
