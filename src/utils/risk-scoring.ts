@@ -118,15 +118,20 @@ export function calculateConcentrationRisk(vaultTVL: number, totalProtocolTVL: n
  * @returns Risk score 0-1 (0 = lowest risk, 1 = highest risk)
  */
 export function calculateVolatilityRisk(pricePoints: number[]): number {
-  if (pricePoints.length < 2) {
-    return 0.5; // Medium risk if insufficient data
+  // Filter out zero/invalid price points that would cause artificial volatility
+  const validPrices = pricePoints.filter((p) => p > 0 && isFinite(p));
+
+  if (validPrices.length < 2) {
+    return 0.5; // Medium risk if insufficient valid data
   }
 
-  // Calculate daily returns
+  // Calculate returns between consecutive valid price points
   const returns: number[] = [];
-  for (let i = 1; i < pricePoints.length; i++) {
-    if (pricePoints[i - 1] !== 0) {
-      const dailyReturn = (pricePoints[i] - pricePoints[i - 1]) / pricePoints[i - 1];
+  for (let i = 1; i < validPrices.length; i++) {
+    const dailyReturn = (validPrices[i] - validPrices[i - 1]) / validPrices[i - 1];
+    // Skip extremely unrealistic returns (>100% in a single period indicates data issues)
+    // This filters out cases where price goes from X to 0 and back
+    if (Math.abs(dailyReturn) <= 1.0) {
       returns.push(dailyReturn);
     }
   }

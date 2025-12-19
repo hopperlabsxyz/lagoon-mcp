@@ -92,11 +92,18 @@ export class RiskService extends BaseService {
     );
 
     // Extract price history and calculate price per share
-    const priceHistory = data.priceHistory.items.map((item) => {
-      // Calculate price per share from totalAssetsUsd / totalSupply
-      const totalSupply = parseFloat(item.data.totalSupply) / 1e18; // Convert from wei
-      return totalSupply > 0 ? item.data.totalAssetsUsd / totalSupply : 0;
-    });
+    // Filter out items with missing or zero totalSupply to avoid artificial volatility
+    const priceHistory = data.priceHistory.items
+      .filter((item) => {
+        // Filter out items with missing or zero totalSupply
+        const totalSupply = item.data?.totalSupply;
+        return totalSupply && parseFloat(totalSupply) > 0 && item.data?.totalAssetsUsd > 0;
+      })
+      .map((item) => {
+        // Calculate price per share from totalAssetsUsd / totalSupply
+        const totalSupply = parseFloat(item.data.totalSupply) / 1e18; // Convert from wei
+        return item.data.totalAssetsUsd / totalSupply;
+      });
 
     // Calculate vault age in days from first transaction
     const now = Math.floor(Date.now() / 1000);
