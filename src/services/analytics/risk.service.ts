@@ -90,8 +90,8 @@ export interface BatchVaultRiskResult {
 export interface BatchRiskAnalysisResult {
   vaults: BatchVaultRiskResult[];
   summary: {
-    lowestRisk: { address: string; score: number };
-    highestRisk: { address: string; score: number };
+    lowestRisk: { address: string; score: number } | null;
+    highestRisk: { address: string; score: number } | null;
     averageScore: number;
     vaultCount: number;
   };
@@ -722,6 +722,19 @@ ${comparativeDetailedSection}## Risk Analysis Breakdown
       return orderA - orderB;
     });
 
+    // Early return if no vaults were found/processed
+    if (vaultResults.length === 0) {
+      return {
+        vaults: [],
+        summary: {
+          lowestRisk: null,
+          highestRisk: null,
+          averageScore: 0,
+          vaultCount: 0,
+        },
+      };
+    }
+
     // Calculate summary statistics
     const scores = vaultResults.map((v) => v.riskScore);
     const lowestRiskVault = vaultResults.reduce(
@@ -826,6 +839,20 @@ ${comparativeDetailedSection}## Risk Analysis Breakdown
     result: BatchRiskAnalysisResult,
     responseFormat: 'score' | 'summary' | 'detailed' = 'summary'
   ): string {
+    // Handle empty results gracefully
+    if (result.vaults.length === 0 || !result.summary.lowestRisk || !result.summary.highestRisk) {
+      return `# Batch Risk Analysis
+
+**No vaults found for the provided addresses on the specified chain(s).**
+
+Please verify:
+- Vault addresses are correct (must be valid 0x... format)
+- Chain IDs match the vaults' deployment chains
+- For cross-chain portfolios, use \`chainIds\` array (not single \`chainId\`)
+
+*Disclaimer: For informational purposes only. Not financial advice.*`;
+    }
+
     const scoreToEmoji = (score: number): string => {
       if (score < 0.3) return '🟢';
       if (score < 0.6) return '🟡';
