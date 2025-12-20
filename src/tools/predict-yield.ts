@@ -262,6 +262,45 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
     const highWaterMark = BigInt(data.vault.state?.highWaterMark || '0');
     const performanceFeeActive = pricePerShare > highWaterMark;
 
+    // Calculate actual profit margin from historical period summaries
+    // This is used for accurate performance fee impact calculation
+    let actualProfitMargin: number | undefined;
+
+    if (data.performanceHistory && data.performanceHistory.items.length >= 2) {
+      // Calculate period-over-period price changes
+      const sortedItems = [...data.performanceHistory.items].sort(
+        (a, b) => parseInt(a.timestamp, 10) - parseInt(b.timestamp, 10)
+      );
+
+      const priceChanges: number[] = [];
+      for (let i = 1; i < sortedItems.length; i++) {
+        const prevAssets = parseFloat(sortedItems[i - 1].data.totalAssetsAtStart);
+        const prevSupply = parseFloat(sortedItems[i - 1].data.totalSupplyAtStart);
+        const currAssets = parseFloat(sortedItems[i].data.totalAssetsAtStart);
+        const currSupply = parseFloat(sortedItems[i].data.totalSupplyAtStart);
+
+        // Calculate price per share for each period
+        const prevPPS = prevSupply > 0 ? prevAssets / prevSupply : 0;
+        const currPPS = currSupply > 0 ? currAssets / currSupply : 0;
+
+        // Calculate percentage change
+        if (prevPPS > 0) {
+          const change = (currPPS - prevPPS) / prevPPS;
+          priceChanges.push(change);
+        }
+      }
+
+      // Actual profit margin is the average of positive returns (profits only)
+      // This reflects the historical rate at which performance fees are triggered
+      const positiveChanges = priceChanges.filter((c) => c > 0);
+      if (positiveChanges.length > 0) {
+        actualProfitMargin =
+          positiveChanges.reduce((sum, c) => sum + c, 0) / positiveChanges.length;
+      }
+      // If no positive changes, actualProfitMargin remains undefined
+      // which means fee-adjusted predictions will be omitted (no data to calculate)
+    }
+
     // Only pass fee parameters if vault has meaningful fees
     const hasFees = managementFee > 0 || performanceFee > 0;
 
@@ -273,6 +312,7 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
             managementFee,
             performanceFee,
             performanceFeeActive,
+            actualProfitMargin,
           }
         : undefined
     );

@@ -5,6 +5,7 @@
  */
 
 import { RiskScoreBreakdown } from './risk-scoring.js';
+import { safeToFixed, safeDivide } from './safe-math.js';
 
 /**
  * Vault data structure for comparison
@@ -92,10 +93,21 @@ export interface ComparisonSummary {
  * @returns Percentile (0-100)
  */
 export function calculatePercentile(value: number, arr: number[]): number {
+  // Guard: empty array
+  if (!arr || arr.length === 0) {
+    return 0;
+  }
+
+  // Guard: single element - percentile is meaningless, return middle value
+  if (arr.length === 1) {
+    return arr[0] === value ? 50 : 0;
+  }
+
   const sorted = [...arr].sort((a, b) => a - b);
   const index = sorted.indexOf(value);
   if (index === -1) return 0;
 
+  // sorted.length - 1 is now guaranteed > 0 because arr.length > 1
   const percentile = (index / (sorted.length - 1)) * 100;
   return Math.round(percentile * 100) / 100; // Round to 2 decimals
 }
@@ -194,11 +206,12 @@ export function normalizeAndRankVaults(vaults: VaultComparisonData[]): Normalize
 /**
  * Generate comparison summary statistics
  * @param vaults Array of vault data
- * @returns Summary statistics
+ * @returns Summary statistics or null if no vaults
  */
-export function generateComparisonSummary(vaults: VaultComparisonData[]): ComparisonSummary {
-  if (vaults.length === 0) {
-    throw new Error('Cannot generate summary for empty vault list');
+export function generateComparisonSummary(vaults: VaultComparisonData[]): ComparisonSummary | null {
+  // Guard: empty or null array - return null instead of throwing
+  if (!vaults || vaults.length === 0) {
+    return null;
   }
 
   // Calculate averages
@@ -327,12 +340,13 @@ export function formatComparisonTable(vaults: NormalizedVault[]): string {
 
   const rows = vaults
     .map((v) => {
-      const tvlFormatted = `$${(v.tvl / 1000000).toFixed(2)}M`;
+      // Use safeToFixed to handle NaN/undefined values gracefully
+      const tvlFormatted = `$${safeToFixed(safeDivide(v.tvl, 1000000, 0), 2, '0.00')}M`;
       // APR values from API are already percentages (e.g., 4.12 means 4.12%)
-      const aprFormatted = `${v.apr.toFixed(2)}%`;
-      const scoreFormatted = v.overallScore.toFixed(1);
-      const tvlDeltaFormatted = `${v.tvlDelta > 0 ? '+' : ''}${v.tvlDelta.toFixed(1)}%`;
-      const aprDeltaFormatted = `${v.aprDelta > 0 ? '+' : ''}${v.aprDelta.toFixed(1)}%`;
+      const aprFormatted = `${safeToFixed(v.apr, 2, '0.00')}%`;
+      const scoreFormatted = safeToFixed(v.overallScore, 1, '0.0');
+      const tvlDeltaFormatted = `${v.tvlDelta > 0 ? '+' : ''}${safeToFixed(v.tvlDelta, 1, '0.0')}%`;
+      const aprDeltaFormatted = `${v.aprDelta > 0 ? '+' : ''}${safeToFixed(v.aprDelta, 1, '0.0')}%`;
 
       let row = `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${aprFormatted} |`;
 
@@ -345,7 +359,7 @@ export function formatComparisonTable(vaults: NormalizedVault[]): string {
       if (hasRiskData) {
         const riskFormatted =
           v.riskScore !== undefined
-            ? `${riskEmoji(v.riskLevel)} ${(v.riskScore * 100).toFixed(1)}%`
+            ? `${riskEmoji(v.riskLevel)} ${safeToFixed(v.riskScore * 100, 1, '0.0')}%`
             : 'N/A';
         row += ` ${riskFormatted} |`;
       }
@@ -355,7 +369,7 @@ export function formatComparisonTable(vaults: NormalizedVault[]): string {
       if (hasRiskData) {
         const riskDeltaFormatted =
           v.riskDelta !== undefined
-            ? `${v.riskDelta > 0 ? '+' : ''}${v.riskDelta.toFixed(1)}%`
+            ? `${v.riskDelta > 0 ? '+' : ''}${safeToFixed(v.riskDelta, 1, '0.0')}%`
             : 'N/A';
         row += ` ${riskDeltaFormatted} |`;
       }

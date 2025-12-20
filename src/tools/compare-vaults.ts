@@ -31,7 +31,7 @@ import {
   VaultCompositionFullResponse,
   ProtocolCompositionData,
 } from '../graphql/fragments/index.js';
-import { COMPARE_VAULTS_QUERY } from '../graphql/queries/index.js';
+import { COMPARE_VAULTS_QUERY, VAULT_FIRST_TRANSACTION_QUERY } from '../graphql/queries/index.js';
 import { SINGLE_VAULT_COMPOSITION_QUERY } from '../graphql/queries/portfolio.queries.js';
 import {
   VaultComparisonData,
@@ -70,6 +70,18 @@ interface CompareVaultsVariables {
  */
 interface SingleVaultCompositionResponse {
   vaultComposition: VaultCompositionFullResponse | null;
+}
+
+/**
+ * Response type for vault first transaction query
+ * Used to determine actual vault creation date
+ */
+interface FirstTransactionResponse {
+  transactions: {
+    items: Array<{
+      timestamp: string;
+    }>;
+  };
 }
 
 /**
@@ -122,11 +134,67 @@ interface CompareVaultsOutput {
 }
 
 /**
+ * Fetch vault ages from first transaction timestamps
+ *
+ * Queries the first transaction for each vault to determine actual creation date.
+ * Returns a map of vault address (lowercase) to age in days.
+ *
+ * @param vaultAddresses - List of vault addresses to fetch ages for
+ * @param graphqlClient - GraphQL client for making requests
+ * @returns Map of vault address to age in days
+ */
+async function fetchVaultAges(
+  vaultAddresses: string[],
+  graphqlClient: { request: <T>(query: string, variables: Record<string, unknown>) => Promise<T> }
+): Promise<Map<string, number>> {
+  const vaultAgeMap = new Map<string, number>();
+  const now = Math.floor(Date.now() / 1000);
+
+  // Fetch first transaction for each vault in parallel
+  const agePromises = vaultAddresses.map(async (address) => {
+    try {
+      const response = await graphqlClient.request<FirstTransactionResponse>(
+        VAULT_FIRST_TRANSACTION_QUERY,
+        { vaultAddress: address }
+      );
+
+      const firstTransaction = response.transactions?.items?.[0];
+      if (firstTransaction?.timestamp) {
+        const createdAt = parseInt(firstTransaction.timestamp, 10);
+        const ageInDays = Math.floor((now - createdAt) / (24 * 60 * 60));
+        return { address: address.toLowerCase(), ageInDays };
+      }
+      return { address: address.toLowerCase(), ageInDays: undefined };
+    } catch {
+      // If fetch fails, return undefined age
+      return { address: address.toLowerCase(), ageInDays: undefined };
+    }
+  });
+
+  const results = await Promise.all(agePromises);
+  for (const result of results) {
+    if (result.ageInDays !== undefined) {
+      vaultAgeMap.set(result.address, result.ageInDays);
+    }
+  }
+
+  return vaultAgeMap;
+}
+
+/**
  * Convert VaultData to VaultComparisonData for metrics calculation
  * Now includes 12-factor risk analysis
  * chainId is extracted from vault.chain.id for cross-chain support
+ *
+ * @param vault - Vault data from GraphQL
+ * @param allVaults - All vaults for concentration risk calculation
+ * @param vaultAgeMap - Optional map of vault address to age in days (from first transaction)
  */
-function convertToComparisonData(vault: VaultData, allVaults: VaultData[]): VaultComparisonData {
+function convertToComparisonData(
+  vault: VaultData,
+  allVaults: VaultData[],
+  vaultAgeMap?: Map<string, number>
+): VaultComparisonData {
   // Extract chainId from vault data for cross-chain support
   const chainId = vault.chain?.id ?? 0;
   // Extract APR from nested state structure with proper null checking
@@ -145,9 +213,11 @@ function convertToComparisonData(vault: VaultData, allVaults: VaultData[]): Vaul
     const vaultTVL = typeof tvl === 'number' ? tvl : 0;
     const totalProtocolTVL = allVaults.reduce((sum, v) => sum + (v.state?.totalAssetsUsd || 0), 0);
 
-    // Age in days - default to 180 days (6 months) as we don't have creation timestamp
-    // This is a reasonable middle-ground assumption for risk calculation
-    const ageInDays = 180;
+    // Get actual age from first transaction timestamp, or use undefined if not available
+    // When age is unknown, we use a conservative default that doesn't overstate maturity
+    const actualAge = vaultAgeMap?.get(vault.address.toLowerCase());
+    // Default to 90 days (conservative) when actual age is unknown - this flags as "new" risk
+    const ageInDays = actualAge ?? 90;
 
     // Curator data (simplified - vault count = 1 for now, as we don't have curator history here)
     const curatorVaultCount = vault.curators?.length || 1;
@@ -261,16 +331,14 @@ function convertToComparisonData(vault: VaultData, allVaults: VaultData[]): Vaul
 /**
  * Build markdown output from comparison data
  * Supports displaying multiple chains for cross-chain comparisons
+ * Handles null summary gracefully with informative message
  */
 function buildComparisonMarkdown(
-  summary: ComparisonSummary,
+  summary: ComparisonSummary | null,
   table: string,
   chainIds: number[],
   cached: boolean = false
 ): string {
-  const hasRiskData =
-    summary.averageRisk !== undefined && summary.safestVault && summary.riskiestVault;
-
   let markdown = cached
     ? `# Vault Comparison Results (Cached)\n\n`
     : `# Vault Comparison Results\n\n`;
@@ -281,6 +349,22 @@ function buildComparisonMarkdown(
   } else {
     markdown += `**Chains**: ${chainIds.join(', ')} (Cross-chain comparison)\n`;
   }
+
+  // Handle empty/null summary gracefully
+  if (!summary) {
+    markdown += `**Vaults Analyzed**: 0\n\n`;
+    markdown += `## No Vaults Found\n\n`;
+    markdown += `No vaults were found matching the specified addresses on the requested chains.\n\n`;
+    markdown += `**Suggestions**:\n`;
+    markdown += `- Verify the vault addresses are correct\n`;
+    markdown += `- Check that the vaults exist on the specified chain(s)\n`;
+    markdown += `- Try using \`search_vaults\` to find valid vault addresses\n`;
+    return markdown;
+  }
+
+  const hasRiskData =
+    summary.averageRisk !== undefined && summary.safestVault && summary.riskiestVault;
+
   markdown += `**Vaults Analyzed**: ${summary.totalVaults}\n\n`;
 
   markdown += `## Summary Statistics\n\n`;
@@ -500,16 +584,23 @@ function convertToStructuredVaultData(
 
 /**
  * Transform raw GraphQL response into comparison markdown output
- * Uses closure to capture input values
+ * Uses closure to capture input values and vault age data
+ *
+ * @param input - Compare vaults input parameters
+ * @param vaultAgeMap - Optional map of vault address to age in days
  */
-function createTransformComparisonData(input: CompareVaultsInput) {
+function createTransformComparisonData(
+  input: CompareVaultsInput,
+  vaultAgeMap?: Map<string, number>
+) {
   return (data: CompareVaultsResponse): CompareVaultsOutput => {
     // Normalize chainIds for multi-chain support
     const chainIds = normalizeChainIds(input);
 
     // Convert to comparison data - chainId is now extracted from vault.chain.id
+    // Pass vault age map for actual age-based risk calculation
     const comparisonData: VaultComparisonData[] = data.vaults.items.map((vault) =>
-      convertToComparisonData(vault, data.vaults.items)
+      convertToComparisonData(vault, data.vaults.items, vaultAgeMap)
     );
 
     // Normalize and rank vaults
@@ -572,8 +663,11 @@ export function createExecuteCompareVaults(
 
     // If ALL vaults are cached, return immediately without GraphQL query
     if (allCached && cachedVaults.length === input.vaultAddresses.length) {
+      // Fetch vault ages in parallel for accurate age-based risk calculation
+      const vaultAgeMap = await fetchVaultAges(input.vaultAddresses, container.graphqlClient);
+
       const comparisonData: VaultComparisonData[] = cachedVaults.map((vault) =>
-        convertToComparisonData(vault, cachedVaults)
+        convertToComparisonData(vault, cachedVaults, vaultAgeMap)
       );
       const normalizedVaults = normalizeAndRankVaults(comparisonData);
       const summary = generateComparisonSummary(comparisonData);
@@ -633,7 +727,10 @@ ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
       return createSuccessResponse(responseText);
     }
 
-    // Not all vaults cached - execute normal GraphQL query for all vaults
+    // Not all vaults cached - fetch vault ages first for accurate risk calculation
+    // This runs in parallel with the vault data query for efficiency
+    const vaultAgeMap = await fetchVaultAges(input.vaultAddresses, container.graphqlClient);
+
     const executor = executeToolWithCache<
       CompareVaultsInput,
       CompareVaultsResponse,
@@ -676,7 +773,7 @@ ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
           isError: true,
         };
       },
-      transformResult: createTransformComparisonData(input),
+      transformResult: createTransformComparisonData(input, vaultAgeMap),
       toolName: 'compare_vaults',
     });
 

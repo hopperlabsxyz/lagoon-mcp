@@ -80,3 +80,34 @@ export const COMPARE_VAULTS_QUERY = `
   }
   ${VAULT_FRAGMENT}
 `;
+
+/**
+ * GraphQL query for vault creation timestamp
+ *
+ * Fetches the first transaction for a vault to determine its creation date.
+ * Uses TotalAssetsUpdated or any transaction type, ordered by timestamp ascending.
+ * Used by: compare_vaults tool for actual vault age calculation
+ *
+ * Usage:
+ * ```typescript
+ * const data = await graphqlClient.request<{ transactions: { items: [...] } }>(
+ *   VAULT_FIRST_TRANSACTION_QUERY,
+ *   { vaultAddress: '0x...' }
+ * );
+ * const createdAt = data.transactions.items[0]?.timestamp;
+ * ```
+ */
+export const VAULT_FIRST_TRANSACTION_QUERY = `
+  query VaultFirstTransaction($vaultAddress: String!) {
+    transactions(
+      where: { vault_in: [$vaultAddress] },
+      orderBy: timestamp,
+      orderDirection: asc,
+      first: 1
+    ) {
+      items {
+        timestamp
+      }
+    }
+  }
+`;

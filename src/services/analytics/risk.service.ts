@@ -487,6 +487,16 @@ export class RiskService extends BaseService {
 `;
       }
 
+      // Data quality section - extracted for TypeScript compatibility
+      const dataQualitySection =
+        breakdown.dataQuality !== 'high'
+          ? `
+### ⚠️ Data Quality: ${breakdown.dataQuality === 'medium' ? 'Medium' : 'Low'}
+
+${breakdown.dataQualityNotes.map((note: string) => `- ${note}`).join('\n')}
+`
+          : '';
+
       return `
 ## Risk Analysis Dashboard
 
@@ -518,7 +528,7 @@ ${comparativeSection}
 | Capacity Utilization | ${scoreToPercentage(breakdown.capacityUtilizationRisk)} | ${scoreToEmoji(breakdown.capacityUtilizationRisk)} |
 | Protocol Diversification | ${scoreToPercentage(breakdown.protocolDiversificationRisk)} | ${scoreToEmoji(breakdown.protocolDiversificationRisk)} |
 | Top Protocol Concentration | ${scoreToPercentage(breakdown.topProtocolConcentrationRisk)} | ${scoreToEmoji(breakdown.topProtocolConcentrationRisk)} |
-`;
+${dataQualitySection}`;
     }
 
     // Detailed format: Full breakdown with explanations
@@ -548,6 +558,24 @@ ${outlierNote}
 
 `;
     }
+
+    // Data quality section for detailed format
+    const detailedDataQualitySection =
+      breakdown.dataQuality !== 'high'
+        ? `
+---
+
+## ⚠️ Data Quality Notice
+
+**Quality Level**: ${breakdown.dataQuality === 'medium' ? 'Medium' : 'Low'}
+
+The following data limitations affected this analysis:
+
+${breakdown.dataQualityNotes.map((note: string) => `- ${note}`).join('\n')}
+
+*Risk scores for factors with limited data default to 50% (medium risk) to indicate uncertainty.*
+`
+        : '';
 
     return `
 ${comparativeDetailedSection}## Risk Analysis Breakdown
@@ -629,7 +657,7 @@ ${comparativeDetailedSection}## Risk Analysis Breakdown
 **Curator**: Curator reputation based on experience (vault count), track record, and professional presence.
 
 **Fees**: Impact of management and performance fees on returns. Higher fees reduce net investor returns.
-`;
+${detailedDataQualitySection}`;
   }
 
   /**

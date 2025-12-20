@@ -161,6 +161,13 @@ export function predictYield(
     managementFee: number;
     performanceFee: number;
     performanceFeeActive: boolean;
+    /**
+     * Actual profit margin calculated from historical period summaries.
+     * Used to calculate accurate performance fee impact.
+     * If not provided and performanceFeeActive is true, fee-adjusted predictions
+     * will be omitted entirely (no placeholder assumptions).
+     */
+    actualProfitMargin?: number;
   }
 ): YieldPrediction {
   if (historicalData.length === 0) {
@@ -247,43 +254,61 @@ export function predictYield(
     | undefined;
 
   if (feeParams) {
-    // Calculate total annual fee drag
-    const performanceFeeDrag = feeParams.performanceFeeActive
-      ? feeParams.performanceFee * 0.1 // Assume 10% average profit for performance fee impact
-      : 0;
-    const totalAnnualFeeDrag = feeParams.managementFee + performanceFeeDrag;
+    // Calculate performance fee drag only if we have actual profit margin data
+    // Without actual profit data, we cannot accurately estimate performance fee impact
+    let performanceFeeDrag: number;
 
-    // Calculate fee-adjusted APR (gross APR - fees)
-    feeAdjustedAPR = Math.max(0, predictedAPR - totalAnnualFeeDrag);
+    if (feeParams.performanceFeeActive) {
+      if (feeParams.actualProfitMargin !== undefined) {
+        // Use actual profit margin for accurate performance fee calculation
+        performanceFeeDrag = feeParams.performanceFee * feeParams.actualProfitMargin;
+      } else {
+        // No actual profit data available - cannot calculate fee-adjusted predictions
+        // Omit fee-adjusted predictions entirely rather than using placeholder assumptions
+        performanceFeeDrag = -1; // Sentinel value to indicate unavailable
+      }
+    } else {
+      performanceFeeDrag = 0; // Performance fee not active
+    }
 
-    // Calculate fee-adjusted projected returns
-    feeAdjustedReturns = projectedReturns.map((p) => {
-      const feeAdjustment =
-        (((totalAnnualFeeDrag / 100) *
-          (p.timeframe === '7d'
-            ? 7
-            : p.timeframe === '30d'
-              ? 30
-              : p.timeframe === '90d'
-                ? 90
-                : 365)) /
-          365) *
-        100;
+    // Only calculate fee-adjusted predictions if we have accurate data
+    if (performanceFeeDrag >= 0) {
+      const totalAnnualFeeDrag = feeParams.managementFee + performanceFeeDrag;
 
-      return {
-        timeframe: p.timeframe,
-        expectedReturn: Math.max(0, p.expectedReturn - feeAdjustment),
-        minReturn: Math.max(0, p.minReturn - feeAdjustment),
-        maxReturn: Math.max(0, p.maxReturn - feeAdjustment),
+      // Calculate fee-adjusted APR (gross APR - fees)
+      feeAdjustedAPR = Math.max(0, predictedAPR - totalAnnualFeeDrag);
+
+      // Calculate fee-adjusted projected returns
+      feeAdjustedReturns = projectedReturns.map((p) => {
+        const feeAdjustment =
+          (((totalAnnualFeeDrag / 100) *
+            (p.timeframe === '7d'
+              ? 7
+              : p.timeframe === '30d'
+                ? 30
+                : p.timeframe === '90d'
+                  ? 90
+                  : 365)) /
+            365) *
+          100;
+
+        return {
+          timeframe: p.timeframe,
+          expectedReturn: Math.max(0, p.expectedReturn - feeAdjustment),
+          minReturn: Math.max(0, p.minReturn - feeAdjustment),
+          maxReturn: Math.max(0, p.maxReturn - feeAdjustment),
+        };
+      });
+
+      feeImpact = {
+        managementFee: feeParams.managementFee,
+        performanceFee: feeParams.performanceFee,
+        totalAnnualFeeDrag,
+        performanceFeeActive: feeParams.performanceFeeActive,
       };
-    });
-
-    feeImpact = {
-      managementFee: feeParams.managementFee,
-      performanceFee: feeParams.performanceFee,
-      totalAnnualFeeDrag,
-      performanceFeeActive: feeParams.performanceFeeActive,
-    };
+    }
+    // If performanceFeeDrag is -1 (sentinel), feeAdjustedAPR, feeAdjustedReturns,
+    // and feeImpact remain undefined - indicating data unavailable
   }
 
   // Generate insights

@@ -10,6 +10,7 @@ export {
   GET_VAULT_DATA_QUERY,
   GET_VAULT_FOR_APR_QUERY,
   COMPARE_VAULTS_QUERY,
+  VAULT_FIRST_TRANSACTION_QUERY,
 } from './vault.queries.js';
 
 // Transaction Queries

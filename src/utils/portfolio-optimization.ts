@@ -6,6 +6,7 @@
  */
 
 import { RiskScoreBreakdown } from './risk-scoring.js';
+import { safeDivide } from './safe-math.js';
 
 /**
  * Portfolio position with current and target allocations
@@ -63,13 +64,23 @@ export function calculateEqualWeight(
   vaults: VaultForOptimization[],
   totalValueUsd: number
 ): PortfolioPosition[] {
+  // Guard: empty array
+  if (vaults.length === 0) {
+    return [];
+  }
+
   const targetAllocation = 100 / vaults.length;
 
   return vaults.map((vault) => {
-    const currentAllocation = (vault.currentValueUsd / totalValueUsd) * 100;
+    const currentAllocation = safeDivide(vault.currentValueUsd, totalValueUsd, 0) * 100;
     const targetValueUsd = (targetAllocation / 100) * totalValueUsd;
     const rebalanceAmount = targetValueUsd - vault.currentValueUsd;
-    const rebalancePercentage = (rebalanceAmount / vault.currentValueUsd) * 100;
+    // Guard: avoid division by zero when currentValueUsd is 0
+    const rebalancePercentage = safeDivide(
+      rebalanceAmount,
+      vault.currentValueUsd,
+      rebalanceAmount > 0 ? 100 : rebalanceAmount < 0 ? -100 : 0
+    );
 
     return {
       vaultAddress: vault.address,
@@ -94,16 +105,33 @@ export function calculateRiskParity(
   vaults: VaultForOptimization[],
   totalValueUsd: number
 ): PortfolioPosition[] {
+  // Guard: empty array
+  if (vaults.length === 0) {
+    return [];
+  }
+
   // Calculate inverse risk scores (lower risk = higher weight)
-  const inverseRisks = vaults.map((v) => 1 / (v.riskScore + 0.01)); // Add small epsilon to avoid division by zero
+  const RISK_EPSILON = 0.01;
+  const inverseRisks = vaults.map((v) => safeDivide(1, v.riskScore + RISK_EPSILON, 1));
   const totalInverseRisk = inverseRisks.reduce((sum, r) => sum + r, 0);
 
+  // Guard: if all inverse risks sum to 0, fall back to equal weight
+  if (totalInverseRisk === 0) {
+    return calculateEqualWeight(vaults, totalValueUsd);
+  }
+
   return vaults.map((vault, index) => {
-    const targetAllocation = (inverseRisks[index] / totalInverseRisk) * 100;
-    const currentAllocation = (vault.currentValueUsd / totalValueUsd) * 100;
+    const targetAllocation =
+      safeDivide(inverseRisks[index], totalInverseRisk, 100 / vaults.length) * 100;
+    const currentAllocation = safeDivide(vault.currentValueUsd, totalValueUsd, 0) * 100;
     const targetValueUsd = (targetAllocation / 100) * totalValueUsd;
     const rebalanceAmount = targetValueUsd - vault.currentValueUsd;
-    const rebalancePercentage = (rebalanceAmount / vault.currentValueUsd) * 100;
+    // Guard: avoid division by zero when currentValueUsd is 0
+    const rebalancePercentage = safeDivide(
+      rebalanceAmount,
+      vault.currentValueUsd,
+      rebalanceAmount > 0 ? 100 : rebalanceAmount < 0 ? -100 : 0
+    );
 
     return {
       vaultAddress: vault.address,
@@ -129,10 +157,16 @@ export function calculateMaxSharpe(
   totalValueUsd: number,
   riskFreeRate: number = 2.0 // Default 2% risk-free rate
 ): PortfolioPosition[] {
+  // Guard: empty array
+  if (vaults.length === 0) {
+    return [];
+  }
+
   // Calculate Sharpe ratios for each vault
+  const VOLATILITY_EPSILON = 0.01;
   const sharpeRatios = vaults.map((v) => {
     const excessReturn = v.expectedApr - riskFreeRate;
-    return excessReturn / (v.volatility + 0.01); // Add epsilon to avoid division by zero
+    return safeDivide(excessReturn, v.volatility + VOLATILITY_EPSILON, 0);
   });
 
   // Normalize Sharpe ratios to get weights (only positive Sharpe ratios)
@@ -145,12 +179,17 @@ export function calculateMaxSharpe(
   }
 
   return vaults.map((vault, index) => {
-    const targetAllocation = (positiveSharpes[index] / totalSharpe) * 100;
-    const currentAllocation = (vault.currentValueUsd / totalValueUsd) * 100;
+    const targetAllocation =
+      safeDivide(positiveSharpes[index], totalSharpe, 100 / vaults.length) * 100;
+    const currentAllocation = safeDivide(vault.currentValueUsd, totalValueUsd, 0) * 100;
     const targetValueUsd = (targetAllocation / 100) * totalValueUsd;
     const rebalanceAmount = targetValueUsd - vault.currentValueUsd;
-    const rebalancePercentage =
-      vault.currentValueUsd > 0 ? (rebalanceAmount / vault.currentValueUsd) * 100 : 0;
+    // Guard: avoid division by zero when currentValueUsd is 0
+    const rebalancePercentage = safeDivide(
+      rebalanceAmount,
+      vault.currentValueUsd,
+      rebalanceAmount > 0 ? 100 : rebalanceAmount < 0 ? -100 : 0
+    );
 
     return {
       vaultAddress: vault.address,
@@ -175,17 +214,35 @@ export function calculateMinVariance(
   vaults: VaultForOptimization[],
   totalValueUsd: number
 ): PortfolioPosition[] {
+  // Guard: empty array
+  if (vaults.length === 0) {
+    return [];
+  }
+
   // Allocate based on inverse variance (lower volatility = higher allocation)
-  const inverseVariances = vaults.map((v) => 1 / (v.volatility * v.volatility + 0.0001));
+  const VARIANCE_EPSILON = 0.0001;
+  const inverseVariances = vaults.map((v) =>
+    safeDivide(1, v.volatility * v.volatility + VARIANCE_EPSILON, 1)
+  );
   const totalInverseVariance = inverseVariances.reduce((sum, v) => sum + v, 0);
 
+  // Guard: if all inverse variances sum to 0, fall back to equal weight
+  if (totalInverseVariance === 0) {
+    return calculateEqualWeight(vaults, totalValueUsd);
+  }
+
   return vaults.map((vault, index) => {
-    const targetAllocation = (inverseVariances[index] / totalInverseVariance) * 100;
-    const currentAllocation = (vault.currentValueUsd / totalValueUsd) * 100;
+    const targetAllocation =
+      safeDivide(inverseVariances[index], totalInverseVariance, 100 / vaults.length) * 100;
+    const currentAllocation = safeDivide(vault.currentValueUsd, totalValueUsd, 0) * 100;
     const targetValueUsd = (targetAllocation / 100) * totalValueUsd;
     const rebalanceAmount = targetValueUsd - vault.currentValueUsd;
-    const rebalancePercentage =
-      vault.currentValueUsd > 0 ? (rebalanceAmount / vault.currentValueUsd) * 100 : 0;
+    // Guard: avoid division by zero when currentValueUsd is 0
+    const rebalancePercentage = safeDivide(
+      rebalanceAmount,
+      vault.currentValueUsd,
+      rebalanceAmount > 0 ? 100 : rebalanceAmount < 0 ? -100 : 0
+    );
 
     return {
       vaultAddress: vault.address,
@@ -215,22 +272,38 @@ export function calculatePortfolioMetrics(
   sharpeRatio: number;
   diversificationScore: number;
 } {
+  // Guard: empty arrays
+  if (positions.length === 0 || vaults.length === 0) {
+    return {
+      expectedReturn: 0,
+      portfolioRisk: 0,
+      sharpeRatio: 0,
+      diversificationScore: 0,
+    };
+  }
+
   // Calculate expected return (weighted average of vault APRs)
   const expectedReturn = vaults.reduce((sum, vault, index) => {
-    const weight = positions[index].targetAllocation / 100;
+    // Guard: check positions array bounds
+    const position = positions[index];
+    if (!position) return sum;
+    const weight = position.targetAllocation / 100;
     return sum + vault.expectedApr * weight;
   }, 0);
 
   // Calculate portfolio risk (simplified - weighted average volatility)
   // Note: This is a simplification; true portfolio variance requires correlation matrix
   const portfolioRisk = vaults.reduce((sum, vault, index) => {
-    const weight = positions[index].targetAllocation / 100;
+    // Guard: check positions array bounds
+    const position = positions[index];
+    if (!position) return sum;
+    const weight = position.targetAllocation / 100;
     return sum + vault.volatility * weight;
   }, 0);
 
   // Calculate Sharpe ratio
   const excessReturn = expectedReturn - riskFreeRate;
-  const sharpeRatio = portfolioRisk > 0 ? excessReturn / portfolioRisk : 0;
+  const sharpeRatio = safeDivide(excessReturn, portfolioRisk, 0);
 
   // Calculate diversification score (1 - Herfindahl index)
   const herfindahl = positions.reduce((sum, pos) => {
