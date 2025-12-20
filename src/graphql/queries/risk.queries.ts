@@ -120,7 +120,7 @@ export const RISK_ANALYSIS_QUERY = `
  */
 export const BATCH_RISK_ANALYSIS_QUERY = `
   query BatchRiskAnalysis(
-    $vaultAddresses: [Address!]!,
+    $vaultAddresses: [String!]!,
     $chainId: Int!
   ) {
     # Get all requested vaults in single query
@@ -153,7 +153,7 @@ export const BATCH_RISK_ANALYSIS_QUERY = `
  */
 export const CROSS_CHAIN_VAULTS_QUERY = `
   query CrossChainVaults(
-    $vaultAddresses: [Address!]!,
+    $vaultAddresses: [String!]!,
     $chainId: Int!
   ) {
     vaults(where: { address_in: $vaultAddresses, chainId_eq: $chainId }) {

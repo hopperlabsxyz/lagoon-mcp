@@ -190,7 +190,7 @@ export const SINGLE_VAULT_COMPOSITION_QUERY = `
  * @deprecated Use SINGLE_VAULT_OPTIMIZATION_QUERY with Promise.all instead
  */
 export const PORTFOLIO_OPTIMIZATION_QUERY = `
-  query PortfolioOptimization($vaultAddresses: [Address!]!, $chainId: Int!) {
+  query PortfolioOptimization($vaultAddresses: [String!]!, $chainId: Int!) {
     vaults(where: { address_in: $vaultAddresses, chainId_eq: $chainId }) {
       items {
         ...VaultFragment

@@ -50,7 +50,7 @@ export const EXPORT_VAULTS_QUERY = `
  * ```
  */
 export const EXPORT_TRANSACTIONS_QUERY = `
-  query ExportTransactions($vault_in: [Address!]!, $chainId: Int!, $first: Int!) {
+  query ExportTransactions($vault_in: [String!]!, $chainId: Int!, $first: Int!) {
     transactions(
       where: { vault_in: $vault_in, chainId_eq: $chainId },
       orderBy: timestamp,
@@ -139,7 +139,7 @@ export const EXPORT_TRANSACTIONS_QUERY = `
  * ```
  */
 export const EXPORT_PRICE_HISTORY_QUERY = `
-  query ExportPriceHistory($vault_in: [Address!]!, $first: Int!) {
+  query ExportPriceHistory($vault_in: [String!]!, $first: Int!) {
     transactions(
       where: { vault_in: $vault_in, type_in: [TotalAssetsUpdated] },
       orderBy: timestamp,
@@ -185,7 +185,7 @@ export const EXPORT_PRICE_HISTORY_QUERY = `
  * ```
  */
 export const EXPORT_PERFORMANCE_QUERY = `
-  query ExportPerformance($vault_in: [Address!]!, $first: Int!) {
+  query ExportPerformance($vault_in: [String!]!, $first: Int!) {
     transactions(
       where: { vault_in: $vault_in, type_in: [TotalAssetsUpdated] },
       orderBy: timestamp,
