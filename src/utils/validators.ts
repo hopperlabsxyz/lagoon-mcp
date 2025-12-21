@@ -11,12 +11,14 @@ import { z } from 'zod';
  */
 
 // Ethereum address (0x + 40 hex characters)
+// Normalized to lowercase for consistent GraphQL queries (address_in filter is case-sensitive)
 export const ethereumAddressSchema = z
   .string()
   .regex(
     /^0x[a-fA-F0-9]{40}$/,
     'Invalid Ethereum address format (must be 0x followed by 40 hex characters)'
-  );
+  )
+  .transform((addr) => addr.toLowerCase());
 
 // Chain ID (positive integer)
 export const chainIdSchema = z.number().int().positive('Chain ID must be a positive integer');
