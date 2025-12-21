@@ -440,9 +440,10 @@ describe('analyze_risk Tool', () => {
       expect(result1.isError).toBe(false);
       expect(result2.isError).toBe(false);
 
-      // With mocked cache always returning null, GraphQL is called twice
-      // In real implementation with actual cache, it would be called once
-      expect(vi.mocked(graphqlClient.request)).toHaveBeenCalledTimes(2);
+      // With mocked cache always returning null, GraphQL is called 4 times:
+      // 2 calls per vault (RISK_ANALYSIS_QUERY + GET_VAULT_COMPOSITION_QUERY) x 2 calls
+      // In real implementation with actual cache, it would be called 2 times (once per vault)
+      expect(vi.mocked(graphqlClient.request)).toHaveBeenCalledTimes(4);
     });
 
     it('should use separate cache keys for different vaults', async () => {
@@ -467,8 +468,8 @@ describe('analyze_risk Tool', () => {
         chainId: 1,
       });
 
-      // Should call GraphQL twice (different cache keys)
-      expect(vi.mocked(graphqlClient.request)).toHaveBeenCalledTimes(2);
+      // Should call GraphQL 4 times: 2 calls per vault (RISK_ANALYSIS_QUERY + GET_VAULT_COMPOSITION_QUERY) x 2 vaults
+      expect(vi.mocked(graphqlClient.request)).toHaveBeenCalledTimes(4);
     });
   });
 

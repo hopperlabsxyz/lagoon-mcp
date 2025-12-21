@@ -147,6 +147,12 @@ export interface VaultData {
     aboutDescription: string | null;
   } | null;
 
+  // Bundle URLs for composition (Octav/Debank)
+  bundles: {
+    octav: string | null;
+    debank: string | null;
+  } | null;
+
   // DeFi integrations
   defiIntegrations: Array<{
     name: string;
@@ -263,6 +269,10 @@ export const VAULT_FRAGMENT = `
       link
       logoUrl
       type
+    }
+    bundles {
+      octav
+      debank
     }
   }
   ${ASSET_INFO_FRAGMENT}

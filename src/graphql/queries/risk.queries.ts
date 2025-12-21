@@ -86,10 +86,6 @@ export const RISK_ANALYSIS_QUERY = `
         }
       }
     }
-
-    # Get composition data for cross-chain diversification risk
-    # Note: Backend API changed - uses walletAddress and returns JSONObject with chains
-    composition: vaultComposition(walletAddress: $vaultAddress)
   }
   ${VAULT_FRAGMENT}
 `;

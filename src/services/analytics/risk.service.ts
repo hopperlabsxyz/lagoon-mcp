@@ -15,6 +15,7 @@ import {
   RISK_ANALYSIS_QUERY,
   BATCH_RISK_ANALYSIS_QUERY,
   CROSS_CHAIN_VAULTS_QUERY,
+  GET_VAULT_COMPOSITION_QUERY,
 } from '../../graphql/queries/index.js';
 import { analyzeRisk, RiskScoreBreakdown } from '../../utils/risk-scoring.js';
 
@@ -103,21 +104,32 @@ export interface BatchRiskAnalysisResult {
 export class RiskService extends BaseService {
   /**
    * Fetch risk analysis data from GraphQL
+   * Composition is fetched separately using correct addresses from bundles.octav
    */
   async fetchRiskData(vaultAddress: string, chainId: number): Promise<RiskAnalysisData | null> {
-    const data = await this.client.request<RiskAnalysisData>(RISK_ANALYSIS_QUERY, {
-      vaultAddress,
-      chainId,
-      curatorId: '', // Will be extracted from vault.curators after fetch
-      where: {
-        vault_in: [vaultAddress],
-        type_in: ['TotalAssetsUpdated'],
-      },
-      orderBy: 'timestamp',
-      orderDirection: 'asc',
-    });
+    // Fetch main risk data (without composition - it's fetched separately)
+    const data = await this.client.request<Omit<RiskAnalysisData, 'composition'>>(
+      RISK_ANALYSIS_QUERY,
+      {
+        vaultAddress,
+        chainId,
+        curatorId: '', // Will be extracted from vault.curators after fetch
+        where: {
+          vault_in: [vaultAddress],
+          type_in: ['TotalAssetsUpdated'],
+        },
+        orderBy: 'timestamp',
+        orderDirection: 'asc',
+      }
+    );
 
-    return data.vault ? data : null;
+    if (!data.vault) return null;
+
+    // Fetch composition separately using correct addresses from bundles.octav
+    // This uses graceful degradation - if composition fails, we continue without it
+    const composition = await this.fetchCompositionForVault(data.vault);
+
+    return { ...data, composition };
   }
 
   /**
@@ -295,6 +307,115 @@ export class RiskService extends BaseService {
       capacityData,
       compositionData,
     });
+  }
+
+  /**
+   * Extract addresses from Octav bundle URL
+   * Example: https://pro.octav.fi/?addresses=0x123,0x456
+   */
+  private extractAddressesFromOctavUrl(url: string): string[] {
+    try {
+      const urlObj = new URL(url);
+      const addresses = urlObj.searchParams.get('addresses');
+      if (!addresses) return [];
+      return addresses
+        .split(',')
+        .map((addr) => addr.trim())
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Fetch composition for a single address
+   */
+  private async fetchSingleComposition(
+    address: string
+  ): Promise<VaultCompositionFullResponse | null> {
+    try {
+      const result = await this.client.request<{
+        vaultComposition: VaultCompositionFullResponse | null;
+      }>(GET_VAULT_COMPOSITION_QUERY, { walletAddress: address });
+      return result.vaultComposition;
+    } catch (error) {
+      // Graceful degradation - log warning and continue without composition
+      console.warn(`Failed to fetch composition for ${address}: ${String(error)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch composition using correct addresses from bundles.octav URL
+   * - Parses octav URL to get addresses
+   * - Fetches composition for each address
+   * - Merges if multiple addresses (bundle)
+   */
+  private async fetchCompositionForVault(
+    vault: VaultData
+  ): Promise<VaultCompositionFullResponse | null> {
+    // Get addresses from bundles.octav URL if available
+    let addresses: string[] = [];
+    if (vault.bundles?.octav) {
+      addresses = this.extractAddressesFromOctavUrl(vault.bundles.octav);
+    }
+
+    // Fallback to vault address if no bundle addresses
+    if (addresses.length === 0) {
+      addresses = [vault.address];
+    }
+
+    // Single address - direct fetch
+    if (addresses.length === 1) {
+      return this.fetchSingleComposition(addresses[0]);
+    }
+
+    // Multiple addresses (bundle) - fetch all and merge
+    const compositions = await Promise.all(
+      addresses.map((addr) => this.fetchSingleComposition(addr))
+    );
+
+    // Filter out nulls and merge
+    const validCompositions = compositions.filter(
+      (c): c is VaultCompositionFullResponse => c !== null
+    );
+    if (validCompositions.length === 0) return null;
+    if (validCompositions.length === 1) return validCompositions[0];
+
+    return this.mergeCompositions(validCompositions);
+  }
+
+  /**
+   * Merge multiple compositions (for bundle vaults)
+   * Aggregates assetByProtocols values across all compositions
+   */
+  private mergeCompositions(
+    compositions: VaultCompositionFullResponse[]
+  ): VaultCompositionFullResponse {
+    // Aggregate assetByProtocols values
+    const protocolMap = new Map<string, ProtocolCompositionData>();
+    let totalNetworth = 0;
+
+    for (const comp of compositions) {
+      totalNetworth += parseFloat(comp.networth || '0');
+      for (const [key, protocol] of Object.entries(comp.assetByProtocols || {})) {
+        const existing = protocolMap.get(key);
+        if (existing) {
+          // Add values together
+          existing.value = String(parseFloat(existing.value) + parseFloat(protocol.value));
+        } else {
+          // Clone the protocol data
+          protocolMap.set(key, { ...protocol });
+        }
+      }
+    }
+
+    return {
+      address: compositions[0].address,
+      networth: String(totalNetworth),
+      assetByProtocols: Object.fromEntries(protocolMap),
+      chains: compositions[0].chains, // Use first composition's chains as base
+    };
   }
 
   /**
@@ -712,13 +833,26 @@ ${detailedDataQualitySection}`;
         allVaultsContext.items.push(...response.allVaults.items);
       });
 
-      // Process each vault
+      // Collect all vaults with their chainIds for composition fetching
+      const allVaultsWithChain: Array<{ vault: VaultData; chainId: number }> = [];
       for (const { chainId: cId, response } of chainResults) {
         for (const vault of response.vaults.items) {
-          const result = this.processVaultForBatch(vault, cId, allVaultsContext);
-          if (result) {
-            vaultResults.push(result);
-          }
+          allVaultsWithChain.push({ vault, chainId: cId });
+        }
+      }
+
+      // Fetch compositions for all vaults in parallel (with graceful degradation)
+      const compositions = await Promise.all(
+        allVaultsWithChain.map(({ vault }) => this.fetchCompositionForVault(vault))
+      );
+
+      // Process each vault with its composition
+      for (let i = 0; i < allVaultsWithChain.length; i++) {
+        const { vault, chainId: cId } = allVaultsWithChain[i];
+        const composition = compositions[i];
+        const result = this.processVaultForBatch(vault, cId, allVaultsContext, composition);
+        if (result) {
+          vaultResults.push(result);
         }
       }
     } else {
@@ -733,9 +867,16 @@ ${detailedDataQualitySection}`;
 
       allVaultsContext = response.allVaults;
 
-      // Process each vault
-      for (const vault of response.vaults.items) {
-        const result = this.processVaultForBatch(vault, chainId!, allVaultsContext);
+      // Fetch compositions for all vaults in parallel (with graceful degradation)
+      const compositions = await Promise.all(
+        response.vaults.items.map((vault) => this.fetchCompositionForVault(vault))
+      );
+
+      // Process each vault with its composition
+      for (let i = 0; i < response.vaults.items.length; i++) {
+        const vault = response.vaults.items[i];
+        const composition = compositions[i];
+        const result = this.processVaultForBatch(vault, chainId!, allVaultsContext, composition);
         if (result) {
           vaultResults.push(result);
         }
@@ -789,11 +930,13 @@ ${detailedDataQualitySection}`;
   /**
    * Process a single vault for batch analysis
    * Creates minimal RiskAnalysisData structure from vault data
+   * Now includes composition data when available
    */
   private processVaultForBatch(
     vault: VaultData,
     chainId: number,
-    allVaultsContext: { items: Array<{ state: { totalAssetsUsd: number } }> }
+    allVaultsContext: { items: Array<{ state: { totalAssetsUsd: number } }> },
+    composition: VaultCompositionFullResponse | null = null
   ): BatchVaultRiskResult | null {
     // Build minimal RiskAnalysisData for calculation
     // For batch, we skip per-vault curator/price queries for efficiency
@@ -803,7 +946,7 @@ ${detailedDataQualitySection}`;
       allVaults: allVaultsContext,
       curatorVaults: { items: [] }, // Skip curator vaults for batch efficiency
       priceHistory: { items: [] }, // Skip price history for batch efficiency
-      composition: null, // Skip composition for batch efficiency
+      composition, // Include composition for protocol diversification risk
     };
 
     // Calculate risk breakdown
