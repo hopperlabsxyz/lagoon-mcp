@@ -98,7 +98,7 @@ export const COMPARE_VAULTS_QUERY = `
  * ```
  */
 export const VAULT_FIRST_TRANSACTION_QUERY = `
-  query VaultFirstTransaction($vaultAddress: String!) {
+  query VaultFirstTransaction($vaultAddress: Address!) {
     transactions(
       where: { vault_in: [$vaultAddress] },
       orderBy: timestamp,
