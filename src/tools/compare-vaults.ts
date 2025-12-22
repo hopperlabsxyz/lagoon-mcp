@@ -159,7 +159,8 @@ async function fetchVaultAges(
     const firstTimestampByVault = new Map<string, number>();
 
     for (const tx of response.transactions?.items || []) {
-      const address = tx.vault?.address?.toLowerCase();
+      // Extract vault address from the TransactionData union (vault field is on each variant)
+      const address = tx.data?.vault?.address?.toLowerCase();
       if (address && tx.timestamp !== undefined) {
         // Only keep the first (oldest) timestamp for each vault
         if (!firstTimestampByVault.has(address)) {

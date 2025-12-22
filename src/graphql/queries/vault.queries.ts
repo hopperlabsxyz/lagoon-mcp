@@ -113,6 +113,29 @@ export const VAULT_FIRST_TRANSACTION_QUERY = `
 `;
 
 /**
+ * GraphQL fragment for extracting vault address from TransactionData union
+ *
+ * The vault field is on each variant of the TransactionData union, not on Transaction directly.
+ * This fragment extracts the vault address from whichever transaction type is present.
+ */
+const TRANSACTION_VAULT_FRAGMENT = `
+  fragment TransactionVaultFragment on TransactionData {
+    ... on SettleDeposit { vault { address } }
+    ... on SettleRedeem { vault { address } }
+    ... on DepositRequest { vault { address } }
+    ... on RedeemRequest { vault { address } }
+    ... on DepositSync { vault { address } }
+    ... on DepositRequestCanceled { vault { address } }
+    ... on TotalAssetsUpdated { vault { address } }
+    ... on NewTotalAssetsUpdated { vault { address } }
+    ... on PeriodSummary { vault { address } }
+    ... on RatesUpdated { vault { address } }
+    ... on StateUpdated { vault { address } }
+    ... on WhitelistUpdated { vault { address } }
+  }
+`;
+
+/**
  * GraphQL query for batch vault first transactions (creation dates)
  *
  * Fetches the first transaction for multiple vaults in a single request.
@@ -121,6 +144,9 @@ export const VAULT_FIRST_TRANSACTION_QUERY = `
  *
  * Note: Returns ALL transactions for the given vaults ordered by timestamp.
  * The caller must group by vault address and take the first (oldest) for each.
+ *
+ * The vault address is extracted from the TransactionData union via inline fragments,
+ * since the vault field exists on each transaction type variant, not on Transaction directly.
  *
  * Usage:
  * ```typescript
@@ -141,13 +167,14 @@ export const BATCH_VAULT_FIRST_TRANSACTIONS_QUERY = `
       first: 100
     ) {
       items {
-        vault {
-          address
-        }
         timestamp
+        data {
+          ...TransactionVaultFragment
+        }
       }
     }
   }
+  ${TRANSACTION_VAULT_FRAGMENT}
 `;
 
 /**
@@ -156,8 +183,10 @@ export const BATCH_VAULT_FIRST_TRANSACTIONS_QUERY = `
 export interface BatchVaultFirstTransactionsResponse {
   transactions: {
     items: Array<{
-      vault: {
-        address: string;
+      data: {
+        vault?: {
+          address: string;
+        };
       };
       timestamp: number;
     }>;
