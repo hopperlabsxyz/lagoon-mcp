@@ -99,6 +99,56 @@ export interface BatchRiskAnalysisResult {
 }
 
 /**
+ * Structured risk data for UI block rendering (single vault)
+ * Contains pre-formatted fields for direct frontend consumption
+ */
+export interface StructuredRiskData {
+  address: string;
+  chainId: number;
+  name: string;
+  overallRisk: {
+    score: number; // 0-1 decimal
+    scoreFormatted: string; // "45.2%"
+    level: 'low' | 'medium' | 'high' | 'critical';
+  };
+  topRisks: Array<{
+    name: string;
+    score: number;
+    scoreFormatted: string;
+    level: 'low' | 'medium' | 'high' | 'critical';
+  }>;
+  allFactors: Record<
+    string,
+    {
+      score: number;
+      scoreFormatted: string;
+      level: 'low' | 'medium' | 'high' | 'critical';
+    }
+  >;
+  comparative?: {
+    percentile: number;
+    ranking: string;
+    isOutlier: boolean;
+  };
+  dataQuality: 'high' | 'medium' | 'low';
+}
+
+/**
+ * Structured batch risk data for UI block rendering
+ * Contains summary and array of vault risk data
+ */
+export interface StructuredBatchRiskData {
+  summary: {
+    vaultCount: number;
+    averageScore: number;
+    averageScoreFormatted: string;
+    lowestRisk: { address: string; score: number; scoreFormatted: string } | null;
+    highestRisk: { address: string; score: number; scoreFormatted: string } | null;
+  };
+  vaults: StructuredRiskData[];
+}
+
+/**
  * Risk analysis service for vault risk assessment
  */
 export class RiskService extends BaseService {
@@ -1106,5 +1156,146 @@ ${factorRows.join('\n')}
 ---
 
 ${vaultDetails.join('\n---\n\n')}`;
+  }
+
+  /**
+   * Convert risk breakdown to structured data for UI block rendering
+   * @param breakdown - Risk analysis breakdown
+   * @param vaultAddress - Vault address
+   * @param chainId - Chain ID
+   * @param vaultName - Vault name (optional)
+   * @returns Structured risk data for frontend
+   */
+  toStructuredRiskData(
+    breakdown: ExtendedRiskScoreBreakdown,
+    vaultAddress: string,
+    chainId: number,
+    vaultName?: string
+  ): StructuredRiskData {
+    const scoreToLevel = (score: number): 'low' | 'medium' | 'high' | 'critical' => {
+      if (score < 0.3) return 'low';
+      if (score < 0.6) return 'medium';
+      if (score < 0.8) return 'high';
+      return 'critical';
+    };
+
+    const formatScore = (score: number): string => `${(score * 100).toFixed(1)}%`;
+
+    // All risk factors with their scores
+    const factorMap: Record<string, number> = {
+      aprConsistency: breakdown.aprConsistencyRisk,
+      volatility: breakdown.volatilityRisk,
+      tvl: breakdown.tvlRisk,
+      concentration: breakdown.concentrationRisk,
+      yieldSustainability: breakdown.yieldSustainabilityRisk,
+      age: breakdown.ageRisk,
+      curator: breakdown.curatorRisk,
+      fee: breakdown.feeRisk,
+      liquidity: breakdown.liquidityRisk,
+      settlement: breakdown.settlementRisk,
+      integrationComplexity: breakdown.integrationComplexityRisk,
+      capacityUtilization: breakdown.capacityUtilizationRisk,
+      protocolDiversification: breakdown.protocolDiversificationRisk,
+      topProtocolConcentration: breakdown.topProtocolConcentrationRisk,
+    };
+
+    // Build allFactors with formatted values
+    const allFactors: StructuredRiskData['allFactors'] = {};
+    for (const [key, score] of Object.entries(factorMap)) {
+      allFactors[key] = {
+        score,
+        scoreFormatted: formatScore(score),
+        level: scoreToLevel(score),
+      };
+    }
+
+    // Get top 3 risk factors sorted by score (highest first)
+    const sortedFactors = Object.entries(factorMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name, score]) => ({
+        name: this.formatFactorName(name),
+        score,
+        scoreFormatted: formatScore(score),
+        level: scoreToLevel(score),
+      }));
+
+    return {
+      address: vaultAddress,
+      chainId,
+      name: vaultName || 'Unknown Vault',
+      overallRisk: {
+        score: breakdown.overallRisk,
+        scoreFormatted: formatScore(breakdown.overallRisk),
+        level: scoreToLevel(breakdown.overallRisk),
+      },
+      topRisks: sortedFactors,
+      allFactors,
+      comparative: breakdown.comparative
+        ? {
+            percentile: breakdown.comparative.percentile,
+            ranking: breakdown.comparative.riskRanking,
+            isOutlier: breakdown.comparative.isOutlier,
+          }
+        : undefined,
+      dataQuality: breakdown.dataQuality,
+    };
+  }
+
+  /**
+   * Convert camelCase factor name to human-readable format
+   */
+  private formatFactorName(name: string): string {
+    const nameMap: Record<string, string> = {
+      aprConsistency: 'APR Consistency',
+      volatility: 'Volatility',
+      tvl: 'TVL',
+      concentration: 'Concentration',
+      yieldSustainability: 'Yield Sustainability',
+      age: 'Age',
+      curator: 'Curator',
+      fee: 'Fees',
+      liquidity: 'Liquidity',
+      settlement: 'Settlement Time',
+      integrationComplexity: 'Integration Complexity',
+      capacityUtilization: 'Capacity Utilization',
+      protocolDiversification: 'Protocol Diversification',
+      topProtocolConcentration: 'Top Protocol Concentration',
+    };
+    return nameMap[name] || name;
+  }
+
+  /**
+   * Convert batch risk result to structured data for UI block rendering
+   * @param result - Batch risk analysis result
+   * @returns Structured batch risk data for frontend
+   */
+  toStructuredBatchRiskData(result: BatchRiskAnalysisResult): StructuredBatchRiskData {
+    const formatScore = (score: number): string => `${(score * 100).toFixed(1)}%`;
+
+    return {
+      summary: {
+        vaultCount: result.summary.vaultCount,
+        averageScore: result.summary.averageScore,
+        averageScoreFormatted: formatScore(result.summary.averageScore),
+        lowestRisk: result.summary.lowestRisk
+          ? {
+              address: result.summary.lowestRisk.address,
+              score: result.summary.lowestRisk.score,
+              scoreFormatted: formatScore(result.summary.lowestRisk.score),
+            }
+          : null,
+        highestRisk: result.summary.highestRisk
+          ? {
+              address: result.summary.highestRisk.address,
+              score: result.summary.highestRisk.score,
+              scoreFormatted: formatScore(result.summary.highestRisk.score),
+            }
+          : null,
+      },
+      vaults: result.vaults.map((v) =>
+        this.toStructuredRiskData(v.breakdown, v.address, v.chainId, v.name)
+      ),
+    };
   }
 }

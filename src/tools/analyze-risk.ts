@@ -57,18 +57,41 @@ export function createExecuteAnalyzeRisk(
         CacheTag.VAULT,
       ]);
 
+      // Helper to build response with structured JSON
+      const buildResponse = (
+        breakdown: ReturnType<typeof riskService.calculateRisk>,
+        isCached: boolean
+      ): CallToolResult => {
+        const markdown = riskService.formatRiskBreakdown(breakdown, responseFormat);
+        const structuredData = riskService.toStructuredRiskData(
+          breakdown,
+          input.vaultAddress,
+          input.chainId
+        );
+
+        const cacheNote = isCached ? `\n\n_Cached result from ${new Date().toISOString()}_` : '';
+        const disclaimer = getToolDisclaimer('analyze_risk');
+
+        const responseText = `${markdown}${disclaimer}${cacheNote}
+
+---
+## Structured Risk Data (for UI blocks)
+The following JSON contains structured risk data for building risk analysis UI blocks.
+
+\`\`\`json
+${JSON.stringify({ risk: structuredData }, null, 2)}
+\`\`\``;
+
+        return {
+          content: [{ type: 'text', text: responseText }],
+          isError: false,
+        };
+      };
+
       // Check cache
       const cached = container.cache.get<ReturnType<typeof riskService.calculateRisk>>(cacheKey);
       if (cached) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `${riskService.formatRiskBreakdown(cached, responseFormat)}\n\n_Cached result from ${new Date().toISOString()}_`,
-            },
-          ],
-          isError: false,
-        };
+        return buildResponse(cached, true);
       }
 
       // Perform analysis using service
@@ -89,18 +112,8 @@ export function createExecuteAnalyzeRisk(
       // Cache the result
       container.cache.set(cacheKey, riskBreakdown, cacheTTL.riskAnalysis);
 
-      // Return formatted analysis with legal disclaimer
-      return {
-        content: [
-          {
-            type: 'text',
-            text:
-              riskService.formatRiskBreakdown(riskBreakdown, responseFormat) +
-              getToolDisclaimer('analyze_risk'),
-          },
-        ],
-        isError: false,
-      };
+      // Return formatted analysis with structured JSON for UI blocks
+      return buildResponse(riskBreakdown, false);
     } catch (error) {
       return {
         content: [
@@ -158,18 +171,37 @@ export function createExecuteAnalyzeRisks(
         CacheTag.VAULT,
       ]);
 
+      // Helper to build response with structured JSON
+      const buildResponse = (
+        batchResult: BatchRiskAnalysisResult,
+        isCached: boolean
+      ): CallToolResult => {
+        const markdown = riskService.formatBatchRiskBreakdown(batchResult, responseFormat);
+        const structuredData = riskService.toStructuredBatchRiskData(batchResult);
+
+        const cacheNote = isCached ? `\n\n_Cached result from ${new Date().toISOString()}_` : '';
+        const disclaimer = getToolDisclaimer('analyze_risks');
+
+        const responseText = `${markdown}${disclaimer}${cacheNote}
+
+---
+## Structured Risk Data (for UI blocks)
+The following JSON contains structured batch risk data for building risk analysis UI blocks.
+
+\`\`\`json
+${JSON.stringify({ risks: structuredData }, null, 2)}
+\`\`\``;
+
+        return {
+          content: [{ type: 'text', text: responseText }],
+          isError: false,
+        };
+      };
+
       // Check cache
       const cached = container.cache.get<BatchRiskAnalysisResult>(cacheKey);
       if (cached) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `${riskService.formatBatchRiskBreakdown(cached, responseFormat)}\n\n_Cached result from ${new Date().toISOString()}_`,
-            },
-          ],
-          isError: false,
-        };
+        return buildResponse(cached, true);
       }
 
       // Perform batch analysis
@@ -194,18 +226,8 @@ export function createExecuteAnalyzeRisks(
       // Cache the result
       container.cache.set(cacheKey, batchResult, cacheTTL.riskAnalysis);
 
-      // Return formatted analysis with legal disclaimer
-      return {
-        content: [
-          {
-            type: 'text',
-            text:
-              riskService.formatBatchRiskBreakdown(batchResult, responseFormat) +
-              getToolDisclaimer('analyze_risks'),
-          },
-        ],
-        isError: false,
-      };
+      // Return formatted analysis with structured JSON for UI blocks
+      return buildResponse(batchResult, false);
     } catch (error) {
       return {
         content: [
