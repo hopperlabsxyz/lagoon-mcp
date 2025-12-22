@@ -1,12 +1,13 @@
 /**
  * optimize_portfolio Tool
  *
- * Portfolio optimization with rebalancing recommendations using parallel vault queries.
+ * Portfolio optimization with rebalancing recommendations using rate-limited vault queries.
  * Analyzes current holdings and provides optimal allocation strategy based on
  * per-vault historical data (price history and performance metrics).
  *
  * Implementation:
- * - Executes N parallel GraphQL queries (one per vault) using Promise.all
+ * - Executes rate-limited parallel GraphQL queries (one per vault) using rateLimitedMap
+ * - Max 2 concurrent requests to prevent 429 rate limit errors
  * - Each vault gets up to 1000 transactions of historical data
  * - Processes per-vault price history for accurate volatility calculation
  * - Uses per-vault performance data for expected APR estimation
@@ -40,6 +41,7 @@ import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheTTL } from '../cache/index.js';
 import { analyzeRisk, RiskScoreBreakdown } from '../utils/risk-scoring.js';
+import { rateLimitedMap } from '../utils/rate-limiter.js';
 
 /**
  * GraphQL response type for single vault query
@@ -546,18 +548,20 @@ export function createExecuteOptimizePortfolio(
         };
       }
 
-      // Execute parallel queries for each vault
-      const vaultQueries = input.vaultAddresses.map((vaultAddress) =>
-        container.graphqlClient.request<SingleVaultOptimizationResponse>(
-          SINGLE_VAULT_OPTIMIZATION_QUERY,
-          {
-            vaultAddress,
-            chainId: input.chainId,
-          }
-        )
+      // Execute rate-limited parallel queries for each vault
+      // Uses rateLimitedMap to prevent 429 rate limit errors from GraphQL API
+      const results = await rateLimitedMap(
+        input.vaultAddresses,
+        (vaultAddress) =>
+          container.graphqlClient.request<SingleVaultOptimizationResponse>(
+            SINGLE_VAULT_OPTIMIZATION_QUERY,
+            {
+              vaultAddress,
+              chainId: input.chainId,
+            }
+          ),
+        2 // Max 2 concurrent requests to respect rate limits
       );
-
-      const results = await Promise.all(vaultQueries);
 
       // Process each vault's data
       const vaults: VaultData[] = [];

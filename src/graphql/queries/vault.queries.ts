@@ -111,3 +111,55 @@ export const VAULT_FIRST_TRANSACTION_QUERY = `
     }
   }
 `;
+
+/**
+ * GraphQL query for batch vault first transactions (creation dates)
+ *
+ * Fetches the first transaction for multiple vaults in a single request.
+ * This reduces N parallel requests to 1 batch request for vault age calculation.
+ * Used by: compare_vaults tool for efficient vault age lookup
+ *
+ * Note: Returns ALL transactions for the given vaults ordered by timestamp.
+ * The caller must group by vault address and take the first (oldest) for each.
+ *
+ * Usage:
+ * ```typescript
+ * const data = await graphqlClient.request<BatchVaultFirstTransactionsResponse>(
+ *   BATCH_VAULT_FIRST_TRANSACTIONS_QUERY,
+ *   { vaultAddresses: ['0x...', '0x...', '0x...'] }
+ * );
+ * // Group results by vault address and take oldest timestamp for each
+ * const ageMap = buildVaultAgeMap(data.transactions.items);
+ * ```
+ */
+export const BATCH_VAULT_FIRST_TRANSACTIONS_QUERY = `
+  query BatchVaultFirstTransactions($vaultAddresses: [Address!]!) {
+    transactions(
+      where: { vault_in: $vaultAddresses },
+      orderBy: timestamp,
+      orderDirection: asc,
+      first: 100
+    ) {
+      items {
+        vault {
+          address
+        }
+        timestamp
+      }
+    }
+  }
+`;
+
+/**
+ * Response type for BATCH_VAULT_FIRST_TRANSACTIONS_QUERY
+ */
+export interface BatchVaultFirstTransactionsResponse {
+  transactions: {
+    items: Array<{
+      vault: {
+        address: string;
+      };
+      timestamp: number;
+    }>;
+  };
+}

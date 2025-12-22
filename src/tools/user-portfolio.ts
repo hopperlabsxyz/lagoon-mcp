@@ -36,6 +36,7 @@ import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheKeys, cacheTTL, generateCacheKey } from '../cache/index.js';
+import { rateLimitedMap } from '../utils/rate-limiter.js';
 
 /**
  * User portfolio response type using shared types
@@ -449,34 +450,36 @@ export function createExecuteGetUserPortfolio(
             }
           });
 
-          // Fetch composition data for each vault in parallel
+          // Fetch composition data for each vault with rate limiting
           // This enables portfolio-wide diversification analysis
           // Note: Backend API returns full response with assetByProtocols
-          const compositionPromises = positions.map(async (position) => {
-            try {
-              const compResponse =
-                await container.graphqlClient.request<SingleVaultCompositionResponse>(
-                  SINGLE_VAULT_COMPOSITION_QUERY,
-                  { walletAddress: position.vaultAddress }
-                );
+          // Rate limited to prevent 429 errors from GraphQL API
+          const compositionResults = await rateLimitedMap(
+            positions,
+            async (position) => {
+              try {
+                const compResponse =
+                  await container.graphqlClient.request<SingleVaultCompositionResponse>(
+                    SINGLE_VAULT_COMPOSITION_QUERY,
+                    { walletAddress: position.vaultAddress }
+                  );
 
-              const protocols = transformRawCompositionToProtocols(compResponse.vaultComposition);
-              if (protocols.length > 0) {
-                return {
-                  vaultAddress: position.vaultAddress,
-                  positionValueUsd: parseFloat(position.sharesUsd || '0'),
-                  protocols,
-                } as VaultCompositionEntry;
+                const protocols = transformRawCompositionToProtocols(compResponse.vaultComposition);
+                if (protocols.length > 0) {
+                  return {
+                    vaultAddress: position.vaultAddress,
+                    positionValueUsd: parseFloat(position.sharesUsd || '0'),
+                    protocols,
+                  } as VaultCompositionEntry;
+                }
+                return null;
+              } catch {
+                // If composition fetch fails for a vault, skip it
+                return null;
               }
-              return null;
-            } catch {
-              // If composition fetch fails for a vault, skip it
-              return null;
-            }
-          });
-
-          // Wait for all composition fetches (with timeout protection)
-          const compositionResults = await Promise.all(compositionPromises);
+            },
+            2 // Max 2 concurrent requests to respect rate limits
+          );
           const validCompositions = compositionResults.filter(
             (c): c is VaultCompositionEntry => c !== null
           );

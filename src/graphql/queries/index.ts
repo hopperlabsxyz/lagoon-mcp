@@ -11,6 +11,8 @@ export {
   GET_VAULT_FOR_APR_QUERY,
   COMPARE_VAULTS_QUERY,
   VAULT_FIRST_TRANSACTION_QUERY,
+  BATCH_VAULT_FIRST_TRANSACTIONS_QUERY,
+  type BatchVaultFirstTransactionsResponse,
 } from './vault.queries.js';
 
 // Transaction Queries

@@ -411,8 +411,8 @@ describe('compare_vaults Tool', () => {
       ];
 
       // Use setupMockGraphQL for intelligent routing
-      // First call: 2 vault age queries + 1 vault query + 2 composition queries = 5 calls
-      // Second call (cache hit): 2 vault age queries + 2 composition queries = 4 calls (vault data cached)
+      // First call: 1 batch vault age query + 1 vault query + 2 composition queries = 4 calls
+      // Second call (cache hit): 1 batch age query + 2 composition queries = 3 calls (vault data cached)
       setupMockGraphQL(graphqlClient.request, {
         vaultResponse: { vaults: { items: mockVaults } },
         compositionResponses: [
@@ -432,8 +432,8 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
-      // Should make 2 vault age queries + 1 vault query + 2 composition queries = 5 calls
-      expect(graphqlClient.request).toHaveBeenCalledTimes(5);
+      // Should make 1 batch vault age query + 1 vault query + 2 composition queries = 4 calls
+      expect(graphqlClient.request).toHaveBeenCalledTimes(4);
 
       // Second call - vault comparison cached, but age and composition queries still made
       await executeCompareVaults({
@@ -444,8 +444,8 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
-      // First call: 5 + Second call: 2 age queries + 2 composition queries = 5 + 4 = 9 calls
-      expect(graphqlClient.request).toHaveBeenCalledTimes(9);
+      // First call: 4 + Second call: 1 batch age query + 2 composition queries = 4 + 3 = 7 calls
+      expect(graphqlClient.request).toHaveBeenCalledTimes(7);
     });
 
     it('should use same cache key regardless of address order', async () => {
@@ -482,8 +482,8 @@ describe('compare_vaults Tool', () => {
         chainId: 1,
       });
 
-      // First call: 5 + Second call: 2 age queries + 2 composition queries = 5 + 4 = 9 calls
-      expect(graphqlClient.request).toHaveBeenCalledTimes(9);
+      // First call: 4 + Second call: 1 batch age query + 2 composition queries = 4 + 3 = 7 calls
+      expect(graphqlClient.request).toHaveBeenCalledTimes(7);
     });
 
     it('should use different cache keys for different chain IDs', async () => {
@@ -520,8 +520,8 @@ describe('compare_vaults Tool', () => {
         chainId: 137,
       });
 
-      // 2 full calls: each has 2 age queries + 1 vault query + 2 composition queries = 5 per call = 10 total
-      expect(graphqlClient.request).toHaveBeenCalledTimes(10);
+      // 2 full calls: each has 1 batch age query + 1 vault query + 2 composition queries = 4 per call = 8 total
+      expect(graphqlClient.request).toHaveBeenCalledTimes(8);
     });
   });
 

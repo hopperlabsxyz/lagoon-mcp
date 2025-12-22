@@ -31,7 +31,11 @@ import {
   VaultCompositionFullResponse,
   ProtocolCompositionData,
 } from '../graphql/fragments/index.js';
-import { COMPARE_VAULTS_QUERY, VAULT_FIRST_TRANSACTION_QUERY } from '../graphql/queries/index.js';
+import {
+  COMPARE_VAULTS_QUERY,
+  BATCH_VAULT_FIRST_TRANSACTIONS_QUERY,
+  type BatchVaultFirstTransactionsResponse,
+} from '../graphql/queries/index.js';
 import { SINGLE_VAULT_COMPOSITION_QUERY } from '../graphql/queries/portfolio.queries.js';
 import {
   VaultComparisonData,
@@ -46,6 +50,7 @@ import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheKeys, cacheTTL } from '../cache/index.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 import { analyzeRisk } from '../utils/risk-scoring.js';
+import { rateLimitedMap } from '../utils/rate-limiter.js';
 
 /**
  * GraphQL response type
@@ -70,18 +75,6 @@ interface CompareVaultsVariables {
  */
 interface SingleVaultCompositionResponse {
   vaultComposition: VaultCompositionFullResponse | null;
-}
-
-/**
- * Response type for vault first transaction query
- * Used to determine actual vault creation date
- */
-interface FirstTransactionResponse {
-  transactions: {
-    items: Array<{
-      timestamp: string;
-    }>;
-  };
 }
 
 /**
@@ -134,9 +127,12 @@ interface CompareVaultsOutput {
 }
 
 /**
- * Fetch vault ages from first transaction timestamps
+ * Fetch vault ages from first transaction timestamps using batch query
  *
- * Queries the first transaction for each vault to determine actual creation date.
+ * Queries all vault first transactions in a single batch request to determine
+ * actual creation dates. This is more efficient than N parallel requests and
+ * prevents 429 rate limit errors from the GraphQL API.
+ *
  * Returns a map of vault address (lowercase) to age in days.
  *
  * @param vaultAddresses - List of vault addresses to fetch ages for
@@ -150,32 +146,36 @@ async function fetchVaultAges(
   const vaultAgeMap = new Map<string, number>();
   const now = Math.floor(Date.now() / 1000);
 
-  // Fetch first transaction for each vault in parallel
-  const agePromises = vaultAddresses.map(async (address) => {
-    try {
-      const response = await graphqlClient.request<FirstTransactionResponse>(
-        VAULT_FIRST_TRANSACTION_QUERY,
-        { vaultAddress: address }
-      );
+  try {
+    // Fetch first transactions for all vaults in a single batch request
+    // This replaces N parallel requests with 1 batch request to prevent 429 errors
+    const response = await graphqlClient.request<BatchVaultFirstTransactionsResponse>(
+      BATCH_VAULT_FIRST_TRANSACTIONS_QUERY,
+      { vaultAddresses }
+    );
 
-      const firstTransaction = response.transactions?.items?.[0];
-      if (firstTransaction?.timestamp) {
-        const createdAt = parseInt(firstTransaction.timestamp, 10);
-        const ageInDays = Math.floor((now - createdAt) / (24 * 60 * 60));
-        return { address: address.toLowerCase(), ageInDays };
+    // Group transactions by vault address and find the oldest (first) for each
+    // The query returns transactions ordered by timestamp ASC, so first occurrence per vault is oldest
+    const firstTimestampByVault = new Map<string, number>();
+
+    for (const tx of response.transactions?.items || []) {
+      const address = tx.vault?.address?.toLowerCase();
+      if (address && tx.timestamp !== undefined) {
+        // Only keep the first (oldest) timestamp for each vault
+        if (!firstTimestampByVault.has(address)) {
+          firstTimestampByVault.set(address, tx.timestamp);
+        }
       }
-      return { address: address.toLowerCase(), ageInDays: undefined };
-    } catch {
-      // If fetch fails, return undefined age
-      return { address: address.toLowerCase(), ageInDays: undefined };
     }
-  });
 
-  const results = await Promise.all(agePromises);
-  for (const result of results) {
-    if (result.ageInDays !== undefined) {
-      vaultAgeMap.set(result.address, result.ageInDays);
+    // Calculate age in days for each vault
+    for (const [address, createdAt] of firstTimestampByVault) {
+      const ageInDays = Math.floor((now - createdAt) / (24 * 60 * 60));
+      vaultAgeMap.set(address, ageInDays);
     }
+  } catch {
+    // If batch fetch fails, return empty map (ages will be undefined)
+    // This is a graceful degradation - comparison will still work with default age
   }
 
   return vaultAgeMap;
@@ -680,25 +680,28 @@ export function createExecuteCompareVaults(
         convertToStructuredVaultData(vault, comparisonData[index])
       );
 
-      // Fetch composition data for each vault in parallel (cached path)
-      // Note: Backend API now uses walletAddress parameter
-      const compositionPromises = structuredVaults.map(async (vault) => {
-        try {
-          const compResponse =
-            await container.graphqlClient.request<SingleVaultCompositionResponse>(
-              SINGLE_VAULT_COMPOSITION_QUERY,
-              { walletAddress: vault.address }
-            );
-          return {
-            address: vault.address,
-            metrics: calculateCompositionMetrics(compResponse.vaultComposition),
-          };
-        } catch {
-          return { address: vault.address, metrics: undefined };
-        }
-      });
-
-      const compositionResults = await Promise.all(compositionPromises);
+      // Fetch composition data for each vault with rate limiting (cached path)
+      // Uses rateLimitedMap to prevent 429 rate limit errors from Octav API
+      // Note: Backend API uses walletAddress parameter
+      const compositionResults = await rateLimitedMap(
+        structuredVaults,
+        async (vault) => {
+          try {
+            const compResponse =
+              await container.graphqlClient.request<SingleVaultCompositionResponse>(
+                SINGLE_VAULT_COMPOSITION_QUERY,
+                { walletAddress: vault.address }
+              );
+            return {
+              address: vault.address,
+              metrics: calculateCompositionMetrics(compResponse.vaultComposition),
+            };
+          } catch {
+            return { address: vault.address, metrics: undefined };
+          }
+        },
+        2 // Max 2 concurrent requests to respect rate limits
+      );
       const compositionMap = new Map(
         compositionResults.map((r) => [r.address.toLowerCase(), r.metrics])
       );
@@ -790,27 +793,30 @@ ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
       try {
         const output = JSON.parse(result.content[0].text) as CompareVaultsOutput;
 
-        // Fetch composition data for each vault in parallel
+        // Fetch composition data for each vault with rate limiting
+        // Uses rateLimitedMap to prevent 429 rate limit errors from Octav API
         // This enables diversification comparison between vaults
-        // Note: Backend API now uses walletAddress parameter
-        const compositionPromises = output.vaults.map(async (vault) => {
-          try {
-            const compResponse =
-              await container.graphqlClient.request<SingleVaultCompositionResponse>(
-                SINGLE_VAULT_COMPOSITION_QUERY,
-                { walletAddress: vault.address }
-              );
-            return {
-              address: vault.address,
-              metrics: calculateCompositionMetrics(compResponse.vaultComposition),
-            };
-          } catch {
-            // If composition fetch fails, skip it
-            return { address: vault.address, metrics: undefined };
-          }
-        });
-
-        const compositionResults = await Promise.all(compositionPromises);
+        // Note: Backend API uses walletAddress parameter
+        const compositionResults = await rateLimitedMap(
+          output.vaults,
+          async (vault) => {
+            try {
+              const compResponse =
+                await container.graphqlClient.request<SingleVaultCompositionResponse>(
+                  SINGLE_VAULT_COMPOSITION_QUERY,
+                  { walletAddress: vault.address }
+                );
+              return {
+                address: vault.address,
+                metrics: calculateCompositionMetrics(compResponse.vaultComposition),
+              };
+            } catch {
+              // If composition fetch fails, skip it
+              return { address: vault.address, metrics: undefined };
+            }
+          },
+          2 // Max 2 concurrent requests to respect rate limits
+        );
 
         // Create a map for quick lookup
         const compositionMap = new Map(
