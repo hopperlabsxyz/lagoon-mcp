@@ -2,7 +2,7 @@
  * compare_vaults Tool
  *
  * Side-by-side comparison of multiple vaults with normalized metrics and rankings.
- * Supports comparing 2-10 vaults simultaneously across one or multiple chains.
+ * Supports comparing 2-20 vaults simultaneously across one or multiple chains.
  *
  * Use cases:
  * - Evaluate investment opportunities across similar vaults
@@ -112,6 +112,10 @@ interface StructuredVaultData {
     managementFee: number; // Basis points (100 = 1%)
     performanceFee: number; // Basis points (1000 = 10%)
   };
+  // Track record fields
+  ageInDays?: number;
+  inceptionApr?: number; // Percentage (e.g., 4.12 means 4.12%)
+  averageSettlementDays?: number;
   // Composition metrics for diversification analysis
   composition?: VaultCompositionMetrics;
 }
@@ -309,6 +313,9 @@ function convertToComparisonData(
     riskBreakdown = undefined;
   }
 
+  // Get actual vault age (already computed above for risk scoring)
+  const actualAge = vaultAgeMap?.get(vault.address.toLowerCase());
+
   return {
     address: vault.address,
     name: vault.name || 'Unknown Vault',
@@ -318,6 +325,11 @@ function convertToComparisonData(
     apr: apr,
     totalShares: vault.state?.totalSupply,
     totalAssets: vault.state?.totalAssets,
+    // Track record fields
+    ageInDays: actualAge,
+    inceptionApr: vault.state?.inceptionApr?.linearNetApr,
+    averageSettlementDays: vault.averageSettlement ?? undefined,
+    // Risk analysis fields
     riskScore: riskBreakdown?.overallRisk,
     riskLevel: riskBreakdown?.riskLevel,
     riskBreakdown,
@@ -402,6 +414,15 @@ function buildComparisonMarkdown(
     markdown += `- **Risk Score**: ${(summary.riskiestVault!.riskScore * 100).toFixed(1)}% (${summary.riskiestVault!.riskLevel})\n\n`;
   }
 
+  if (summary.oldestVault) {
+    markdown += `### Track Record\n`;
+    markdown += `- **Most Established**: ${summary.oldestVault.name} (${summary.oldestVault.ageInDays} days)\n`;
+    if (summary.newestVault) {
+      markdown += `- **Newest**: ${summary.newestVault.name} (${summary.newestVault.ageInDays} days)\n`;
+    }
+    markdown += `\n`;
+  }
+
   markdown += `## Detailed Comparison\n\n`;
   markdown += `${table}\n\n`;
 
@@ -417,6 +438,8 @@ function buildComparisonMarkdown(
   markdown += `- **Score**: Overall performance score (0-100)\n`;
   markdown += `- **TVL Δ**: Delta from average TVL (%)\n`;
   markdown += `- **APR Δ**: Delta from average APR (%)\n`;
+  markdown += `- **Age**: Days since first vault transaction (track record length)\n`;
+  markdown += `- **Inception APR**: Net APR since vault inception\n`;
   markdown += `- **Mgmt Fee**: Management fee (annual, in %)\n`;
   markdown += `- **Perf Fee**: Performance fee (on profits, in %)\n`;
 
@@ -580,6 +603,9 @@ function convertToStructuredVaultData(
       managementFee: vault.state?.managementFee ?? 0,
       performanceFee: vault.state?.performanceFee ?? 0,
     },
+    ageInDays: comparisonData.ageInDays,
+    inceptionApr: comparisonData.inceptionApr,
+    averageSettlementDays: comparisonData.averageSettlementDays,
   };
 }
 

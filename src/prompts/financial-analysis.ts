@@ -508,7 +508,7 @@ Use this structure for comprehensive analysis reports:
 - **Single vault (1-5)**: Use \`get_vault_data\` with caching
 - **Vault composition**: Use \`get_vault_composition\` for protocol breakdown and HHI
 - **Discovery (20+)**: Use \`search_vaults\` with filters
-- **Comparison (2-10)**: Use \`compare_vaults\` for rankings with composition metrics
+- **Comparison (2-20)**: Use \`compare_vaults\` for rankings with composition metrics
 - **Portfolio**: Use \`user_portfolio\` for multi-chain aggregation with \`compositionSummary\`
 - **Custom queries**: Use \`query_graphql\` for power users
 

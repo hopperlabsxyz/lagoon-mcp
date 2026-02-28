@@ -3,11 +3,15 @@
  *
  * Balanced vault information with key metrics and relationships.
  * Use when more detail is needed than list format but not full vault data.
+ * Default format for portfolio queries and vault recommendations.
  *
- * Token efficiency: ~170 tokens per vault (72% reduction from full fragment)
+ * Token efficiency: ~200 tokens per vault (67% reduction from full fragment)
  *
- * APR Strategy: Includes both liveAPR (with detail) and monthlyApr for flexibility.
- * Vaults use different tracking methods, so both fields ensure robust APR display.
+ * APR Strategy: Includes liveAPR, monthlyApr, and inceptionApr (linearNetApr only).
+ * Inception APR uses inline field (not full APRBreakdownFragment) to keep token cost low.
+ *
+ * Decision-making fields: fees and settlement time are included so the AI can
+ * make informed recommendations without upgrading to the full fragment (~600 tokens).
  */
 
 /**
@@ -20,6 +24,9 @@ export interface VaultSummaryData {
   name: string | null;
   description: string | null;
   logoUrl: string | null;
+
+  // Configuration
+  averageSettlement: number | null;
 
   // Chain information (minimal)
   chain: {
@@ -39,6 +46,8 @@ export interface VaultSummaryData {
   state: {
     totalAssetsUsd: number;
     pricePerShareUsd: number;
+    managementFee: number;
+    performanceFee: number;
     liveAPR: {
       grossApr: number;
       netApr: number;
@@ -47,6 +56,9 @@ export interface VaultSummaryData {
     monthlyApr: {
       linearNetApr: number;
     };
+    inceptionApr: {
+      linearNetApr: number;
+    } | null;
   };
 
   // Relationships
@@ -62,7 +74,9 @@ export interface VaultSummaryData {
  * Includes balanced detail for analysis:
  * - Full identification with logos
  * - Chain and asset basics
- * - Key financial metrics (TVL, price per share, APR)
+ * - Key financial metrics (TVL, price per share, fees, APR)
+ * - Settlement time for liquidity assessment
+ * - Inception APR (linearNetApr only) for track record
  * - Curator information for relationship analysis
  *
  * Usage:
@@ -82,6 +96,7 @@ export const VAULT_SUMMARY_FRAGMENT = `
     name
     description
     logoUrl
+    averageSettlement
     chain {
       id
       name
@@ -95,12 +110,17 @@ export const VAULT_SUMMARY_FRAGMENT = `
     state {
       totalAssetsUsd
       pricePerShareUsd
+      managementFee
+      performanceFee
       liveAPR {
         grossApr
         netApr
         name
       }
       monthlyApr {
+        linearNetApr
+      }
+      inceptionApr {
         linearNetApr
       }
     }

@@ -184,7 +184,7 @@ export const compareVaultsInputSchema = z
     vaultAddresses: z
       .array(ethereumAddressSchema)
       .min(2, 'At least 2 vault addresses are required for comparison')
-      .max(10, 'Maximum 10 vaults can be compared at once'),
+      .max(20, 'Maximum 20 vaults can be compared at once'),
     // Single chainId for backward compatibility
     chainId: chainIdSchema.optional(),
     // Array of chainIds for cross-chain comparisons
@@ -241,14 +241,14 @@ export const analyzeRiskInputSchema = z.object({
     ),
 });
 
-// analyze_risks input (batch - 2 to 10 vaults)
+// analyze_risks input (batch - 2 to 20 vaults)
 // Supports both single chainId (same chain) and chainIds array for cross-chain analysis
 export const analyzeRisksInputSchema = z
   .object({
     vaultAddresses: z
       .array(ethereumAddressSchema)
       .min(2, 'At least 2 vault addresses are required for batch analysis')
-      .max(10, 'Maximum 10 vaults can be analyzed at once'),
+      .max(20, 'Maximum 20 vaults can be analyzed at once'),
     // Single chainId for all vaults on same chain
     chainId: chainIdSchema.optional(),
     // Array of chainIds for cross-chain analysis (positional mapping with vaultAddresses)

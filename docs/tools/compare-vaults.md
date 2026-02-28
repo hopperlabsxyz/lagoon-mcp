@@ -2,7 +2,7 @@
 
 ## Overview
 
-Side-by-side comparison of 2-10 vaults with normalized metrics, percentile rankings, and best/worst identification. Ideal for evaluating investment options and identifying top performers.
+Side-by-side comparison of 2-20 vaults with normalized metrics, percentile rankings, and best/worst identification. Ideal for evaluating investment options and identifying top performers.
 
 ## Use Cases
 
@@ -17,10 +17,10 @@ Side-by-side comparison of 2-10 vaults with normalized metrics, percentile ranki
 
 ### Required
 
-- `vaults` (array): List of 2-10 vault identifiers
+- `vaults` (array): List of 2-20 vault identifiers
   - Each item: `{ vaultAddress: string, chainId: number }`
   - Minimum: 2 vaults
-  - Maximum: 10 vaults (to maintain readability and token efficiency)
+  - Maximum: 20 vaults (to maintain readability and token efficiency)
   - Example:
     ```json
     [
@@ -149,7 +149,7 @@ Helps decide if switching vaults would be beneficial.
   - Different vault sets = different cache entries
   - Reasonable TTL for comparison stability
 - **Token Cost**: ~300 tokens per vault
-  - Total: 600-3000 tokens for 2-10 vaults
+  - Total: 600-6000 tokens for 2-20 vaults
   - Includes metrics, rankings, and analysis
 - **Response Time**:
   - Cached: <100ms
@@ -244,12 +244,11 @@ When vault risk data is available, comparison includes comprehensive risk scorin
 
 ### Comparison Limits
 
-2-10 vault limit because:
+2-20 vault limit because:
 - **Minimum 2**: Need at least two for comparison
-- **Maximum 10**: Maintains readability
+- **Maximum 20**: Supports full portfolio analysis while maintaining readability
 - **Token Efficiency**: More vaults = more tokens
-- **Cognitive Load**: 10 vaults is manageable
-- For more than 10: Use multiple comparison queries or [search_vaults](./search-vaults.md) with sorting
+- For more than 20: Use multiple comparison queries or [search_vaults](./search-vaults.md) with sorting
 
 ## Related Tools
 

@@ -131,7 +131,7 @@ ${JSON.stringify({ risk: structuredData }, null, 2)}
 /**
  * Create the executeAnalyzeRisks function for batch risk analysis
  *
- * Analyzes 2-10 vaults in a single operation, significantly reducing
+ * Analyzes 2-20 vaults in a single operation, significantly reducing
  * API calls and token usage compared to individual analyze_risk calls.
  *
  * Supports both same-chain and cross-chain analysis:

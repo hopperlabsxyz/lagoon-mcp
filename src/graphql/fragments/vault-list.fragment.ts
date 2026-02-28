@@ -4,10 +4,11 @@
  * Minimal vault information for efficient list displays.
  * Use in search results and large dataset queries to minimize token usage.
  *
- * Token efficiency: ~60 tokens per vault (90% reduction from full fragment)
+ * Token efficiency: ~70 tokens per vault (88% reduction from full fragment)
  *
- * APR Strategy: Includes both liveAPR and monthlyApr since vaults use different
- * tracking methods. Claude will use whichever field is populated.
+ * APR Strategy: Includes liveAPR, monthlyApr, and inceptionApr (linearNetApr only).
+ * Inception APR uses inline field (not full APRBreakdownFragment) to keep token cost low.
+ * Professional users need track record data even in list views.
  */
 
 /**
@@ -29,6 +30,9 @@ export interface VaultListData {
     monthlyApr: {
       linearNetApr: number;
     };
+    inceptionApr: {
+      linearNetApr: number;
+    } | null;
   };
 }
 
@@ -39,7 +43,7 @@ export interface VaultListData {
  * - Core identification (address, symbol, name)
  * - Chain context (id, name)
  * - TVL (totalAssetsUsd)
- * - APR data (liveAPR or monthlyApr, whichever is available)
+ * - APR data (liveAPR, monthlyApr, inceptionApr linearNetApr)
  *
  * Usage:
  * ```graphql
@@ -66,6 +70,9 @@ export const VAULT_LIST_FRAGMENT = `
         netApr
       }
       monthlyApr {
+        linearNetApr
+      }
+      inceptionApr {
         linearNetApr
       }
     }

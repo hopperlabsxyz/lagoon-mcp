@@ -157,7 +157,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
   {
     name: 'compare_vaults',
     description:
-      'Compare multiple vaults side-by-side with normalized metrics and rankings (2-10 vaults). ' +
+      'Compare multiple vaults side-by-side with normalized metrics and rankings (2-20 vaults). ' +
       'Supports comparing vaults across different chains by passing chainIds array (or single chainId for backward compatibility). ' +
       'Cross-chain usage: provide chainIds array with one chain per vault address (positional mapping). ' +
       'Example: vaultAddresses=[A,B,C] with chainIds=[1,8453,42161] compares vault A on Ethereum, B on Base, C on Arbitrum. ' +
@@ -216,7 +216,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
   {
     name: 'analyze_risks',
     description:
-      'Batch risk analysis for 2-10 vaults in a single operation. ' +
+      'Batch risk analysis for 2-20 vaults in a single operation. ' +
       'Significantly more efficient than multiple analyze_risk calls when analyzing multiple vaults. ' +
       'Supports both same-chain (single chainId) and cross-chain analysis (chainIds array with positional mapping). ' +
       'Cross-chain usage: provide chainIds array with one chain per vault address. ' +
