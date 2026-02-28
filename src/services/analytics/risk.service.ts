@@ -691,8 +691,8 @@ ${comparativeSection}
 | TVL | ${scoreToPercentage(breakdown.tvlRisk)} | ${scoreToEmoji(breakdown.tvlRisk)} |
 | Concentration | ${scoreToPercentage(breakdown.concentrationRisk)} | ${scoreToEmoji(breakdown.concentrationRisk)} |
 | Liquidity | ${scoreToPercentage(breakdown.liquidityRisk)} | ${scoreToEmoji(breakdown.liquidityRisk)} |
-| Settlement Time | ${scoreToPercentage(breakdown.settlementRisk)} | ${scoreToEmoji(breakdown.settlementRisk)} |
-| Age | ${scoreToPercentage(breakdown.ageRisk)} | ${scoreToEmoji(breakdown.ageRisk)} |
+| Settlement Time${breakdown.averageSettlementDays !== undefined ? ` (${breakdown.averageSettlementDays}d avg)` : ''} | ${scoreToPercentage(breakdown.settlementRisk)} | ${scoreToEmoji(breakdown.settlementRisk)} |
+| Age${breakdown.ageInDays !== undefined ? ` (${breakdown.ageInDays} days)` : ''} | ${scoreToPercentage(breakdown.ageRisk)} | ${scoreToEmoji(breakdown.ageRisk)} |
 | Curator | ${scoreToPercentage(breakdown.curatorRisk)} | ${scoreToEmoji(breakdown.curatorRisk)} |
 | Fees | ${scoreToPercentage(breakdown.feeRisk)} | ${scoreToEmoji(breakdown.feeRisk)} |
 | Integration Complexity | ${scoreToPercentage(breakdown.integrationComplexityRisk)} | ${scoreToEmoji(breakdown.integrationComplexityRisk)} |
@@ -774,14 +774,14 @@ ${comparativeDetailedSection}## Risk Analysis Breakdown
 ### Operational Risk
 | Risk Factor | Score | Level |
 |-------------|-------|-------|
-| **Settlement Time** | ${scoreToPercentage(breakdown.settlementRisk)} | ${scoreToEmoji(breakdown.settlementRisk)} |
+| **Settlement Time**${breakdown.averageSettlementDays !== undefined ? ` (${breakdown.averageSettlementDays}d avg)` : ''} | ${scoreToPercentage(breakdown.settlementRisk)} | ${scoreToEmoji(breakdown.settlementRisk)} |
 | **Integration Complexity** | ${scoreToPercentage(breakdown.integrationComplexityRisk)} | ${scoreToEmoji(breakdown.integrationComplexityRisk)} |
 | **Capacity Utilization** | ${scoreToPercentage(breakdown.capacityUtilizationRisk)} | ${scoreToEmoji(breakdown.capacityUtilizationRisk)} |
 
 ### Qualitative Risk
 | Risk Factor | Score | Level |
 |-------------|-------|-------|
-| **Age** | ${scoreToPercentage(breakdown.ageRisk)} | ${scoreToEmoji(breakdown.ageRisk)} |
+| **Age**${breakdown.ageInDays !== undefined ? ` (${breakdown.ageInDays} days operational)` : ''} | ${scoreToPercentage(breakdown.ageRisk)} | ${scoreToEmoji(breakdown.ageRisk)} |
 | **Curator** | ${scoreToPercentage(breakdown.curatorRisk)} | ${scoreToEmoji(breakdown.curatorRisk)} |
 | **Fees** | ${scoreToPercentage(breakdown.feeRisk)} | ${scoreToEmoji(breakdown.feeRisk)} |
 
@@ -837,7 +837,7 @@ ${detailedDataQualitySection}`;
    * Supports both same-chain (single chainId) and cross-chain (chainIds array) analysis.
    * For cross-chain, chainIds array must have same length as vaultAddresses (positional mapping).
    *
-   * @param vaultAddresses - Array of vault addresses (2-10)
+   * @param vaultAddresses - Array of vault addresses (2-20)
    * @param chainId - Single chain ID (when all vaults are on same chain)
    * @param chainIds - Array of chain IDs (for cross-chain, positional mapping with vaultAddresses)
    * @returns Batch analysis result with all vaults and summary

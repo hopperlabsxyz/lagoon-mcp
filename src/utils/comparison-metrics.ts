@@ -19,6 +19,10 @@ export interface VaultComparisonData {
   apr: number;
   totalShares?: string;
   totalAssets?: string;
+  // Track record fields
+  ageInDays?: number;
+  inceptionApr?: number;
+  averageSettlementDays?: number;
   // Risk analysis fields
   riskScore?: number;
   riskLevel?: 'Low' | 'Medium' | 'High' | 'Critical';
@@ -84,6 +88,16 @@ export interface ComparisonSummary {
     riskScore: number;
     riskLevel: string;
   };
+  oldestVault?: {
+    address: string;
+    name: string;
+    ageInDays: number;
+  };
+  newestVault?: {
+    address: string;
+    name: string;
+    ageInDays: number;
+  };
 }
 
 /**
@@ -141,7 +155,13 @@ export function calculateOverallScore(
 }
 
 /**
- * Normalize and rank vaults for comparison
+ * Normalize and rank vaults for comparison.
+ *
+ * Note: ageInDays and inceptionApr are displayed in the table but intentionally
+ * excluded from the overallScore. Track record data is presented for the AI to
+ * reason about qualitatively (per system prompt: "track record is primary trust signal")
+ * rather than baked into a single numeric score where the weighting would be arbitrary.
+ *
  * @param vaults Array of vault data
  * @returns Array of normalized vaults with rankings
  */
@@ -224,7 +244,7 @@ export function generateComparisonSummary(vaults: VaultComparisonData[]): Compar
   const vaultsWithRisk = vaults.filter((v) => v.riskScore !== undefined);
   const averageRisk =
     vaultsWithRisk.length > 0
-      ? vaultsWithRisk.reduce((sum, v) => sum + (v.riskScore || 0), 0) / vaultsWithRisk.length
+      ? vaultsWithRisk.reduce((sum, v) => sum + (v.riskScore ?? 0), 0) / vaultsWithRisk.length
       : undefined;
 
   // Find extremes
@@ -278,6 +298,39 @@ export function generateComparisonSummary(vaults: VaultComparisonData[]): Compar
     },
     safestVault,
     riskiestVault,
+    ...getAgeExtremes(vaults),
+  };
+}
+
+/**
+ * Extract oldest and newest vaults from comparison data
+ */
+function getAgeExtremes(
+  vaults: VaultComparisonData[]
+): Pick<ComparisonSummary, 'oldestVault' | 'newestVault'> {
+  const vaultsWithAge = vaults.filter((v) => v.ageInDays !== undefined);
+  if (vaultsWithAge.length === 0) return {};
+
+  const sortedByAge = [...vaultsWithAge].sort((a, b) => (b.ageInDays ?? 0) - (a.ageInDays ?? 0));
+
+  const oldest = sortedByAge[0];
+  const newest = sortedByAge[sortedByAge.length - 1];
+
+  return {
+    oldestVault: {
+      address: oldest.address,
+      name: oldest.name,
+      ageInDays: oldest.ageInDays!,
+    },
+    // Only include newestVault when it meaningfully differs from oldest
+    ...(sortedByAge.length >= 2 &&
+      oldest.ageInDays !== newest.ageInDays && {
+        newestVault: {
+          address: newest.address,
+          name: newest.name,
+          ageInDays: newest.ageInDays!,
+        },
+      }),
   };
 }
 
@@ -287,10 +340,11 @@ export function generateComparisonSummary(vaults: VaultComparisonData[]): Compar
  * @returns Markdown formatted table
  */
 export function formatComparisonTable(vaults: NormalizedVault[]): string {
-  // Check if we have risk data
+  // Check data availability
   const hasRiskData = vaults.some((v) => v.riskScore !== undefined);
-  // Check if we have fee data
   const hasFeeData = vaults.some((v) => v.fees !== undefined);
+  const hasAgeData = vaults.some((v) => v.ageInDays !== undefined);
+  const hasInceptionApr = vaults.some((v) => v.inceptionApr !== undefined);
 
   // Risk level emoji helper
   const riskEmoji = (level?: string): string => {
@@ -317,6 +371,16 @@ export function formatComparisonTable(vaults: NormalizedVault[]): string {
   // Build header based on data availability
   let header = '| Rank | Vault | TVL | APR |';
   let separator = '|------|-------|-----|-----|';
+
+  if (hasAgeData) {
+    header += ' Age (days) |';
+    separator += '------------|';
+  }
+
+  if (hasInceptionApr) {
+    header += ' Inception APR |';
+    separator += '----------------|';
+  }
 
   if (hasFeeData) {
     header += ' Mgmt Fee | Perf Fee |';
@@ -349,6 +413,17 @@ export function formatComparisonTable(vaults: NormalizedVault[]): string {
       const aprDeltaFormatted = `${v.aprDelta > 0 ? '+' : ''}${safeToFixed(v.aprDelta, 1, '0.0')}%`;
 
       let row = `| ${v.rank} | ${v.name} (${v.symbol}) | ${tvlFormatted} | ${aprFormatted} |`;
+
+      if (hasAgeData) {
+        const ageFormatted = v.ageInDays !== undefined ? `${v.ageInDays}` : 'N/A';
+        row += ` ${ageFormatted} |`;
+      }
+
+      if (hasInceptionApr) {
+        const inceptionFormatted =
+          v.inceptionApr !== undefined ? `${safeToFixed(v.inceptionApr, 2, '0.00')}%` : 'N/A';
+        row += ` ${inceptionFormatted} |`;
+      }
 
       if (hasFeeData) {
         const mgmtFeeFormatted = formatFee(v.fees?.managementFee);

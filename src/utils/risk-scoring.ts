@@ -37,6 +37,9 @@ export interface RiskScoreBreakdown {
    * Empty array indicates all data was available and of good quality.
    */
   dataQualityNotes: string[];
+  // Operational metadata (surfaced in formatted output)
+  ageInDays?: number;
+  averageSettlementDays?: number;
 }
 
 /**
@@ -591,7 +594,12 @@ export const RISK_WEIGHTS = {
 export function calculateOverallRisk(
   breakdown: Omit<
     RiskScoreBreakdown,
-    'overallRisk' | 'riskLevel' | 'dataQuality' | 'dataQualityNotes'
+    | 'overallRisk'
+    | 'riskLevel'
+    | 'dataQuality'
+    | 'dataQualityNotes'
+    | 'ageInDays'
+    | 'averageSettlementDays'
   >
 ): {
   overallRisk: number;
@@ -808,5 +816,7 @@ export function analyzeRisk(params: {
     riskLevel,
     dataQuality,
     dataQualityNotes,
+    ageInDays: params.ageInDays,
+    averageSettlementDays: params.settlementData?.averageSettlementDays,
   };
 }

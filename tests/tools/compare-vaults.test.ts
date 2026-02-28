@@ -2,7 +2,7 @@
  * compare_vaults Tool Tests
  *
  * Tests for the compare_vaults tool handler covering:
- * - Basic comparison with 2-10 vaults
+ * - Basic comparison with 2-20 vaults
  * - Cache miss → query → store workflow
  * - Cache hit → instant return
  * - Normalized metrics calculation (percentiles, deltas, scores)
@@ -368,16 +368,16 @@ describe('compare_vaults Tool', () => {
       expect(result.isError).toBe(false);
       const text = result.content[0].text as string;
       expect(text).toContain('Vaults Analyzed**: 5');
-      // Now includes fee and risk columns since all vaults have fee and risk data
+      // Now includes inception APR, fee and risk columns since all vaults have this data
       expect(text).toContain(
-        '| Rank | Vault | TVL | APR | Mgmt Fee | Perf Fee | Risk | Score | TVL Δ | APR Δ | Risk Δ |'
+        '| Rank | Vault | TVL | APR | Inception APR | Mgmt Fee | Perf Fee | Risk | Score | TVL Δ | APR Δ | Risk Δ |'
       );
       // Check that all vaults are present
       expect(text).toContain('Vault A');
       expect(text).toContain('Vault E');
     });
 
-    it('should compare 10 vaults (maximum allowed)', async () => {
+    it('should compare 10 vaults successfully', async () => {
       const mockVaults = Array.from({ length: 10 }, (_, i) =>
         createMockVault({
           address: `0x${(i + 1).toString().padStart(40, '0')}`,
