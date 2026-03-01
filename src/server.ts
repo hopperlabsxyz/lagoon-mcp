@@ -21,7 +21,7 @@ import { createNodeCacheAdapter } from './core/cache-adapter.js';
 import { registerTools } from './tools/registry.js';
 
 // Resource imports
-import { getGraphQLSchema } from './resources/schema.js';
+import { createGetGraphQLSchema } from './resources/schema.js';
 import { getDefiGlossary } from './resources/glossary.js';
 
 // Prompt imports
@@ -41,7 +41,7 @@ import { getPortfolioOptimizationPrompt } from './prompts/portfolio-optimization
 export function createServer(): McpServer {
   const server = new McpServer({
     name: 'lagoon-mcp',
-    version: '0.3.1',
+    version: config.server.version,
   });
 
   // ==========================================
@@ -65,6 +65,9 @@ export function createServer(): McpServer {
 
   // Register all tools from unified registry with DI container
   registerTools(server, container);
+
+  // Create schema fetcher using DI container (eliminates legacy cache singleton)
+  const getGraphQLSchema = createGetGraphQLSchema(container.cache, container.graphqlClient);
 
   // ==========================================
   // Resource Registration
@@ -262,7 +265,7 @@ export function createServer(): McpServer {
 /**
  * Run the MCP server
  */
-export async function runServer(): Promise<void> {
+export async function runServer(): Promise<{ transport: StdioServerTransport }> {
   // Validate configuration
   console.error('Starting Lagoon MCP Server...');
   console.error(`GraphQL Endpoint: ${config.graphql.endpoint}`);
@@ -292,4 +295,6 @@ export async function runServer(): Promise<void> {
   console.error('✓ Lagoon MCP Server is running');
   console.error('  Server: McpServer (modern API)');
   console.error('  Capabilities: Auto-managed');
+
+  return { transport };
 }

@@ -157,7 +157,9 @@ export function calculateVolatilityRisk(pricePoints: number[]): number {
 
   // Calculate standard deviation
   const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
-  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+  // Bessel's correction (n-1) for sample variance
+  const variance =
+    returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / (returns.length - 1);
   const stdDev = Math.sqrt(variance);
 
   // Map standard deviation to risk score

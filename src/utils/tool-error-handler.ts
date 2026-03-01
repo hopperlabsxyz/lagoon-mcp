@@ -31,16 +31,23 @@ export function handleToolError(error: unknown, toolName: string): CallToolResul
     return errorResponse(validationError);
   }
 
-  // Handle GraphQL errors
+  // Handle GraphQL errors — sanitize in production to avoid leaking internals
   if (error && typeof error === 'object' && 'response' in error) {
-    const gqlError = error as { response?: { errors?: unknown[] } };
+    const gqlError = error as {
+      response?: { errors?: Array<{ message?: string }> };
+    };
     if (gqlError.response?.errors) {
       logError(error, toolName);
+      // Production: return only message fields. Dev: full details.
+      const isProduction = process.env.NODE_ENV === 'production';
+      const sanitized = isProduction
+        ? gqlError.response.errors.map((e) => e.message ?? 'Unknown error').join('; ')
+        : JSON.stringify(gqlError.response.errors, null, 2);
       return {
         content: [
           {
             type: 'text',
-            text: `GraphQL Error: ${JSON.stringify(gqlError.response.errors, null, 2)}`,
+            text: `GraphQL Error: ${sanitized}`,
           },
         ],
         isError: true,

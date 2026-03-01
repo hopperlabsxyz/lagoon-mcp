@@ -17,38 +17,46 @@ import {
   printSchema,
   type IntrospectionQuery,
 } from 'graphql';
-import { graphqlClient } from '../graphql/client.js';
-import { cache, cacheKeys, cacheTTL } from '../cache/index.js';
+import { cacheKeys, cacheTTL } from '../cache/index.js';
+import type { CacheService } from '../core/cache-adapter.js';
+import type { GraphQLClient } from 'graphql-request';
 
 /**
- * Fetch and cache the GraphQL schema
+ * Create a schema fetcher with injected dependencies
  *
  * Uses introspection query to fetch schema metadata,
  * then converts to SDL format for easy reading.
+ * Cached for 24 hours as the schema rarely changes.
  *
- * @returns GraphQL schema in SDL format
+ * @param cacheService - DI cache service (shared with container)
+ * @param client - GraphQL client for introspection
+ * @returns Function that fetches and caches the schema
  */
-export async function getGraphQLSchema(): Promise<string> {
-  // Check cache first
-  const cacheKey = cacheKeys.schema();
-  const cached = cache.get<string>(cacheKey);
-  if (cached) {
-    return cached;
-  }
+export function createGetGraphQLSchema(
+  cacheService: CacheService,
+  client: GraphQLClient
+): () => Promise<string> {
+  return async (): Promise<string> => {
+    // Check cache first
+    const cacheKey = cacheKeys.schema();
+    const cached = cacheService.get<string>(cacheKey);
+    if (cached) {
+      return cached;
+    }
 
-  try {
-    // Execute introspection query
-    const introspectionQuery = getIntrospectionQuery();
-    const result = await graphqlClient.request<IntrospectionQuery>(introspectionQuery);
+    try {
+      // Execute introspection query
+      const introspectionQuery = getIntrospectionQuery();
+      const result = await client.request<IntrospectionQuery>(introspectionQuery);
 
-    // Build client schema from introspection result
-    const schema = buildClientSchema(result);
+      // Build client schema from introspection result
+      const schema = buildClientSchema(result);
 
-    // Convert to SDL format (human-readable)
-    const sdl = printSchema(schema);
+      // Convert to SDL format (human-readable)
+      const sdl = printSchema(schema);
 
-    // Add helpful header
-    const schemaWithHeader = `# Lagoon DeFi Protocol - GraphQL Schema
+      // Add helpful header
+      const schemaWithHeader = `# Lagoon DeFi Protocol - GraphQL Schema
 # Generated: ${new Date().toISOString()}
 #
 # This schema defines all available types, queries, and mutations
@@ -63,17 +71,18 @@ export async function getGraphQLSchema(): Promise<string> {
 
 ${sdl}`;
 
-    // Cache with 24-hour TTL
-    cache.set(cacheKey, schemaWithHeader, cacheTTL.schema);
+      // Cache with 24-hour TTL
+      cacheService.set(cacheKey, schemaWithHeader, cacheTTL.schema);
 
-    return schemaWithHeader;
-  } catch (error) {
-    // If introspection fails, return error message
-    const errorMessage = `# Error fetching GraphQL schema
+      return schemaWithHeader;
+    } catch (error) {
+      // If introspection fails, return error message
+      const errorMessage = `# Error fetching GraphQL schema
 # ${error instanceof Error ? error.message : String(error)}
 #
 # The schema is temporarily unavailable. Please try again later.`;
 
-    return errorMessage;
-  }
+      return errorMessage;
+    }
+  };
 }

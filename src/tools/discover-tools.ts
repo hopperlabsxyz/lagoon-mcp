@@ -20,11 +20,24 @@ import { z } from 'zod';
 // Tool categories for filtering
 // Maps category names to tool names that belong to each category
 const TOOL_CATEGORIES = {
-  vault: ['get_vault_data', 'search_vaults', 'compare_vaults', 'simulate_vault'],
+  vault: [
+    'get_vault_data',
+    'search_vaults',
+    'compare_vaults',
+    'simulate_vault',
+    'get_vault_composition',
+  ],
   portfolio: ['get_user_portfolio', 'optimize_portfolio'],
-  analytics: ['get_vault_performance', 'get_price_history', 'analyze_risk', 'predict_yield'],
+  analytics: [
+    'get_vault_performance',
+    'get_price_history',
+    'analyze_risk',
+    'analyze_risks',
+    'predict_yield',
+  ],
   transactions: ['get_transactions'],
   export: ['export_data', 'query_graphql'],
+  meta: ['discover_tools'],
 } as const;
 
 type ToolCategory = keyof typeof TOOL_CATEGORIES;
@@ -34,7 +47,7 @@ type ToolCategory = keyof typeof TOOL_CATEGORIES;
  */
 export const discoverToolsInputSchema = z.object({
   category: z
-    .enum(['vault', 'portfolio', 'analytics', 'transactions', 'export', 'all'])
+    .enum(['vault', 'portfolio', 'analytics', 'transactions', 'export', 'meta', 'all'])
     .optional()
     .describe('Filter tools by category. Omit or use "all" for all categories.'),
   keyword: z

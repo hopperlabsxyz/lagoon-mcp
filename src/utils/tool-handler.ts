@@ -49,19 +49,3 @@ export function createToolHandler<TOutput, TInput = TOutput>(
     }
   };
 }
-
-/**
- * Type-safe wrapper for tool handlers that don't need explicit validation
- *
- * @param handler - The tool handler function
- * @returns A wrapper function that safely casts unknown arguments
- *
- * Note: Use createToolHandler with schema validation instead when possible
- */
-export function wrapToolHandler<T>(
-  handler: (input: T) => Promise<CallToolResult>
-): (args: unknown) => Promise<CallToolResult> {
-  return async (args: unknown): Promise<CallToolResult> => {
-    return await handler(args as T);
-  };
-}

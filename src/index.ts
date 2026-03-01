@@ -26,7 +26,14 @@ process.on('unhandledRejection', (reason, promise) => {
 // Start the MCP server
 async function main(): Promise<void> {
   try {
-    await runServer();
+    const { transport } = await runServer();
+
+    // Graceful shutdown: close transport before exiting
+    const shutdown = (): void => {
+      void transport.close().finally(() => process.exit(0));
+    };
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
