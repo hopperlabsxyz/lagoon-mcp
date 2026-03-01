@@ -151,8 +151,8 @@ export function calculateVolatilityRisk(pricePoints: number[]): number {
     }
   }
 
-  if (returns.length === 0) {
-    return 0.5; // Medium risk if no valid returns
+  if (returns.length < 2) {
+    return 0.5; // Medium risk if insufficient returns for sample variance
   }
 
   // Calculate standard deviation

@@ -201,19 +201,8 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
     // Prepare historical data points
     const historicalData: YieldDataPoint[] = [];
 
-    // Transform performance history to period summaries for SDK
+    // Build period-over-period APR series for yield prediction
     if (data.performanceHistory && data.performanceHistory.items.length > 0) {
-      const periodSummaries: PeriodSummary[] = data.performanceHistory.items
-        .filter((item) => parseInt(item.timestamp, 10) >= timestampThreshold)
-        .map((item) => ({
-          timestamp: item.timestamp,
-          totalAssetsAtStart: item.data.totalAssetsAtStart,
-          totalSupplyAtStart: item.data.totalSupplyAtStart,
-        }));
-
-      // Use SDK to calculate APR from period summaries
-      const aprData = transformPeriodSummariesToAPRData(periodSummaries, data.vault);
-
       // Calculate period-over-period APR for each data point
       // Using independent period returns (not cumulative from inception)
       // to satisfy the independence assumption for regression/EMA forecasting
@@ -221,59 +210,45 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
         .filter((item) => parseInt(item.timestamp, 10) >= timestampThreshold)
         .sort((a, b) => parseInt(a.timestamp, 10) - parseInt(b.timestamp, 10));
 
-      for (let i = 0; i < filteredItems.length; i++) {
+      // Period-over-period APR (independent observations for regression/EMA forecasting)
+      // Start at i=1 since we need a previous period for comparison
+      for (let i = 1; i < filteredItems.length; i++) {
         const item = filteredItems[i];
+        const prevItem = filteredItems[i - 1];
         const timestamp = parseInt(item.timestamp, 10);
+        const prevTimestamp = parseInt(prevItem.timestamp, 10);
 
         const currentPeriod: PeriodSummary = {
           timestamp: item.timestamp,
           totalAssetsAtStart: item.data.totalAssetsAtStart,
           totalSupplyAtStart: item.data.totalSupplyAtStart,
         };
+        const prevPeriod: PeriodSummary = {
+          timestamp: prevItem.timestamp,
+          totalAssetsAtStart: prevItem.data.totalAssetsAtStart,
+          totalSupplyAtStart: prevItem.data.totalSupplyAtStart,
+        };
+
         const currentAPRData = transformPeriodSummariesToAPRData([currentPeriod], data.vault);
+        const prevAPRData = transformPeriodSummariesToAPRData([prevPeriod], data.vault);
 
-        if (i === 0) {
-          // First point: use inception-based APR as baseline (no previous period)
-          if (aprData.inception && currentAPRData.inception) {
-            const daysElapsed = (timestamp - aprData.inception.timestamp) / (24 * 60 * 60);
-            if (daysElapsed > 0) {
-              const apr = calculateAPRFromPriceChange(
-                aprData.inception.pricePerShare,
-                currentAPRData.inception.pricePerShare,
-                daysElapsed
-              );
-              historicalData.push({ timestamp, apr, tvl: Number(item.data.totalAssetsAtEnd) });
-            }
-          }
-        } else {
-          // Subsequent points: period-over-period APR (independent observations)
-          const prevItem = filteredItems[i - 1];
-          const prevPeriod: PeriodSummary = {
-            timestamp: prevItem.timestamp,
-            totalAssetsAtStart: prevItem.data.totalAssetsAtStart,
-            totalSupplyAtStart: prevItem.data.totalSupplyAtStart,
-          };
-          const prevAPRData = transformPeriodSummariesToAPRData([prevPeriod], data.vault);
-
-          if (prevAPRData.inception && currentAPRData.inception) {
-            const prevTimestamp = parseInt(prevItem.timestamp, 10);
-            const daysElapsed = (timestamp - prevTimestamp) / (24 * 60 * 60);
-            if (daysElapsed > 0) {
-              const apr = calculateAPRFromPriceChange(
-                prevAPRData.inception.pricePerShare,
-                currentAPRData.inception.pricePerShare,
-                daysElapsed
-              );
-              historicalData.push({ timestamp, apr, tvl: Number(item.data.totalAssetsAtEnd) });
-            }
+        if (prevAPRData.inception && currentAPRData.inception) {
+          const daysElapsed = (timestamp - prevTimestamp) / (24 * 60 * 60);
+          if (daysElapsed > 0) {
+            const apr = calculateAPRFromPriceChange(
+              prevAPRData.inception.pricePerShare,
+              currentAPRData.inception.pricePerShare,
+              daysElapsed
+            );
+            historicalData.push({ timestamp, apr, tvl: Number(item.data.totalAssetsAtEnd) });
           }
         }
       }
     }
 
     // Extract fee data for fee-adjusted predictions
-    const managementFee = data.vault.state?.managementFee || 0;
-    const performanceFee = data.vault.state?.performanceFee || 0;
+    const managementFee = data.vault.state?.managementFee ?? 0;
+    const performanceFee = data.vault.state?.performanceFee ?? 0;
     const pricePerShare = BigInt(data.vault.state?.pricePerShare || '0');
     const highWaterMark = BigInt(data.vault.state?.highWaterMark || '0');
     const performanceFeeActive = pricePerShare > highWaterMark;

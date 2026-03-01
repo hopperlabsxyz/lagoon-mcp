@@ -95,13 +95,16 @@ export function calculateVaR(returns: number[]): VaRAnalysis {
  * Formula: (mean return - risk-free rate) / downside deviation
  *
  * @param returns - Array of periodic returns as decimal fractions
- * @param riskFreeRate - Annualized risk-free rate as decimal (default: 0.02 = 2%)
+ * @param riskFreeRate - Per-period risk-free rate as decimal (default: 0.02 = 2% per period).
+ *   Callers must convert annualized rates to match the return period
+ *   (e.g., annual 5% → daily 0.05/365 ≈ 0.000137).
  * @returns Sortino ratio, or 0 if insufficient data or no downside deviation
  *
  * @example
  * ```ts
  * const weeklyReturns = [0.01, -0.005, 0.015, -0.02, ...];
- * const sortino = calculateSortinoRatio(weeklyReturns, 0.02);
+ * const weeklyRiskFree = 0.05 / 52; // 5% annual → per-week
+ * const sortino = calculateSortinoRatio(weeklyReturns, weeklyRiskFree);
  * ```
  */
 export function calculateSortinoRatio(returns: number[], riskFreeRate: number = 0.02): number {

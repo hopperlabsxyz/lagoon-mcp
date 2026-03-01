@@ -89,11 +89,14 @@ function calculateLinearRegression(data: YieldDataPoint[]): {
   const n = data.length;
 
   if (n < 2) {
-    return { slope: 0, intercept: data[0]?.apr || 0, r2: 0 };
+    return { slope: 0, intercept: data[0]?.apr ?? 0, r2: 0 };
   }
 
   // Normalize timestamps to prevent overflow
-  const minTimestamp = Math.min(...data.map((d) => d.timestamp));
+  const minTimestamp = data.reduce(
+    (min, d) => (d.timestamp < min ? d.timestamp : min),
+    data[0].timestamp
+  );
   const x = data.map((d) => (d.timestamp - minTimestamp) / (24 * 60 * 60)); // Convert to days
   const y = data.map((d) => d.apr);
 
@@ -200,14 +203,19 @@ export function predictYield(
   const emaLong = calculateEMA(aprValues, Math.min(30, aprValues.length)); // 30-day EMA
 
   // Weighted prediction: 40% regression, 40% short EMA, 20% long EMA
-  // Use 1-step-ahead forecast (next period), not N-step extrapolation
-  const regressionPrediction = regression.slope * (sortedData.length + 1) + regression.intercept;
+  // Use 1-step-ahead forecast in days (consistent with regression x = days-since-minTimestamp)
+  const minTimestamp = sortedData[0].timestamp;
+  const lastTimestamp = sortedData[sortedData.length - 1].timestamp;
+  const lastXDays = (lastTimestamp - minTimestamp) / (24 * 60 * 60);
+  const nextXDays = lastXDays + 1; // one day ahead
+  const regressionPrediction = regression.slope * nextXDays + regression.intercept;
   const predictedAPR = regressionPrediction * 0.4 + emaShort * 0.4 + emaLong * 0.2;
 
   // Regime change detection: if short EMA diverges >50% from long EMA,
   // the yield source may have fundamentally changed (e.g., incentive program ended).
   // Reduce confidence significantly when detected.
-  const emaDivergence = emaLong > 0 ? Math.abs(emaShort - emaLong) / emaLong : 0;
+  const emaLongMagnitude = Math.max(Math.abs(emaLong), 1e-8);
+  const emaDivergence = Math.abs(emaShort - emaLong) / emaLongMagnitude;
   const regimeChangeDetected = emaDivergence > 0.5;
 
   // Calculate confidence based on R² and data quantity

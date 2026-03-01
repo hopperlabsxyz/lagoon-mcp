@@ -172,7 +172,7 @@ export function analyzeDrawdown(priceHistory: PricePoint[]): DrawdownAnalysis {
   }
 
   const lastPoint = sorted[sorted.length - 1];
-  const allTimeHigh = Math.max(...sorted.map((p) => p.value));
+  const allTimeHigh = sorted.reduce((max, p) => (p.value > max ? p.value : max), sorted[0].value);
   const currentDrawdown =
     allTimeHigh > 0 ? ((allTimeHigh - lastPoint.value) / allTimeHigh) * 100 : 0;
 
