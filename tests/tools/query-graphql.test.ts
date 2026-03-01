@@ -125,36 +125,73 @@ describe('query_graphql Tool', () => {
   // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
   // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
-  describe('GraphQL Syntax Errors', () => {
-    it('should handle GraphQL syntax errors gracefully', async () => {
-      // Arrange
-      const graphqlError = {
-        response: {
-          errors: [
-            {
-              message: 'Syntax Error: Expected Name, found }',
-              locations: [{ line: 1, column: 10 }],
-            },
-          ],
-        },
-      };
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockRejectedValue(graphqlError);
-
+  describe('Query Validation', () => {
+    it('should reject GraphQL syntax errors before execution', async () => {
       const input = {
-        query: 'query { }', // Invalid GraphQL syntax
+        query: 'query { }', // Invalid — empty selection set
       };
 
-      // Act
       const result = await executeQueryGraphQL(input);
 
-      // Assert
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('GraphQL Error');
+      expect(result.content[0].text).toContain('Query validation failed');
       expect(result.content[0].text).toContain('Syntax Error');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
     });
 
-    it('should handle field not found errors', async () => {
-      // Arrange
+    it('should reject mutation operations', async () => {
+      const input = {
+        query: 'mutation { deleteVault(id: "123") { id } }',
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Only query operations are allowed');
+      expect(result.content[0].text).toContain('mutation');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+    });
+
+    it('should reject subscription operations', async () => {
+      const input = {
+        query: 'subscription { vaultUpdated { id } }',
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Only query operations are allowed');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+    });
+
+    it('should reject queries exceeding depth limit', async () => {
+      // Build a query with depth > 10
+      const input = {
+        query: 'query { a { b { c { d { e { f { g { h { i { j { k { l } } } } } } } } } } } }',
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('exceeds maximum allowed depth');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+    });
+
+    it('should allow valid queries within depth limit', async () => {
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({ test: true });
+
+      const input = {
+        query: 'query { a { b { c } } }', // Depth 3, well within limit
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(false);
+      expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalled();
+    });
+
+    it('should handle field not found errors from server', async () => {
+      // Arrange — query passes local validation but fails on server
       const graphqlError = {
         response: {
           errors: [

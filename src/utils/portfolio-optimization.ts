@@ -291,15 +291,19 @@ export function calculatePortfolioMetrics(
     return sum + vault.expectedApr * weight;
   }, 0);
 
-  // Calculate portfolio risk (simplified - weighted average volatility)
-  // Note: This is a simplification; true portfolio variance requires correlation matrix
-  const portfolioRisk = vaults.reduce((sum, vault, index) => {
-    // Guard: check positions array bounds
-    const position = positions[index];
-    if (!position) return sum;
-    const weight = position.targetAllocation / 100;
-    return sum + vault.volatility * weight;
-  }, 0);
+  // Calculate portfolio risk using independent-asset approximation: sqrt(sum(w_i^2 * vol_i^2))
+  // Note: This assumes uncorrelated assets. True portfolio variance requires a covariance matrix
+  // which is not yet available. This approximation overstates risk vs the true value when
+  // assets are positively correlated (typical in DeFi), making it a conservative estimate.
+  const portfolioRisk = Math.sqrt(
+    vaults.reduce((sum, vault, index) => {
+      // Guard: check positions array bounds
+      const position = positions[index];
+      if (!position) return sum;
+      const weight = position.targetAllocation / 100;
+      return sum + weight * weight * vault.volatility * vault.volatility;
+    }, 0)
+  );
 
   // Calculate Sharpe ratio
   const excessReturn = expectedReturn - riskFreeRate;

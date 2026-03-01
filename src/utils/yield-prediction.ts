@@ -200,7 +200,8 @@ export function predictYield(
   const emaLong = calculateEMA(aprValues, Math.min(30, aprValues.length)); // 30-day EMA
 
   // Weighted prediction: 40% regression, 40% short EMA, 20% long EMA
-  const regressionPrediction = regression.slope * sortedData.length + regression.intercept;
+  // Use 1-step-ahead forecast (next period), not N-step extrapolation
+  const regressionPrediction = regression.slope * (sortedData.length + 1) + regression.intercept;
   const predictedAPR = regressionPrediction * 0.4 + emaShort * 0.4 + emaLong * 0.2;
 
   // Calculate confidence based on R² and data quantity
