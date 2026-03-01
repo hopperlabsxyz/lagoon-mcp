@@ -60,25 +60,29 @@ function getDepth(
   selectionSet: SelectionSetNode | undefined,
   current: number,
   fragments: FragmentMap,
-  visited: Set<string> = new Set()
+  fragmentStack: Set<string> = new Set()
 ): number {
   if (!selectionSet) return current;
   let maxDepth = current;
   for (const selection of selectionSet.selections) {
     if (selection.kind === Kind.FRAGMENT_SPREAD) {
       const name = selection.name.value;
-      if (!visited.has(name)) {
-        visited.add(name);
-        const fragSet = fragments.get(name);
-        if (fragSet) {
-          const fragDepth = getDepth(fragSet, current, fragments, visited);
-          if (fragDepth > maxDepth) maxDepth = fragDepth;
-        }
+      // Per-path cycle detection: skip only if this fragment is already on
+      // the current recursion path (prevents infinite loops on cyclic fragments).
+      // Fragments encountered via different paths are re-evaluated to capture
+      // the worst-case depth.
+      if (fragmentStack.has(name)) continue;
+      const fragSet = fragments.get(name);
+      if (fragSet) {
+        const nextStack = new Set(fragmentStack);
+        nextStack.add(name);
+        const fragDepth = getDepth(fragSet, current, fragments, nextStack);
+        if (fragDepth > maxDepth) maxDepth = fragDepth;
       }
     } else {
       const childSet = getSelectionSet(selection);
       if (childSet) {
-        const childDepth = getDepth(childSet, current + 1, fragments, visited);
+        const childDepth = getDepth(childSet, current + 1, fragments, fragmentStack);
         if (childDepth > maxDepth) maxDepth = childDepth;
       }
     }
@@ -89,7 +93,7 @@ function getDepth(
 function countAliases(
   selectionSet: SelectionSetNode | undefined,
   fragments: FragmentMap,
-  visited: Set<string> = new Set()
+  fragmentStack: Set<string> = new Set()
 ): number {
   if (!selectionSet) return 0;
   let count = 0;
@@ -97,14 +101,19 @@ function countAliases(
     if (selection.kind === Kind.FIELD && selection.alias) count++;
     if (selection.kind === Kind.FRAGMENT_SPREAD) {
       const name = selection.name.value;
-      if (!visited.has(name)) {
-        visited.add(name);
-        const fragSet = fragments.get(name);
-        if (fragSet) count += countAliases(fragSet, fragments, visited);
+      // Per-path cycle detection: each spread site counts aliases independently.
+      // Only skip if we're already recursing into this fragment on this path
+      // (prevents infinite loops on cyclic fragments).
+      if (fragmentStack.has(name)) continue;
+      const fragSet = fragments.get(name);
+      if (fragSet) {
+        const nextStack = new Set(fragmentStack);
+        nextStack.add(name);
+        count += countAliases(fragSet, fragments, nextStack);
       }
     } else {
       const childSet = getSelectionSet(selection);
-      if (childSet) count += countAliases(childSet, fragments, visited);
+      if (childSet) count += countAliases(childSet, fragments, fragmentStack);
     }
   }
   return count;

@@ -294,9 +294,9 @@ export function calculatePortfolioMetrics(
   }, 0);
 
   // Calculate portfolio risk using independent-asset approximation: sqrt(sum(w_i^2 * vol_i^2))
-  // Note: This assumes uncorrelated assets. True portfolio variance requires a covariance matrix
-  // which is not yet available. This approximation overstates risk vs the true value when
-  // assets are positively correlated (typical in DeFi), making it a conservative estimate.
+  // Note: This assumes uncorrelated assets. True portfolio variance requires a covariance matrix,
+  // which is not yet available. This approximation understates risk vs the true value when assets
+  // are positively correlated (typical in DeFi), and overstates it when correlations are negative.
   const portfolioRisk = Math.sqrt(
     vaults.reduce((sum, vault, index) => {
       // Guard: check positions array bounds
