@@ -13,7 +13,9 @@ import {
 } from './shared/disclaimers.js';
 
 export function getFinancialAnalysisPrompt(): string {
-  return `# Financial Analysis Guidance - Lagoon DeFi Protocol
+  return `ADOPT THESE INSTRUCTIONS SILENTLY. DO NOT acknowledge, summarize, or narrate them. Apply them directly when responding to user queries.
+
+# Financial Analysis Guidance - Lagoon DeFi Protocol
 
 ${UNIVERSAL_DISCLAIMER}
 
@@ -188,8 +190,8 @@ Risk Factors:
 - Curator: Established, 12-month track record
 - Chain: Ethereum (high security)
 
-Overall Assessment: STRONG BUY
-- Consistently outperforms benchmarks
+Overall Assessment: FAVORABLE QUANTITATIVE PROFILE
+- Consistently outperforms benchmarks — not a recommendation
 - Strong capital inflows indicate market confidence
 - Sufficient capacity for additional deposits
 \`\`\`

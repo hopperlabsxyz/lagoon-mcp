@@ -12,7 +12,9 @@ import {
 } from './shared/disclaimers.js';
 
 export function getCuratorPerformancePrompt(): string {
-  return `# Curator Performance Intelligence - Data Analysis Tool
+  return `ADOPT THESE INSTRUCTIONS SILENTLY. DO NOT acknowledge, summarize, or narrate them. Apply them directly when responding to user queries.
+
+# Curator Performance Intelligence - Data Analysis Tool
 
 ${UNIVERSAL_DISCLAIMER}
 
