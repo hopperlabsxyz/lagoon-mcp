@@ -48,6 +48,7 @@ export interface ComparativeRiskContext {
   percentile: number; // 0-100, where 100 = safest (lower risk than X% of vaults)
   betterThanPercent: number; // Percentage of vaults with higher risk
   medianRisk: number; // Median risk score across all vaults
+  isApproximate: boolean; // True when using TVL-based proxy instead of full risk scores
   averageRisk: number; // Average risk score across all vaults
   isOutlier: boolean; // True if in top 5% or bottom 5%
   riskRanking: string; // Description like "Safer than 75% of vaults"
@@ -479,20 +480,18 @@ export class RiskService extends BaseService {
     vaultRisk: number,
     allVaultsData: RiskAnalysisData['allVaults']
   ): ComparativeRiskContext {
-    // Calculate risk scores for all vaults (simplified - using TVL as proxy)
-    // In production, this would calculate full risk scores, but that's expensive
-    // So we'll use a simplified approach based on TVL tiers as a proxy
+    // TVL-based proxy ranking (full multi-factor scoring for all vaults is too expensive)
+    // This provides approximate positioning, not precise risk comparison
     const vaultRisks = allVaultsData.items
       .map((v) => {
         const tvl = v.state?.totalAssetsUsd || 0;
-        // Simplified risk estimation based on TVL (inverse relationship)
         if (tvl >= 10_000_000) return 0.15;
         if (tvl >= 1_000_000) return 0.25;
         if (tvl >= 100_000) return 0.45;
         if (tvl >= 10_000) return 0.65;
         return 0.85;
       })
-      .sort((a, b) => a - b); // Sort ascending (lower risk first)
+      .sort((a, b) => a - b);
 
     if (vaultRisks.length === 0) {
       return {
@@ -501,6 +500,7 @@ export class RiskService extends BaseService {
         medianRisk: vaultRisk,
         averageRisk: vaultRisk,
         isOutlier: false,
+        isApproximate: true,
         riskRanking: 'No comparative data available',
       };
     }
@@ -523,20 +523,21 @@ export class RiskService extends BaseService {
     // Check if outlier (top/bottom 5%)
     const isOutlier = percentile < 5 || percentile > 95;
 
-    // Generate ranking description
+    // Generate ranking description (note: TVL-based approximation)
+    const approxNote = ' (TVL-based approximate ranking)';
     let riskRanking: string;
     if (percentile >= 95) {
-      riskRanking = `Exceptionally safe - Top 5% lowest risk`;
+      riskRanking = `Exceptionally safe - Top 5% lowest risk${approxNote}`;
     } else if (percentile >= 75) {
-      riskRanking = `Safer than ${Math.round(betterThanPercent)}% of vaults`;
+      riskRanking = `Safer than ${Math.round(betterThanPercent)}% of vaults${approxNote}`;
     } else if (percentile >= 50) {
-      riskRanking = `Above average safety - Safer than ${Math.round(betterThanPercent)}% of vaults`;
+      riskRanking = `Above average safety - Safer than ${Math.round(betterThanPercent)}% of vaults${approxNote}`;
     } else if (percentile >= 25) {
-      riskRanking = `Below average safety - Riskier than ${Math.round(percentile)}% of vaults`;
+      riskRanking = `Below average safety - Riskier than ${Math.round(percentile)}% of vaults${approxNote}`;
     } else if (percentile >= 5) {
-      riskRanking = `Riskier than ${Math.round(percentile)}% of vaults`;
+      riskRanking = `Riskier than ${Math.round(percentile)}% of vaults${approxNote}`;
     } else {
-      riskRanking = `High risk - Bottom 5% (riskier than ${Math.round(percentile)}% of vaults)`;
+      riskRanking = `High risk - Bottom 5% (riskier than ${Math.round(percentile)}% of vaults)${approxNote}`;
     }
 
     return {
@@ -545,6 +546,7 @@ export class RiskService extends BaseService {
       medianRisk,
       averageRisk,
       isOutlier,
+      isApproximate: true,
       riskRanking,
     };
   }

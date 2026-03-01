@@ -1226,6 +1226,7 @@ describe('compare_vaults Tool', () => {
         createMockVaultWithRisk({
           address: '0x1111111111111111111111111111111111111111',
           name: 'Low',
+          tvl: 15_000_000, // High TVL = lower risk, smaller share of total
           riskScore: 0.2,
           riskLevel: 'Low',
           ageInDays: 365, // Older = lower risk
@@ -1238,6 +1239,7 @@ describe('compare_vaults Tool', () => {
         createMockVaultWithRisk({
           address: '0x2222222222222222222222222222222222222222',
           name: 'High',
+          tvl: 50_000, // Low TVL = higher risk
           riskScore: 0.8,
           riskLevel: 'High',
           ageInDays: 30, // Newer = higher risk

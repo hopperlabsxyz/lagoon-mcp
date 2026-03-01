@@ -209,21 +209,27 @@ export function predictYield(
   const trendStrengthScore = regression.r2; // Strong trend = higher confidence
   const confidence = (dataQualityScore * 0.4 + trendStrengthScore * 0.6) * 0.9; // Max 90%
 
-  // Calculate volatility for confidence intervals
-  const volatility = calculateVolatility(aprValues);
+  // Calculate volatility of APR *changes* (not absolute values) for confidence intervals
+  // This measures how much APR typically moves period-to-period
+  const aprChanges: number[] = [];
+  for (let i = 1; i < aprValues.length; i++) {
+    aprChanges.push(aprValues[i] - aprValues[i - 1]);
+  }
+  const changeVolatility =
+    aprChanges.length >= 2 ? calculateVolatility(aprChanges) : calculateVolatility(aprValues);
 
   // Project returns for different timeframes
+  // Confidence intervals use ±1 standard deviation (68% confidence level)
   const projectedReturns = [
     { timeframe: '7d' as const, days: 7 },
     { timeframe: '30d' as const, days: 30 },
     { timeframe: '90d' as const, days: 90 },
     { timeframe: '1y' as const, days: 365 },
   ].map(({ timeframe, days }) => {
-    // Annualized to period conversion
     const expectedReturn = (predictedAPR / 100) * (days / 365) * 100;
 
-    // Confidence intervals (±1 standard deviation scaled by time)
-    const timeScaledVolatility = volatility * Math.sqrt(days / 365);
+    // Scale change volatility by sqrt(time) for confidence intervals (68% CI)
+    const timeScaledVolatility = changeVolatility * Math.sqrt(days / 365);
     const minReturn = expectedReturn - timeScaledVolatility;
     const maxReturn = expectedReturn + timeScaledVolatility;
 
@@ -318,7 +324,7 @@ export function predictYield(
     predictedAPR,
     trend,
     confidence,
-    volatility,
+    volatility: changeVolatility,
     dataPoints: sortedData.length,
     regression,
     feeAdjustedAPR,

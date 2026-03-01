@@ -99,7 +99,9 @@ export function calculateEqualWeight(
 
 /**
  * Calculate risk-parity allocation strategy
- * Allocates based on inverse risk (lower risk = higher allocation)
+ * Allocates based on inverse volatility (lower volatility = higher allocation)
+ * Uses market risk (volatility) rather than composite risk score for proper
+ * risk parity — the goal is to equalize each asset's risk contribution to the portfolio.
  */
 export function calculateRiskParity(
   vaults: VaultForOptimization[],
@@ -110,9 +112,9 @@ export function calculateRiskParity(
     return [];
   }
 
-  // Calculate inverse risk scores (lower risk = higher weight)
-  const RISK_EPSILON = 0.01;
-  const inverseRisks = vaults.map((v) => safeDivide(1, v.riskScore + RISK_EPSILON, 1));
+  // Use volatility for risk parity (market risk), not composite riskScore (operational risk)
+  const VOLATILITY_EPSILON = 0.01;
+  const inverseRisks = vaults.map((v) => safeDivide(1, v.volatility + VOLATILITY_EPSILON, 1));
   const totalInverseRisk = inverseRisks.reduce((sum, r) => sum + r, 0);
 
   // Guard: if all inverse risks sum to 0, fall back to equal weight

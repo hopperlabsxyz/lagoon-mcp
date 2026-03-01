@@ -624,19 +624,36 @@ export function calculateOverallRisk(
     breakdown.protocolDiversificationRisk * weights.protocolDiversification +
     breakdown.topProtocolConcentrationRisk * weights.topProtocolConcentration;
 
+  // Critical-factor override: if any high-impact risk factor exceeds 0.9,
+  // the overall risk should not fall below "High" regardless of weighted average.
+  // This prevents catastrophic single-factor risks from being averaged away.
+  // Only applied to factors that represent direct financial/operational risk,
+  // not data-quality-dependent factors that often default to 1.0 when data is missing.
+  const CRITICAL_FACTOR_THRESHOLD = 0.9;
+  const CRITICAL_FLOOR = 0.7;
+  const criticalFactors = [
+    breakdown.tvlRisk,
+    breakdown.volatilityRisk,
+    breakdown.liquidityRisk,
+    breakdown.concentrationRisk,
+    breakdown.settlementRisk,
+  ];
+  const hasCriticalFactor = criticalFactors.some((f) => f > CRITICAL_FACTOR_THRESHOLD);
+  const adjustedRisk = hasCriticalFactor ? Math.max(overallRisk, CRITICAL_FLOOR) : overallRisk;
+
   // Determine risk level
   let riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
-  if (overallRisk < RISK_THRESHOLDS.OVERALL_LOW) {
+  if (adjustedRisk < RISK_THRESHOLDS.OVERALL_LOW) {
     riskLevel = 'Low';
-  } else if (overallRisk < RISK_THRESHOLDS.OVERALL_MEDIUM) {
+  } else if (adjustedRisk < RISK_THRESHOLDS.OVERALL_MEDIUM) {
     riskLevel = 'Medium';
-  } else if (overallRisk < RISK_THRESHOLDS.OVERALL_HIGH) {
+  } else if (adjustedRisk < RISK_THRESHOLDS.OVERALL_HIGH) {
     riskLevel = 'High';
   } else {
     riskLevel = 'Critical';
   }
 
-  return { overallRisk, riskLevel };
+  return { overallRisk: adjustedRisk, riskLevel };
 }
 
 /**

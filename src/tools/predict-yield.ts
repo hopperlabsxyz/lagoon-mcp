@@ -214,41 +214,57 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
       // Use SDK to calculate APR from period summaries
       const aprData = transformPeriodSummariesToAPRData(periodSummaries, data.vault);
 
-      // Calculate APR for each data point using SDK functions
-      for (const item of data.performanceHistory.items) {
+      // Calculate period-over-period APR for each data point
+      // Using independent period returns (not cumulative from inception)
+      // to satisfy the independence assumption for regression/EMA forecasting
+      const filteredItems = data.performanceHistory.items
+        .filter((item) => parseInt(item.timestamp, 10) >= timestampThreshold)
+        .sort((a, b) => parseInt(a.timestamp, 10) - parseInt(b.timestamp, 10));
+
+      for (let i = 0; i < filteredItems.length; i++) {
+        const item = filteredItems[i];
         const timestamp = parseInt(item.timestamp, 10);
-        if (timestamp >= timestampThreshold) {
-          // Calculate price per share at this point
-          const historicalPeriod: PeriodSummary = {
-            timestamp: item.timestamp,
-            totalAssetsAtStart: item.data.totalAssetsAtStart,
-            totalSupplyAtStart: item.data.totalSupplyAtStart,
-          };
 
-          // Use inception point as baseline for historical APR calculation
-          if (aprData.inception) {
+        const currentPeriod: PeriodSummary = {
+          timestamp: item.timestamp,
+          totalAssetsAtStart: item.data.totalAssetsAtStart,
+          totalSupplyAtStart: item.data.totalSupplyAtStart,
+        };
+        const currentAPRData = transformPeriodSummariesToAPRData([currentPeriod], data.vault);
+
+        if (i === 0) {
+          // First point: use inception-based APR as baseline (no previous period)
+          if (aprData.inception && currentAPRData.inception) {
             const daysElapsed = (timestamp - aprData.inception.timestamp) / (24 * 60 * 60);
-
             if (daysElapsed > 0) {
-              // Calculate price per share for this period using SDK helper
-              const historicalAPRData = transformPeriodSummariesToAPRData(
-                [historicalPeriod],
-                data.vault
+              const apr = calculateAPRFromPriceChange(
+                aprData.inception.pricePerShare,
+                currentAPRData.inception.pricePerShare,
+                daysElapsed
               );
+              historicalData.push({ timestamp, apr, tvl: Number(item.data.totalAssetsAtEnd) });
+            }
+          }
+        } else {
+          // Subsequent points: period-over-period APR (independent observations)
+          const prevItem = filteredItems[i - 1];
+          const prevPeriod: PeriodSummary = {
+            timestamp: prevItem.timestamp,
+            totalAssetsAtStart: prevItem.data.totalAssetsAtStart,
+            totalSupplyAtStart: prevItem.data.totalSupplyAtStart,
+          };
+          const prevAPRData = transformPeriodSummariesToAPRData([prevPeriod], data.vault);
 
-              if (historicalAPRData.inception) {
-                const apr = calculateAPRFromPriceChange(
-                  aprData.inception.pricePerShare,
-                  historicalAPRData.inception.pricePerShare,
-                  daysElapsed
-                );
-
-                historicalData.push({
-                  timestamp,
-                  apr: apr, // APR as percentage
-                  tvl: Number(item.data.totalAssetsAtEnd),
-                });
-              }
+          if (prevAPRData.inception && currentAPRData.inception) {
+            const prevTimestamp = parseInt(prevItem.timestamp, 10);
+            const daysElapsed = (timestamp - prevTimestamp) / (24 * 60 * 60);
+            if (daysElapsed > 0) {
+              const apr = calculateAPRFromPriceChange(
+                prevAPRData.inception.pricePerShare,
+                currentAPRData.inception.pricePerShare,
+                daysElapsed
+              );
+              historicalData.push({ timestamp, apr, tvl: Number(item.data.totalAssetsAtEnd) });
             }
           }
         }
