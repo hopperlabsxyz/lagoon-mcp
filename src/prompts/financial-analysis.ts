@@ -25,6 +25,8 @@ ${DATA_DISCLAIMER}
 
 You are analyzing DeFi vault data from the Lagoon protocol. Use these patterns and best practices to generate accurate, actionable insights.
 
+**Available Resources**: For term definitions, consult \`lagoon://defi-glossary\`. For query validation, consult \`lagoon://graphql-schema\`.
+
 ---
 
 ## Available Tools

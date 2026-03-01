@@ -204,10 +204,17 @@ export function predictYield(
   const regressionPrediction = regression.slope * (sortedData.length + 1) + regression.intercept;
   const predictedAPR = regressionPrediction * 0.4 + emaShort * 0.4 + emaLong * 0.2;
 
+  // Regime change detection: if short EMA diverges >50% from long EMA,
+  // the yield source may have fundamentally changed (e.g., incentive program ended).
+  // Reduce confidence significantly when detected.
+  const emaDivergence = emaLong > 0 ? Math.abs(emaShort - emaLong) / emaLong : 0;
+  const regimeChangeDetected = emaDivergence > 0.5;
+
   // Calculate confidence based on R² and data quantity
   const dataQualityScore = Math.min(1, sortedData.length / 30); // More data = higher confidence
   const trendStrengthScore = regression.r2; // Strong trend = higher confidence
-  const confidence = (dataQualityScore * 0.4 + trendStrengthScore * 0.6) * 0.9; // Max 90%
+  const baseConfidence = (dataQualityScore * 0.4 + trendStrengthScore * 0.6) * 0.9; // Max 90%
+  const confidence = regimeChangeDetected ? baseConfidence * 0.5 : baseConfidence;
 
   // Calculate volatility of APR *changes* (not absolute values) for confidence intervals
   // This measures how much APR typically moves period-to-period
@@ -329,6 +336,7 @@ export function predictYield(
     regression,
     feeAdjustedAPR,
     feeImpact,
+    regimeChangeDetected,
   });
 
   return {
@@ -362,8 +370,17 @@ function generateInsights(params: {
     totalAnnualFeeDrag: number;
     performanceFeeActive: boolean;
   };
+  regimeChangeDetected?: boolean;
 }): string[] {
   const insights: string[] = [];
+
+  // Regime change warning (highest priority)
+  if (params.regimeChangeDetected) {
+    insights.push(
+      'REGIME CHANGE DETECTED: Short-term and long-term yield trends have diverged >50%. ' +
+        'Prediction confidence reduced — yield source may have fundamentally changed'
+    );
+  }
 
   // Data quality insight
   if (params.dataPoints < 7) {
