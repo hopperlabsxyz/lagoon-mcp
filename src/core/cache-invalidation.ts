@@ -34,12 +34,30 @@ export class CacheInvalidator {
   constructor(private cache: CacheService) {}
 
   /**
-   * Register a cache key with its associated tags
+   * Register a cache key with its associated tags.
+   * Also prunes stale entries (keys expired from cache but still in tagMap).
    */
   register(key: string, tags: CacheTag[]): void {
+    // Opportunistic pruning: remove stale tagMap entries on every 50th register
+    if (this.tagMap.size > 0 && this.tagMap.size % 50 === 0) {
+      this.pruneExpired();
+    }
+
     const tagSet = this.tagMap.get(key) || new Set();
     tags.forEach((tag) => tagSet.add(tag));
     this.tagMap.set(key, tagSet);
+  }
+
+  /**
+   * Remove tagMap entries for keys that no longer exist in the cache.
+   * Prevents unbounded tagMap growth from TTL-expired entries.
+   */
+  pruneExpired(): void {
+    for (const key of this.tagMap.keys()) {
+      if (!this.cache.has(key)) {
+        this.tagMap.delete(key);
+      }
+    }
   }
 
   /**

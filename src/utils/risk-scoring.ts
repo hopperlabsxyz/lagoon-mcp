@@ -151,13 +151,15 @@ export function calculateVolatilityRisk(pricePoints: number[]): number {
     }
   }
 
-  if (returns.length === 0) {
-    return 0.5; // Medium risk if no valid returns
+  if (returns.length < 2) {
+    return 0.5; // Medium risk if insufficient returns for sample variance
   }
 
   // Calculate standard deviation
   const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
-  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+  // Bessel's correction (n-1) for sample variance
+  const variance =
+    returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / (returns.length - 1);
   const stdDev = Math.sqrt(variance);
 
   // Map standard deviation to risk score
@@ -624,19 +626,36 @@ export function calculateOverallRisk(
     breakdown.protocolDiversificationRisk * weights.protocolDiversification +
     breakdown.topProtocolConcentrationRisk * weights.topProtocolConcentration;
 
+  // Critical-factor override: if any high-impact risk factor exceeds 0.9,
+  // the overall risk should not fall below "High" regardless of weighted average.
+  // This prevents catastrophic single-factor risks from being averaged away.
+  // Only applied to factors that represent direct financial/operational risk,
+  // not data-quality-dependent factors that often default to 1.0 when data is missing.
+  const CRITICAL_FACTOR_THRESHOLD = 0.9;
+  const CRITICAL_FLOOR = 0.7;
+  const criticalFactors = [
+    breakdown.tvlRisk,
+    breakdown.volatilityRisk,
+    breakdown.liquidityRisk,
+    breakdown.concentrationRisk,
+    breakdown.settlementRisk,
+  ];
+  const hasCriticalFactor = criticalFactors.some((f) => f > CRITICAL_FACTOR_THRESHOLD);
+  const adjustedRisk = hasCriticalFactor ? Math.max(overallRisk, CRITICAL_FLOOR) : overallRisk;
+
   // Determine risk level
   let riskLevel: 'Low' | 'Medium' | 'High' | 'Critical';
-  if (overallRisk < RISK_THRESHOLDS.OVERALL_LOW) {
+  if (adjustedRisk < RISK_THRESHOLDS.OVERALL_LOW) {
     riskLevel = 'Low';
-  } else if (overallRisk < RISK_THRESHOLDS.OVERALL_MEDIUM) {
+  } else if (adjustedRisk < RISK_THRESHOLDS.OVERALL_MEDIUM) {
     riskLevel = 'Medium';
-  } else if (overallRisk < RISK_THRESHOLDS.OVERALL_HIGH) {
+  } else if (adjustedRisk < RISK_THRESHOLDS.OVERALL_HIGH) {
     riskLevel = 'High';
   } else {
     riskLevel = 'Critical';
   }
 
-  return { overallRisk, riskLevel };
+  return { overallRisk: adjustedRisk, riskLevel };
 }
 
 /**

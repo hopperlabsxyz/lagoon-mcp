@@ -57,13 +57,19 @@ export function detectSkill(message: string): SkillDetectionResult {
   let bestTriggers: string[] = [];
 
   for (const skill of ALL_SKILLS) {
-    const matchedTriggers = skill.triggers.filter((trigger) =>
-      normalizedMessage.includes(trigger.toLowerCase())
-    );
+    const matchedTriggers = skill.triggers.filter((trigger) => {
+      // Use word-boundary matching to prevent false positives
+      // e.g., "help" shouldn't match "helpful analysis"
+      const escaped = trigger.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
+      return pattern.test(normalizedMessage);
+    });
 
     if (matchedTriggers.length > 0) {
-      // Confidence based on number of matched triggers and their specificity
-      const triggerScore = matchedTriggers.length / skill.triggers.length;
+      // Weighted confidence: longer triggers are more specific
+      const totalWeight = matchedTriggers.reduce((sum, t) => sum + Math.min(t.length / 5, 3), 0);
+      const maxWeight = skill.triggers.reduce((sum, t) => sum + Math.min(t.length / 5, 3), 0);
+      const triggerScore = totalWeight / maxWeight;
       const specificityBonus = matchedTriggers.some((t) => t.length > 10) ? 0.2 : 0;
       const confidence = Math.min(triggerScore + specificityBonus, 1);
 
@@ -260,17 +266,15 @@ export function buildSkillAwarePrompt(
   userMessage: string,
   options: BuildPromptOptions = {}
 ): BuildPromptResult {
-  // Conservative defaults for token efficiency
-  // - includeResources: false saves ~500 tokens (use true for rich guidance)
-  // - maxTokens: 1000 prevents runaway costs (use undefined for no limit)
   const confidenceThreshold: number = options.confidenceThreshold ?? 0.5;
   const includeResources: boolean = options.includeResources ?? false;
   const separator: string = options.separator ?? '\n\n---\n\n';
-  // Use hasOwnProperty to distinguish between omitted and explicitly set to undefined
-  let maxTokens: number | undefined = 1000;
+  // Use hasOwnProperty to distinguish between omitted and explicitly set
+  let maxTokens: number | undefined;
   if (Object.prototype.hasOwnProperty.call(options, 'maxTokens')) {
     maxTokens = options.maxTokens;
   }
+  // Default resolved after skill detection (uses skill's estimatedTokens)
 
   // Detect relevant skill
   const detection = detectSkill(userMessage);
@@ -284,6 +288,11 @@ export function buildSkillAwarePrompt(
       matchedTriggers: [],
       tokensAdded: 0,
     };
+  }
+
+  // Default maxTokens to the skill's declared estimatedTokens if not set
+  if (maxTokens === undefined) {
+    maxTokens = detection.skill.metadata.estimatedTokens;
   }
 
   // Get skill content

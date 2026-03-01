@@ -89,11 +89,14 @@ function calculateLinearRegression(data: YieldDataPoint[]): {
   const n = data.length;
 
   if (n < 2) {
-    return { slope: 0, intercept: data[0]?.apr || 0, r2: 0 };
+    return { slope: 0, intercept: data[0]?.apr ?? 0, r2: 0 };
   }
 
   // Normalize timestamps to prevent overflow
-  const minTimestamp = Math.min(...data.map((d) => d.timestamp));
+  const minTimestamp = data.reduce(
+    (min, d) => (d.timestamp < min ? d.timestamp : min),
+    data[0].timestamp
+  );
   const x = data.map((d) => (d.timestamp - minTimestamp) / (24 * 60 * 60)); // Convert to days
   const y = data.map((d) => d.apr);
 
@@ -200,29 +203,48 @@ export function predictYield(
   const emaLong = calculateEMA(aprValues, Math.min(30, aprValues.length)); // 30-day EMA
 
   // Weighted prediction: 40% regression, 40% short EMA, 20% long EMA
-  const regressionPrediction = regression.slope * sortedData.length + regression.intercept;
+  // Use 1-step-ahead forecast in days (consistent with regression x = days-since-minTimestamp)
+  const minTimestamp = sortedData[0].timestamp;
+  const lastTimestamp = sortedData[sortedData.length - 1].timestamp;
+  const lastXDays = (lastTimestamp - minTimestamp) / (24 * 60 * 60);
+  const nextXDays = lastXDays + 1; // one day ahead
+  const regressionPrediction = regression.slope * nextXDays + regression.intercept;
   const predictedAPR = regressionPrediction * 0.4 + emaShort * 0.4 + emaLong * 0.2;
+
+  // Regime change detection: if short EMA diverges >50% from long EMA,
+  // the yield source may have fundamentally changed (e.g., incentive program ended).
+  // Reduce confidence significantly when detected.
+  const emaLongMagnitude = Math.max(Math.abs(emaLong), 1e-8);
+  const emaDivergence = Math.abs(emaShort - emaLong) / emaLongMagnitude;
+  const regimeChangeDetected = emaDivergence > 0.5;
 
   // Calculate confidence based on R² and data quantity
   const dataQualityScore = Math.min(1, sortedData.length / 30); // More data = higher confidence
   const trendStrengthScore = regression.r2; // Strong trend = higher confidence
-  const confidence = (dataQualityScore * 0.4 + trendStrengthScore * 0.6) * 0.9; // Max 90%
+  const baseConfidence = (dataQualityScore * 0.4 + trendStrengthScore * 0.6) * 0.9; // Max 90%
+  const confidence = regimeChangeDetected ? baseConfidence * 0.5 : baseConfidence;
 
-  // Calculate volatility for confidence intervals
-  const volatility = calculateVolatility(aprValues);
+  // Calculate volatility of APR *changes* (not absolute values) for confidence intervals
+  // This measures how much APR typically moves period-to-period
+  const aprChanges: number[] = [];
+  for (let i = 1; i < aprValues.length; i++) {
+    aprChanges.push(aprValues[i] - aprValues[i - 1]);
+  }
+  const changeVolatility =
+    aprChanges.length >= 2 ? calculateVolatility(aprChanges) : calculateVolatility(aprValues);
 
   // Project returns for different timeframes
+  // Confidence intervals use ±1 standard deviation (68% confidence level)
   const projectedReturns = [
     { timeframe: '7d' as const, days: 7 },
     { timeframe: '30d' as const, days: 30 },
     { timeframe: '90d' as const, days: 90 },
     { timeframe: '1y' as const, days: 365 },
   ].map(({ timeframe, days }) => {
-    // Annualized to period conversion
     const expectedReturn = (predictedAPR / 100) * (days / 365) * 100;
 
-    // Confidence intervals (±1 standard deviation scaled by time)
-    const timeScaledVolatility = volatility * Math.sqrt(days / 365);
+    // Scale change volatility by sqrt(time) for confidence intervals (68% CI)
+    const timeScaledVolatility = changeVolatility * Math.sqrt(days / 365);
     const minReturn = expectedReturn - timeScaledVolatility;
     const maxReturn = expectedReturn + timeScaledVolatility;
 
@@ -317,11 +339,12 @@ export function predictYield(
     predictedAPR,
     trend,
     confidence,
-    volatility,
+    volatility: changeVolatility,
     dataPoints: sortedData.length,
     regression,
     feeAdjustedAPR,
     feeImpact,
+    regimeChangeDetected,
   });
 
   return {
@@ -355,8 +378,17 @@ function generateInsights(params: {
     totalAnnualFeeDrag: number;
     performanceFeeActive: boolean;
   };
+  regimeChangeDetected?: boolean;
 }): string[] {
   const insights: string[] = [];
+
+  // Regime change warning (highest priority)
+  if (params.regimeChangeDetected) {
+    insights.push(
+      'REGIME CHANGE DETECTED: Short-term and long-term yield trends have diverged >50%. ' +
+        'Prediction confidence reduced — yield source may have fundamentally changed'
+    );
+  }
 
   // Data quality insight
   if (params.dataPoints < 7) {

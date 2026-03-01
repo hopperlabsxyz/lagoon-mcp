@@ -29,6 +29,12 @@ import { config } from '../config.js';
  */
 export const graphqlClient = new GraphQLClient(config.graphql.endpoint, {
   headers: {},
+  requestMiddleware: (request) => {
+    return {
+      ...request,
+      signal: AbortSignal.timeout(config.graphql.timeout),
+    };
+  },
 });
 
 /**

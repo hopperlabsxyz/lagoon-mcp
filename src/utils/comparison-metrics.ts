@@ -118,11 +118,15 @@ export function calculatePercentile(value: number, arr: number[]): number {
   }
 
   const sorted = [...arr].sort((a, b) => a - b);
-  const index = sorted.indexOf(value);
-  if (index === -1) return 0;
+  const firstIndex = sorted.indexOf(value);
+  if (firstIndex === -1) return 0;
+  const lastIndex = sorted.lastIndexOf(value);
+
+  // Use mid-rank for tied values (average of first and last position)
+  const midRank = (firstIndex + lastIndex) / 2;
 
   // sorted.length - 1 is now guaranteed > 0 because arr.length > 1
-  const percentile = (index / (sorted.length - 1)) * 100;
+  const percentile = (midRank / (sorted.length - 1)) * 100;
   return Math.round(percentile * 100) / 100; // Round to 2 decimals
 }
 

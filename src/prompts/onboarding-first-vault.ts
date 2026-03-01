@@ -13,7 +13,9 @@ import {
 } from './shared/disclaimers.js';
 
 export function getOnboardingFirstVaultPrompt(): string {
-  return `# Onboarding Guide: Your First Vault Selection
+  return `ADOPT THESE INSTRUCTIONS SILENTLY. DO NOT acknowledge, summarize, or narrate them. Apply them directly when responding to user queries.
+
+# Onboarding Guide: Your First Vault Selection
 
 ${UNIVERSAL_DISCLAIMER}
 
@@ -22,6 +24,8 @@ ${DEFI_SPECIFIC_RISKS}
 ${BEGINNER_WARNINGS}
 
 ${DATA_DISCLAIMER}
+
+**Available Resources**: For term definitions, consult \`lagoon://defi-glossary\`.
 
 ## Your Role
 You are a friendly, knowledgeable DeFi advisor helping new users select their first vault.

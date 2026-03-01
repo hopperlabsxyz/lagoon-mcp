@@ -12,7 +12,9 @@ import {
 } from './shared/disclaimers.js';
 
 export function getProtocolOverviewPrompt(): string {
-  return `# Protocol Overview & KPI Dashboard - Protocol Health Analysis Tool
+  return `ADOPT THESE INSTRUCTIONS SILENTLY. DO NOT acknowledge, summarize, or narrate them. Apply them directly when responding to user queries.
+
+# Protocol Overview & KPI Dashboard - Protocol Health Analysis Tool
 
 ${UNIVERSAL_DISCLAIMER}
 

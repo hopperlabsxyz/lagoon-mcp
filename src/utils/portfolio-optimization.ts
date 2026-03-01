@@ -99,7 +99,9 @@ export function calculateEqualWeight(
 
 /**
  * Calculate risk-parity allocation strategy
- * Allocates based on inverse risk (lower risk = higher allocation)
+ * Allocates based on inverse volatility (lower volatility = higher allocation)
+ * Uses market risk (volatility) rather than composite risk score for proper
+ * risk parity — the goal is to equalize each asset's risk contribution to the portfolio.
  */
 export function calculateRiskParity(
   vaults: VaultForOptimization[],
@@ -110,9 +112,9 @@ export function calculateRiskParity(
     return [];
   }
 
-  // Calculate inverse risk scores (lower risk = higher weight)
-  const RISK_EPSILON = 0.01;
-  const inverseRisks = vaults.map((v) => safeDivide(1, v.riskScore + RISK_EPSILON, 1));
+  // Use volatility for risk parity (market risk), not composite riskScore (operational risk)
+  const VOLATILITY_EPSILON = 0.01;
+  const inverseRisks = vaults.map((v) => safeDivide(1, v.volatility + VOLATILITY_EPSILON, 1));
   const totalInverseRisk = inverseRisks.reduce((sum, r) => sum + r, 0);
 
   // Guard: if all inverse risks sum to 0, fall back to equal weight
@@ -291,15 +293,19 @@ export function calculatePortfolioMetrics(
     return sum + vault.expectedApr * weight;
   }, 0);
 
-  // Calculate portfolio risk (simplified - weighted average volatility)
-  // Note: This is a simplification; true portfolio variance requires correlation matrix
-  const portfolioRisk = vaults.reduce((sum, vault, index) => {
-    // Guard: check positions array bounds
-    const position = positions[index];
-    if (!position) return sum;
-    const weight = position.targetAllocation / 100;
-    return sum + vault.volatility * weight;
-  }, 0);
+  // Calculate portfolio risk using independent-asset approximation: sqrt(sum(w_i^2 * vol_i^2))
+  // Note: This assumes uncorrelated assets. True portfolio variance requires a covariance matrix,
+  // which is not yet available. This approximation understates risk vs the true value when assets
+  // are positively correlated (typical in DeFi), and overstates it when correlations are negative.
+  const portfolioRisk = Math.sqrt(
+    vaults.reduce((sum, vault, index) => {
+      // Guard: check positions array bounds
+      const position = positions[index];
+      if (!position) return sum;
+      const weight = position.targetAllocation / 100;
+      return sum + weight * weight * vault.volatility * vault.volatility;
+    }, 0)
+  );
 
   // Calculate Sharpe ratio
   const excessReturn = expectedReturn - riskFreeRate;

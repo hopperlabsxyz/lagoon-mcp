@@ -125,36 +125,171 @@ describe('query_graphql Tool', () => {
   // NOTE: Input validation tests removed - validation is now handled by createToolHandler wrapper
   // in src/utils/tool-handler.ts. Tools themselves trust that inputs are pre-validated.
 
-  describe('GraphQL Syntax Errors', () => {
-    it('should handle GraphQL syntax errors gracefully', async () => {
-      // Arrange
-      const graphqlError = {
-        response: {
-          errors: [
-            {
-              message: 'Syntax Error: Expected Name, found }',
-              locations: [{ line: 1, column: 10 }],
-            },
-          ],
-        },
-      };
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockRejectedValue(graphqlError);
-
+  describe('Query Validation', () => {
+    it('should reject GraphQL syntax errors before execution', async () => {
       const input = {
-        query: 'query { }', // Invalid GraphQL syntax
+        query: 'query { }', // Invalid — empty selection set
       };
 
-      // Act
       const result = await executeQueryGraphQL(input);
 
-      // Assert
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('GraphQL Error');
+      expect(result.content[0].text).toContain('Query validation failed');
       expect(result.content[0].text).toContain('Syntax Error');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
     });
 
-    it('should handle field not found errors', async () => {
-      // Arrange
+    it('should reject mutation operations', async () => {
+      const input = {
+        query: 'mutation { deleteVault(id: "123") { id } }',
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Only query operations are allowed');
+      expect(result.content[0].text).toContain('mutation');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+    });
+
+    it('should reject subscription operations', async () => {
+      const input = {
+        query: 'subscription { vaultUpdated { id } }',
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Only query operations are allowed');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+    });
+
+    it('should reject queries exceeding depth limit', async () => {
+      // Build a query with depth > 10
+      const input = {
+        query: 'query { a { b { c { d { e { f { g { h { i { j { k { l } } } } } } } } } } } }',
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('exceeds maximum allowed depth');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+    });
+
+    it('should reject queries exceeding alias limit', async () => {
+      // Build a query with > 20 aliases
+      const aliases = Array.from({ length: 21 }, (_, i) => `a${i}: field`).join(' ');
+      const input = {
+        query: `query { ${aliases} }`,
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('aliases');
+      expect(result.content[0].text).toContain('exceeding maximum');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+    });
+
+    it('should allow queries within alias limit', async () => {
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({ ok: true });
+
+      const aliases = Array.from({ length: 5 }, (_, i) => `a${i}: field`).join(' ');
+      const input = {
+        query: `query { ${aliases} }`,
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(false);
+      expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalled();
+    });
+
+    it('should count depth through fragment spreads', async () => {
+      // Fragment adds depth beyond what inline fields provide
+      // Total depth: query(1) > a(2) > ...FragA > b(3) > c(4) > d(5) > e(6) > f(7) > g(8) > h(9) > i(10) > j(11) > k(12)
+      const input = {
+        query: `
+          query { a { ...FragA } }
+          fragment FragA on T { b { c { d { e { f { g { h { i { j { k } } } } } } } } } }
+        `,
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('exceeds maximum allowed depth');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+    });
+
+    it('should count aliases inside fragments', async () => {
+      // Fragment contains 11 aliases, spread twice = 22 total > MAX_ALIASES (20)
+      const aliases = Array.from({ length: 11 }, (_, i) => `a${i}: field`).join(' ');
+      const input = {
+        query: `
+          query { x { ...F } y { ...F } }
+          fragment F on T { ${aliases} }
+        `,
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('aliases');
+      expect(result.content[0].text).toContain('exceeding maximum');
+      expect(graphqlClientModule.graphqlClient.request).not.toHaveBeenCalled();
+    });
+
+    it('should re-evaluate fragment depth at each spread site (per-path)', async () => {
+      // Fragment spread at depth 2 AND depth 9 — must detect max depth through deeper path
+      // shallow: query(1) > shallow(2) > ...DeepFrag > a(3) > b(4) > c(5) — OK (depth 5)
+      // deep: query(1) > d1(2) > d2(3) > d3(4) > d4(5) > d5(6) > d6(7) > d7(8) > d8(9) > ...DeepFrag > a(10) > b(11) > c(12) — exceeds MAX_QUERY_DEPTH
+      const input = {
+        query: `
+          query { shallow { ...DeepFrag } d1 { d2 { d3 { d4 { d5 { d6 { d7 { d8 { ...DeepFrag } } } } } } } } }
+          fragment DeepFrag on T { a { b { c } } }
+        `,
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('exceeds maximum allowed depth');
+    });
+
+    it('should handle cyclic fragment references without infinite loop', async () => {
+      // FragA references FragB, FragB references FragA — cycle
+      const input = {
+        query: `
+          query { ...FragA }
+          fragment FragA on T { a { ...FragB } }
+          fragment FragB on T { b { ...FragA } }
+        `,
+      };
+
+      // Should not hang — cycle is detected and broken
+      const result = await executeQueryGraphQL(input);
+
+      // The query itself may be valid or invalid depth-wise, but it must not hang
+      expect(result).toBeDefined();
+    });
+
+    it('should allow valid queries within depth limit', async () => {
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({ test: true });
+
+      const input = {
+        query: 'query { a { b { c } } }', // Depth 3, well within limit
+      };
+
+      const result = await executeQueryGraphQL(input);
+
+      expect(result.isError).toBe(false);
+      expect(graphqlClientModule.graphqlClient.request).toHaveBeenCalled();
+    });
+
+    it('should handle field not found errors from server', async () => {
+      // Arrange — query passes local validation but fails on server
       const graphqlError = {
         response: {
           errors: [

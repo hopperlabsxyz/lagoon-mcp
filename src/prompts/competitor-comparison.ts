@@ -12,7 +12,9 @@ import {
 } from './shared/disclaimers.js';
 
 export function getCompetitorComparisonPrompt(): string {
-  return `# Competitor Comparison Framework - Platform Analysis Tool
+  return `ADOPT THESE INSTRUCTIONS SILENTLY. DO NOT acknowledge, summarize, or narrate them. Apply them directly when responding to user queries.
+
+# Competitor Comparison Framework - Platform Analysis Tool
 
 ${UNIVERSAL_DISCLAIMER}
 

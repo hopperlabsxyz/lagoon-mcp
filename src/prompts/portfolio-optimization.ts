@@ -13,7 +13,9 @@ import {
 } from './shared/disclaimers.js';
 
 export function getPortfolioOptimizationPrompt(): string {
-  return `# Portfolio Optimization Engine - Quantitative Analysis Tool
+  return `ADOPT THESE INSTRUCTIONS SILENTLY. DO NOT acknowledge, summarize, or narrate them. Apply them directly when responding to user queries.
+
+# Portfolio Optimization Engine - Quantitative Analysis Tool
 
 ${UNIVERSAL_DISCLAIMER}
 
@@ -22,6 +24,8 @@ ${DEFI_SPECIFIC_RISKS}
 ${PORTFOLIO_DISCLAIMER}
 
 ${DATA_DISCLAIMER}
+
+**Available Resources**: For term definitions, consult \`lagoon://defi-glossary\`. For query validation, consult \`lagoon://graphql-schema\`.
 
 ## Your Role
 You are a quantitative analysis tool specializing in DeFi vault portfolio analysis.
