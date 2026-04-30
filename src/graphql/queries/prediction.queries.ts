@@ -35,9 +35,12 @@ export function createYieldPredictionQuery(
       }
 
       # Get historical performance data
+      # chainId_eq is required: vault addresses are reused across chains; without
+      # it the merged time series jumps between chains' state and APR explodes.
       performanceHistory: transactions(
         where: {
           vault_in: [$vaultAddress],
+          chainId_eq: $chainId,
           type_in: [PeriodSummary]
         },
         orderBy: timestamp,
@@ -60,6 +63,7 @@ export function createYieldPredictionQuery(
       tvlHistory: transactions(
         where: {
           vault_in: [$vaultAddress],
+          chainId_eq: $chainId,
           type_in: [TotalAssetsUpdated]
         },
         orderBy: timestamp,

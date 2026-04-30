@@ -323,6 +323,7 @@ async function calculateSDKAPR(
 interface GetVaultPerformanceVariables {
   where: {
     vault_in: string[];
+    chainId_eq: number;
     type_in: string[];
   };
   orderBy: string;
@@ -388,6 +389,7 @@ export function createExecuteGetVaultPerformance(
       variables: (input) => ({
         where: {
           vault_in: [input.vaultAddress],
+          chainId_eq: input.chainId,
           type_in: ['TotalAssetsUpdated'],
         },
         orderBy: 'timestamp',

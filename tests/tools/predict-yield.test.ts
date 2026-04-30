@@ -581,9 +581,9 @@ describe('predict_yield Tool', () => {
         tvlHistory: { items: [] },
       };
 
-      // Set fees to trigger fee-adjusted predictions
-      (mockData.vault as any).state.managementFee = 2.0; // 2% management fee
-      (mockData.vault as any).state.performanceFee = 20.0; // 20% performance fee
+      // Set fees to trigger fee-adjusted predictions (basis points: 200 = 2%, 2000 = 20%)
+      (mockData.vault as any).state.managementFee = 200; // 2% management fee
+      (mockData.vault as any).state.performanceFee = 2000; // 20% performance fee
       // Set price above high water mark to make performance fee active
       (mockData.vault as any).state.pricePerShare = '1050000000000000000'; // 1.05 (above HWM of 1.0)
       (mockData.vault as any).state.highWaterMark = '1000000000000000000'; // 1.0
@@ -635,9 +635,9 @@ describe('predict_yield Tool', () => {
       // Set price below high water mark
       mockVault.state.pricePerShare = '950000000000000000'; // 0.95 (below HWM of 1.0)
       mockVault.state.highWaterMark = '1000000000000000000'; // 1.0
-      // Set fees to trigger fee analysis
-      mockVault.state.managementFee = 2.0; // 2% management fee
-      mockVault.state.performanceFee = 20.0; // 20% performance fee
+      // Set fees to trigger fee analysis (basis points: 200 = 2%, 2000 = 20%)
+      mockVault.state.managementFee = 200; // 2% management fee
+      mockVault.state.performanceFee = 2000; // 20% performance fee
 
       const mockData = {
         vault: mockVault,
@@ -683,9 +683,9 @@ describe('predict_yield Tool', () => {
         tvlHistory: { items: [] },
       };
 
-      // Set high fees and ensure performance fee is active (price above HWM)
-      (mockData.vault as any).state.managementFee = 3.5; // 3.5% management fee
-      (mockData.vault as any).state.performanceFee = 25.0; // 25% performance fee
+      // Set high fees and ensure performance fee is active (basis points: 350 = 3.5%, 2500 = 25%)
+      (mockData.vault as any).state.managementFee = 350; // 3.5% management fee
+      (mockData.vault as any).state.performanceFee = 2500; // 25% performance fee
       (mockData.vault as any).state.pricePerShare = '1100000000000000000'; // 1.1 (above HWM)
       (mockData.vault as any).state.highWaterMark = '1000000000000000000'; // 1.0
 
@@ -728,9 +728,9 @@ describe('predict_yield Tool', () => {
       };
 
       // Set known fees: 2% management + 20% performance (active)
-      // Total fee drag = 2 + (20 * 0.1) = 4% annually
-      (mockData.vault as any).state.managementFee = 2.0; // 2% management fee
-      (mockData.vault as any).state.performanceFee = 20.0; // 20% performance fee
+      // Basis points: 200 = 2%, 2000 = 20%; total fee drag ≈ 2 + (20 * 0.1) = 4% annually
+      (mockData.vault as any).state.managementFee = 200; // 2% management fee
+      (mockData.vault as any).state.performanceFee = 2000; // 20% performance fee
       (mockData.vault as any).state.pricePerShare = '1100000000000000000'; // 1.1 (above HWM)
       (mockData.vault as any).state.highWaterMark = '1000000000000000000'; // 1.0
 

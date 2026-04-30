@@ -246,9 +246,11 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
       }
     }
 
-    // Extract fee data for fee-adjusted predictions
-    const managementFee = data.vault.state?.managementFee ?? 0;
-    const performanceFee = data.vault.state?.performanceFee ?? 0;
+    // Extract fee data for fee-adjusted predictions.
+    // GraphQL returns fees as uint16 basis points (10000 = 100%); convert to
+    // percent for the predictor and the markdown formatter.
+    const managementFee = (data.vault.state?.managementFee ?? 0) / 100;
+    const performanceFee = (data.vault.state?.performanceFee ?? 0) / 100;
     const pricePerShare = BigInt(data.vault.state?.pricePerShare || '0');
     const highWaterMark = BigInt(data.vault.state?.highWaterMark || '0');
     const performanceFeeActive = pricePerShare > highWaterMark;

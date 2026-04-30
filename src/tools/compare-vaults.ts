@@ -234,9 +234,12 @@ function convertToComparisonData(
       curatorCount: curators.length,
     };
 
-    // Fee data
-    const managementFee = vault.state?.managementFee || 0;
-    const performanceFee = vault.state?.performanceFee || 0;
+    // Fee data. GraphQL returns fees as uint16 basis points (10000 = 100%);
+    // convert to percent for analyzeRisk's bucket thresholds.
+    // The comparison output below at L338/603 intentionally re-exposes the
+    // raw basis-point values via vault.state directly — callers expect that.
+    const managementFee = (vault.state?.managementFee || 0) / 100;
+    const performanceFee = (vault.state?.performanceFee || 0) / 100;
     const pricePerShare = BigInt(vault.state?.pricePerShare || '0');
     const highWaterMark = BigInt(vault.state?.highWaterMark || '0');
     const performanceFeeActive = pricePerShare > highWaterMark;
