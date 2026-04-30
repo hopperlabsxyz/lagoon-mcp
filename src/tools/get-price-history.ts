@@ -40,35 +40,27 @@ const TIME_RANGES = {
 // Query now imported from ../graphql/queries/index.js
 
 /**
- * TotalAssetsUpdated transaction data
+ * Single point on a price/TVL time series. Backend returns `y: number | null`
+ * when the underlying column was unset; we filter nulls before aggregation.
  */
-interface TotalAssetsUpdatedData {
-  totalAssets: string;
-  totalAssetsUsd: number;
-  totalSupply: string;
+interface PriceDataPoint {
+  x: number;
+  y: number | null;
 }
 
 /**
- * Transaction with price data
- */
-interface PriceTransaction {
-  id: string;
-  timestamp: string;
-  blockNumber: string;
-  data: TotalAssetsUpdatedData;
-}
-
-/**
- * GraphQL response type
+ * GraphQL response type — `Vault.stateHistory.pricePerShareUsd` plus
+ * `totalAssetsUsd` for the volume column. Backend may return null for `vault`
+ * when the address/chainId combination is unknown.
  */
 interface PriceHistoryResponse {
-  transactions: {
-    items: PriceTransaction[];
-    pageInfo: {
-      hasNextPage: boolean;
-      hasPreviousPage: boolean;
+  vault: {
+    address: string;
+    stateHistory: {
+      pricePerShareUsd: PriceDataPoint[];
+      totalAssetsUsd: PriceDataPoint[];
     };
-  };
+  } | null;
 }
 
 /**
@@ -81,7 +73,6 @@ interface OHLCVDataPoint {
   low: number;
   close: number;
   volume: number;
-  blockNumber: string;
 }
 
 /**
@@ -100,72 +91,62 @@ interface PriceStatistics {
 }
 
 /**
- * Type guard for TotalAssetsUpdatedData
+ * Aggregate price-per-share and TVL time series into daily OHLCV buckets.
+ * Volume is the average TVL for the day, joined to PPS points by timestamp.
  */
-function isTotalAssetsUpdated(data: unknown): data is TotalAssetsUpdatedData {
-  return (
-    typeof data === 'object' && data !== null && 'totalAssetsUsd' in data && 'totalSupply' in data
-  );
-}
+function aggregateOHLCV(
+  pricePoints: PriceDataPoint[],
+  tvlPoints: PriceDataPoint[]
+): OHLCVDataPoint[] {
+  if (pricePoints.length === 0) return [];
 
-/**
- * Aggregate transactions into OHLCV time buckets
- * Groups data by day for cleaner visualization
- */
-function aggregateOHLCV(transactions: PriceTransaction[]): OHLCVDataPoint[] {
-  if (transactions.length === 0) return [];
+  const dayKey = (timestamp: number): number => Math.floor(timestamp / 86400) * 86400;
 
-  // Group transactions by day (86400 seconds)
-  const dayBuckets = new Map<number, PriceTransaction[]>();
+  type Bucket = { prices: number[]; tvls: number[] };
+  const buckets = new Map<number, Bucket>();
 
-  for (const tx of transactions) {
-    if (!isTotalAssetsUpdated(tx.data)) continue;
-
-    const timestamp = parseInt(tx.timestamp, 10);
-    const dayTimestamp = Math.floor(timestamp / 86400) * 86400;
-
-    if (!dayBuckets.has(dayTimestamp)) {
-      dayBuckets.set(dayTimestamp, []);
+  for (const point of pricePoints) {
+    if (point.y === null || point.y <= 0) continue;
+    const day = dayKey(point.x);
+    let bucket = buckets.get(day);
+    if (!bucket) {
+      bucket = { prices: [], tvls: [] };
+      buckets.set(day, bucket);
     }
-    dayBuckets.get(dayTimestamp)!.push(tx);
+    bucket.prices.push(point.y);
   }
 
-  // Convert buckets to OHLCV data points
-  const ohlcvData: OHLCVDataPoint[] = [];
+  // Drop per-day numerical artifacts: backend occasionally emits values many
+  // orders of magnitude smaller than the day's real PPS (e.g. 2.7e-9 alongside
+  // values around 2500). Filtering against 0.01 % of the day's max removes
+  // those without affecting any legitimate intraday spread.
+  for (const bucket of buckets.values()) {
+    if (bucket.prices.length < 2) continue;
+    const max = Math.max(...bucket.prices);
+    const floor = max * 1e-4;
+    bucket.prices = bucket.prices.filter((p) => p >= floor);
+  }
 
-  for (const [dayTimestamp, txs] of Array.from(dayBuckets.entries()).sort((a, b) => a[0] - b[0])) {
-    const prices = txs
-      .filter((tx) => isTotalAssetsUpdated(tx.data))
-      .map((tx) => {
-        // Calculate price per share from totalAssetsUsd / totalSupply
-        const totalSupply = parseFloat(tx.data.totalSupply) / 1e18; // Convert from wei to decimal
-        return totalSupply > 0 ? tx.data.totalAssetsUsd / totalSupply : 0;
-      });
+  for (const point of tvlPoints) {
+    if (point.y === null) continue;
+    const day = dayKey(point.x);
+    const bucket = buckets.get(day);
+    // Only attach TVL when there's also a PPS point on the same day; this keeps
+    // OHLCV rows aligned to the price series.
+    if (bucket) bucket.tvls.push(point.y);
+  }
 
-    if (prices.length === 0) continue;
-
-    const volumes = txs
-      .filter((tx) => isTotalAssetsUpdated(tx.data))
-      .map((tx) => tx.data.totalAssetsUsd);
-
+  const ohlcv: OHLCVDataPoint[] = [];
+  for (const [day, { prices, tvls }] of Array.from(buckets.entries()).sort((a, b) => a[0] - b[0])) {
     const open = prices[0];
     const close = prices[prices.length - 1];
     const high = Math.max(...prices);
     const low = Math.min(...prices);
-    const volume = volumes.reduce((sum, v) => sum + v, 0) / volumes.length; // Average TVL for the day
-
-    ohlcvData.push({
-      timestamp: dayTimestamp,
-      open,
-      high,
-      low,
-      close,
-      volume,
-      blockNumber: txs[txs.length - 1].blockNumber,
-    });
+    const volume = tvls.length > 0 ? tvls.reduce((sum, v) => sum + v, 0) / tvls.length : 0;
+    ohlcv.push({ timestamp: day, open, high, low, close, volume });
   }
 
-  return ohlcvData;
+  return ohlcv;
 }
 
 /**
@@ -215,16 +196,14 @@ function calculateStatistics(ohlcvData: OHLCVDataPoint[]): PriceStatistics {
 }
 
 /**
- * GraphQL variables type for PRICE_HISTORY_QUERY
+ * GraphQL variables type for PRICE_HISTORY_QUERY (Vault.stateHistory based).
+ * `options` is null when the time range is "all"; backend then defaults to
+ * the full history since vault creation.
  */
 interface PriceHistoryVariables {
-  where: {
-    vault_in: string[];
-    type_in: string[];
-  };
-  orderBy: string;
-  orderDirection: string;
-  first: number;
+  vaultAddress: string;
+  chainId: number;
+  options: { startTimestamp: number } | null;
 }
 
 /**
@@ -238,16 +217,12 @@ interface PriceHistoryOutput {
  * Transform raw GraphQL response into markdown-formatted output
  * Uses closure to capture input values and timestamp filter
  */
-function createTransformPriceHistoryData(input: PriceHistoryInput, timestampGte: number) {
+function createTransformPriceHistoryData(input: PriceHistoryInput) {
   return (data: PriceHistoryResponse): PriceHistoryOutput => {
-    // Filter transactions by timestamp client-side (since API doesn't support timestamp filtering)
-    const filteredItems =
-      timestampGte > 0
-        ? data.transactions.items.filter((item) => parseInt(item.timestamp) >= timestampGte)
-        : data.transactions.items;
-
-    // Aggregate into OHLCV time-series
-    const ohlcvData = aggregateOHLCV(filteredItems);
+    const stateHistory = data.vault?.stateHistory;
+    const ohlcvData = stateHistory
+      ? aggregateOHLCV(stateHistory.pricePerShareUsd, stateHistory.totalAssetsUsd)
+      : [];
 
     // Calculate statistics
     const statistics = calculateStatistics(ohlcvData);
@@ -285,8 +260,6 @@ function createTransformPriceHistoryData(input: PriceHistoryInput, timestampGte:
         `\n\n`;
     }
 
-    markdown += `**Data Completeness**: ${data.transactions.pageInfo.hasNextPage ? 'More data available (truncated at 2000 points)' : 'Complete'}\n`;
-
     return { markdown };
   };
 }
@@ -304,17 +277,13 @@ export function createExecuteGetPriceHistory(
     // Calculate timestamp threshold (0 for 'all')
     const now = Math.floor(Date.now() / 1000);
     const timeRangeSeconds = TIME_RANGES[input.timeRange];
-    const timestampGte = timeRangeSeconds > 0 ? now - timeRangeSeconds : 0;
+    const startTimestamp = timeRangeSeconds > 0 ? now - timeRangeSeconds : 0;
 
-    // Build query variables
+    // Build query variables. `options: null` means "full history since vault creation".
     const variables: PriceHistoryVariables = {
-      where: {
-        vault_in: [input.vaultAddress],
-        type_in: ['TotalAssetsUpdated'],
-      },
-      orderBy: 'timestamp',
-      orderDirection: 'asc',
-      first: 1000, // GraphQL API limit: 1-1000
+      vaultAddress: input.vaultAddress,
+      chainId: input.chainId,
+      options: startTimestamp > 0 ? { startTimestamp } : null,
     };
 
     const executor = executeToolWithCache<
@@ -330,7 +299,13 @@ export function createExecuteGetPriceHistory(
       query: PRICE_HISTORY_QUERY,
       variables: () => variables,
       validateResult: (data) => {
-        const hasData = !!(data.transactions && data.transactions.items.length > 0);
+        // Backend may return points with `y: null` when the underlying column is
+        // unset. Treat the response as empty unless at least one PPS point has
+        // a usable value, otherwise statistics collapse to $0.000000.
+        const hasData = !!(
+          data.vault &&
+          data.vault.stateHistory.pricePerShareUsd.some((p) => p.y !== null && p.y > 0)
+        );
         return {
           valid: hasData,
           message: hasData
@@ -339,7 +314,7 @@ export function createExecuteGetPriceHistory(
           isError: !hasData,
         };
       },
-      transformResult: createTransformPriceHistoryData(input, timestampGte),
+      transformResult: createTransformPriceHistoryData(input),
       toolName: 'get_price_history',
     });
 

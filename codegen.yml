@@ -1,4 +1,4 @@
-schema: 'http://localhost:3001/query'
+schema: '${LAGOON_GRAPHQL_URL:http://localhost:3001/query}'
 generates:
   ./src/types/generated.ts:
     plugins:

@@ -65,14 +65,18 @@ export function createSearchVaultsQuery(
       $skip: Int!,
       $orderBy: VaultOrderBy!,
       $orderDirection: OrderDirection!,
-      $where: VaultFilterInput
+      $where: VaultFilterInput,
+      $search: String,
+      $entityIds: [String!]
     ) {
       vaults(
         first: $first,
         skip: $skip,
         orderBy: $orderBy,
         orderDirection: $orderDirection,
-        where: $where
+        where: $where,
+        search: $search,
+        entityIds: $entityIds
       ) {
         items {
           ...${fragmentName}

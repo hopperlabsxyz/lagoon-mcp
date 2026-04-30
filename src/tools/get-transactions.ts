@@ -56,7 +56,6 @@ function hashFilters(filters: Record<string, unknown>): string {
  * Transaction item type from GraphQL response
  */
 interface TransactionItem {
-  id: string;
   type: string;
   timestamp: number;
   blockNumber: string;
@@ -154,7 +153,9 @@ function createTransformTransactionsData(input: GetTransactionsInput) {
       vaultAddress: input.vaultAddress,
       chainId: input.chainId,
       transactions: transactions.map((tx) => ({
-        id: tx.id,
+        // chainId prefix avoids cross-chain collisions when consumers paginate
+        // batched results (hash+logIndex is unique per chain only).
+        id: `${tx.chain.id}-${tx.hash}-${tx.logIndex}`,
         type: tx.type,
         timestamp: tx.timestamp,
         blockNumber: tx.blockNumber,

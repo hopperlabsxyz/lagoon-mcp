@@ -12,11 +12,12 @@ export {
   COMPARE_VAULTS_QUERY,
   VAULT_FIRST_TRANSACTION_QUERY,
   BATCH_VAULT_FIRST_TRANSACTIONS_QUERY,
+  PRICE_HISTORY_QUERY,
   type BatchVaultFirstTransactionsResponse,
 } from './vault.queries.js';
 
 // Transaction Queries
-export { TRANSACTIONS_QUERY, PRICE_HISTORY_QUERY } from './transaction.queries.js';
+export { TRANSACTIONS_QUERY } from './transaction.queries.js';
 
 // Performance Queries
 export { GET_VAULT_PERFORMANCE_QUERY, GET_PERIOD_SUMMARIES_QUERY } from './performance.queries.js';
@@ -27,7 +28,6 @@ export {
   createGetUserPortfolioQuery,
   type PortfolioResponseFormat,
   SINGLE_VAULT_OPTIMIZATION_QUERY,
-  PORTFOLIO_OPTIMIZATION_QUERY,
 } from './portfolio.queries.js';
 
 // Risk Queries

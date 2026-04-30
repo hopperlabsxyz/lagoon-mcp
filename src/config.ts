@@ -35,7 +35,7 @@ export const config = {
   // Server
   server: {
     name: 'lagoon-mcp',
-    version: '0.4.0',
+    version: '0.6.0',
   },
 
   // Environment flags

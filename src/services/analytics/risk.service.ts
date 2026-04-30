@@ -20,25 +20,29 @@ import {
 import { analyzeRisk, RiskScoreBreakdown } from '../../utils/risk-scoring.js';
 
 /**
- * Risk analysis input data extracted from GraphQL
- * Uses assetByProtocols from Octav API for protocol-based diversification analysis
+ * Risk analysis input data extracted from GraphQL.
+ * `priceHistory` is pre-projected to {timestamp, pricePerShareUsd} pairs and
+ * already filtered for null/non-positive values; downstream code can iterate
+ * without re-checking. Uses assetByProtocols from Octav API for protocol-based
+ * diversification analysis.
  */
 export interface RiskAnalysisData {
   vault: VaultData;
   allVaults: { items: Array<{ state: { totalAssetsUsd: number } }> };
   curatorVaults: { items: Array<{ address: string; state: { totalAssetsUsd: number } }> };
-  priceHistory: {
-    items: Array<{
-      timestamp: string;
-      data: {
-        totalAssets: string;
-        totalAssetsUsd: number;
-        totalSupply: string;
-      };
-    }>;
-  };
+  priceHistory: Array<{ timestamp: number; pricePerShareUsd: number }>;
   // Note: Backend API returns full response with assetByProtocols for protocol analysis
   composition: VaultCompositionFullResponse | null;
+}
+
+interface RawRiskAnalysisResponse extends Pick<RiskAnalysisData, 'allVaults' | 'curatorVaults'> {
+  vault:
+    | (VaultData & {
+        stateHistory: {
+          pricePerShareUsd: Array<{ x: number; y: number | null }>;
+        };
+      })
+    | null;
 }
 
 /**
@@ -159,22 +163,25 @@ export class RiskService extends BaseService {
    */
   async fetchRiskData(vaultAddress: string, chainId: number): Promise<RiskAnalysisData | null> {
     // Fetch main risk data (without composition - it's fetched separately)
-    const data = await this.client.request<Omit<RiskAnalysisData, 'composition'>>(
-      RISK_ANALYSIS_QUERY,
-      {
-        vaultAddress,
-        chainId,
-        curatorId: '', // Will be extracted from vault.curators after fetch
-        where: {
-          vault_in: [vaultAddress],
-          type_in: ['TotalAssetsUpdated'],
-        },
-        orderBy: 'timestamp',
-        orderDirection: 'asc',
-      }
-    );
+    const raw = await this.client.request<RawRiskAnalysisResponse>(RISK_ANALYSIS_QUERY, {
+      vaultAddress,
+      chainId,
+      curatorId: '', // Will be extracted from vault.curators after fetch
+    });
 
-    if (!data.vault) return null;
+    if (!raw.vault) return null;
+
+    const { stateHistory, ...vault } = raw.vault;
+    const priceHistory = stateHistory.pricePerShareUsd
+      .filter((p): p is { x: number; y: number } => p.y !== null && p.y > 0)
+      .map((p) => ({ timestamp: p.x, pricePerShareUsd: p.y }));
+
+    const data: Omit<RiskAnalysisData, 'composition'> = {
+      vault,
+      allVaults: raw.allVaults,
+      curatorVaults: raw.curatorVaults,
+      priceHistory,
+    };
 
     // Fetch composition separately using correct addresses from bundles.octav
     // This uses graceful degradation - if composition fails, we continue without it
@@ -196,26 +203,20 @@ export class RiskService extends BaseService {
       0
     );
 
-    // Extract price history and calculate price per share
-    // Filter out items with missing or zero totalSupply to avoid artificial volatility
-    const priceHistory = data.priceHistory.items
-      .filter((item) => {
-        // Filter out items with missing or zero totalSupply
-        const totalSupply = item.data?.totalSupply;
-        return totalSupply && parseFloat(totalSupply) > 0 && item.data?.totalAssetsUsd > 0;
-      })
-      .map((item) => {
-        // Calculate price per share from totalAssetsUsd / totalSupply
-        const totalSupply = parseFloat(item.data.totalSupply) / 1e18; // Convert from wei
-        return item.data.totalAssetsUsd / totalSupply;
-      });
+    const priceHistory = data.priceHistory.map((p) => p.pricePerShareUsd);
 
-    // Calculate vault age in days from first transaction
+    // Falls back to first state-history point, then a 1-year default. The
+    // fallbacks exist so fixtures without `creationDate` and brand-new vaults
+    // (no history yet) still produce a usable age signal for the risk model.
     const now = Math.floor(Date.now() / 1000);
-    const firstTransaction = data.priceHistory.items[0];
-    const createdAtTimestamp = firstTransaction
-      ? parseInt(firstTransaction.timestamp, 10)
-      : now - 365 * 24 * 60 * 60;
+    const creationDate = data.vault.creationDate;
+    const firstPoint = data.priceHistory[0];
+    const createdAtTimestamp =
+      typeof creationDate === 'number' && creationDate > 0
+        ? creationDate
+        : firstPoint
+          ? firstPoint.timestamp
+          : now - 365 * 24 * 60 * 60;
     const ageInDays = Math.floor((now - createdAtTimestamp) / (24 * 60 * 60));
 
     // Get curator vault count
@@ -997,7 +998,7 @@ ${detailedDataQualitySection}`;
       vault,
       allVaults: allVaultsContext,
       curatorVaults: { items: [] }, // Skip curator vaults for batch efficiency
-      priceHistory: { items: [] }, // Skip price history for batch efficiency
+      priceHistory: [], // Skip price history for batch efficiency
       composition, // Include composition for protocol diversification risk
     };
 

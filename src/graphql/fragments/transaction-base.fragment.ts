@@ -18,7 +18,6 @@
  */
 export const TRANSACTION_BASE_FRAGMENT = `
   fragment TransactionBaseFragment on Transaction {
-    id
     type
     timestamp
     blockNumber

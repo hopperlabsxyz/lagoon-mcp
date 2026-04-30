@@ -32,6 +32,46 @@ vi.mock('../../src/cache/index.js', async () => {
   };
 });
 
+type LegacyPriceHistoryItem = {
+  timestamp: string;
+  data: { pricePerShareUsd?: number };
+};
+type LegacyRiskMock = {
+  vault: Record<string, unknown> | null;
+  allVaults: { items: Array<{ state: { totalAssetsUsd: number } }> };
+  curatorVaults: { items: Array<{ address: string; state: { totalAssetsUsd: number } }> };
+  priceHistory?: { items: LegacyPriceHistoryItem[] };
+};
+type RiskMockResponse = {
+  vault:
+    | (Record<string, unknown> & {
+        stateHistory: { pricePerShareUsd: Array<{ x: number; y: number }> };
+      })
+    | null;
+  allVaults: LegacyRiskMock['allVaults'];
+  curatorVaults: LegacyRiskMock['curatorVaults'];
+};
+
+/**
+ * Bridge legacy fixtures (top-level `priceHistory.items[]`) to v0.6.0's
+ * `vault.stateHistory.pricePerShareUsd: [{x, y}]` shape so existing scenarios
+ * keep their natural readability.
+ */
+function bridgeRiskMock(legacy: LegacyRiskMock): RiskMockResponse {
+  const items = legacy.priceHistory?.items ?? [];
+  const pricePerShareUsd = items
+    .filter(
+      (item): item is LegacyPriceHistoryItem & { data: { pricePerShareUsd: number } } =>
+        typeof item.data?.pricePerShareUsd === 'number'
+    )
+    .map((item) => ({ x: parseInt(item.timestamp, 10), y: item.data.pricePerShareUsd }));
+  return {
+    vault: legacy.vault ? { ...legacy.vault, stateHistory: { pricePerShareUsd } } : null,
+    allVaults: legacy.allVaults,
+    curatorVaults: legacy.curatorVaults,
+  };
+}
+
 describe('analyze_risk Tool', () => {
   // Executor function created from factory with mock container
   let executeAnalyzeRisk: ReturnType<typeof createExecuteAnalyzeRisk>;
@@ -180,7 +220,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01, 1.02, 1.02, 1.03, 1.03], 400), // Low volatility, 400 days old
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -210,7 +250,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 0.6, 1.3, 0.7, 1.4, 0.5, 1.5], 5), // Very high volatility, 5 days old
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -233,7 +273,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -253,7 +293,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -273,7 +313,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.2, 0.8, 1.3, 0.7]), // Very volatile
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -295,7 +335,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01], 10), // 10 days old
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -315,7 +355,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -337,7 +377,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: { items: [] }, // No price history
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -358,7 +398,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: { items: [] },
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -379,7 +419,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -400,7 +440,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -423,7 +463,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       // First call
       const result1 = await executeAnalyzeRisk({
@@ -454,7 +494,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       // Call for first vault
       await executeAnalyzeRisk({
@@ -518,7 +558,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -551,7 +591,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -579,7 +619,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -604,7 +644,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -629,7 +669,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -652,7 +692,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -676,7 +716,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -697,7 +737,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -740,7 +780,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -769,7 +809,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -803,7 +843,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -834,7 +874,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -863,7 +903,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -889,7 +929,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -915,7 +955,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -945,7 +985,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -975,7 +1015,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -1002,7 +1042,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -1030,7 +1070,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -1070,7 +1110,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -1102,7 +1142,7 @@ describe('analyze_risk Tool', () => {
           priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
         };
 
-        vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+        vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
         const result = await executeAnalyzeRisk({
           vaultAddress: '0x1234567890123456789012345678901234567890',
@@ -1153,7 +1193,7 @@ describe('analyze_risk Tool', () => {
         priceHistory: createMockPriceHistory([1.0, 1.01, 1.01]),
       };
 
-      vi.mocked(graphqlClient.request).mockResolvedValue(mockData);
+      vi.mocked(graphqlClient.request).mockResolvedValue(bridgeRiskMock(mockData));
 
       const result = await executeAnalyzeRisk({
         vaultAddress: '0x1234567890123456789012345678901234567890',

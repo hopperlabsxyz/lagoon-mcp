@@ -41,12 +41,16 @@ export const RISK_ANALYSIS_QUERY = `
     $vaultAddress: Address!,
     $chainId: Int!,
     $curatorId: String!,
-    $where: TransactionFilterInput!,
-    $orderBy: TransactionOrderBy!,
-    $orderDirection: OrderDirection!
+    $options: TimeRangeOptions
   ) {
     vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
       ...VaultFragment
+      stateHistory {
+        pricePerShareUsd(options: $options) {
+          x
+          y
+        }
+      }
     }
 
     # Get all vaults for concentration risk calculation
@@ -64,25 +68,6 @@ export const RISK_ANALYSIS_QUERY = `
         address
         state {
           totalAssetsUsd
-        }
-      }
-    }
-
-    # Get price history for volatility analysis
-    priceHistory: transactions(
-      where: $where,
-      orderBy: $orderBy,
-      orderDirection: $orderDirection,
-      first: 100
-    ) {
-      items {
-        timestamp
-        data {
-          ... on TotalAssetsUpdated {
-            totalAssets
-            totalAssetsUsd
-            totalSupply
-          }
         }
       }
     }

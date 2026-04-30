@@ -129,6 +129,8 @@ interface SearchVaultsVariables {
   orderBy: string;
   orderDirection: string;
   where?: Record<string, unknown>;
+  search?: string;
+  entityIds?: string[];
 }
 
 /**
@@ -165,9 +167,15 @@ export function createExecuteSearchVaults(
           ? 'full'
           : 'list';
 
-    // Generate cache key including responseFormat
+    // Generate cache key including responseFormat. Search and entityIds are
+    // appended so different free-text searches don't collide in cache.
     const filterHash = hashFilters(input.filters);
-    const cacheKey = `${cacheKeys.searchVaults({ filterHash })}:${pagination.first}:${pagination.skip}:${input.orderBy}:${input.orderDirection}:${responseFormat}`;
+    const searchKey = input.search ? `s=${input.search}` : '';
+    const entityKey =
+      input.entityIds && input.entityIds.length > 0
+        ? `e=${[...input.entityIds].sort().join(',')}`
+        : '';
+    const cacheKey = `${cacheKeys.searchVaults({ filterHash })}:${pagination.first}:${pagination.skip}:${input.orderBy}:${input.orderDirection}:${responseFormat}:${searchKey}:${entityKey}`;
 
     // Register cache tags for invalidation
     container.cacheInvalidator.register(cacheKey, [CacheTag.VAULT]);
@@ -194,6 +202,8 @@ export function createExecuteSearchVaults(
           orderBy: input.orderBy || 'totalAssetsUsd',
           orderDirection: input.orderDirection || 'desc',
           where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+          search: input.search,
+          entityIds: input.entityIds,
         };
       },
       validateResult: (data) => {

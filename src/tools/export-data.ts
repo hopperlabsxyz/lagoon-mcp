@@ -27,7 +27,6 @@ import { ExportDataInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { handleToolError } from '../utils/tool-error-handler.js';
 import { VaultData } from '../graphql/fragments/index.js';
-import { calculatePricePerShare } from '../sdk/vault-utils.js';
 import {
   EXPORT_VAULTS_QUERY,
   EXPORT_TRANSACTIONS_QUERY,
@@ -180,10 +179,11 @@ async function exportTransactions(
   const data = await container.graphqlClient.request<{
     transactions: {
       items: Array<{
-        id: string;
         type: string;
         timestamp: string;
         blockNumber: string;
+        hash: string;
+        logIndex: number;
         vault: { address: string };
         data: unknown;
       }>;
@@ -214,7 +214,7 @@ async function exportTransactions(
     };
 
     return {
-      id: tx.id,
+      id: `${input.chainId}-${tx.hash}-${tx.logIndex}`,
       type: tx.type,
       timestamp: new Date(parseInt(tx.timestamp, 10) * 1000).toISOString(),
       blockNumber: tx.blockNumber,
@@ -259,32 +259,34 @@ async function exportPriceHistory(
   container: ServiceContainer,
   input: ExportDataInput
 ): Promise<CallToolResult> {
-  const data = await container.graphqlClient.request<{
-    transactions: {
-      items: Array<{
-        timestamp: string;
-        data: {
-          totalAssets: string;
-          totalAssetsUsd: number;
-          totalSupply: string;
-          vault: {
-            id: string;
-            address: string;
-            symbol: string;
-            decimals: number;
-            asset: {
-              decimals: number;
-            };
-          };
-        };
-      }>;
-    };
-  }>(EXPORT_PRICE_HISTORY_QUERY, {
-    vault_in: input.vaultAddresses,
-    first: 1000,
-  });
+  // The v0.6.0 schema returns price-per-share series per vault via
+  // Vault.stateHistory.pricePerShareUsd. The endpoint takes a single vault, so we
+  // fan out across input.vaultAddresses and pool the results into one OHLCV table.
+  type PriceHistoryResponse = {
+    vault: {
+      address: string;
+      stateHistory: {
+        pricePerShareUsd: Array<{ x: number; y: number | null }>;
+      };
+    } | null;
+  };
 
-  if (!data.transactions || data.transactions.items.length === 0) {
+  const responses = await Promise.all(
+    input.vaultAddresses.map((vaultAddress) =>
+      container.graphqlClient.request<PriceHistoryResponse>(EXPORT_PRICE_HISTORY_QUERY, {
+        vaultAddress,
+        chainId: input.chainId,
+      })
+    )
+  );
+
+  const allPoints: Array<{ x: number; y: number }> = responses.flatMap((response) =>
+    (response.vault?.stateHistory.pricePerShareUsd ?? []).filter(
+      (p): p is { x: number; y: number } => p.y !== null && p.y > 0
+    )
+  );
+
+  if (allPoints.length === 0) {
     return {
       content: [
         {
@@ -299,25 +301,12 @@ async function exportPriceHistory(
   // Aggregate by day for OHLCV
   const dayBuckets = new Map<string, number[]>();
 
-  for (const tx of data.transactions.items) {
-    const date = new Date(parseInt(tx.timestamp, 10) * 1000).toISOString().split('T')[0];
+  for (const point of allPoints) {
+    const date = new Date(point.x * 1000).toISOString().split('T')[0];
     if (!dayBuckets.has(date)) {
       dayBuckets.set(date, []);
     }
-
-    // Calculate price per share using Lagoon SDK
-    const vaultDecimals = tx.data.vault.decimals ?? 18;
-    const assetDecimals = tx.data.vault.asset.decimals;
-    const pricePerShareBigInt = calculatePricePerShare(
-      BigInt(tx.data.totalAssets),
-      BigInt(tx.data.totalSupply),
-      vaultDecimals,
-      assetDecimals
-    );
-    // Convert to number for OHLCV export (in asset decimals)
-    const pricePerShare = Number(pricePerShareBigInt) / 10 ** assetDecimals;
-
-    dayBuckets.get(date)!.push(pricePerShare);
+    dayBuckets.get(date)!.push(point.y);
   }
 
   const csvData: PriceHistoryCSVData[] = Array.from(dayBuckets.entries())

@@ -104,6 +104,29 @@ export const searchVaultsInputSchema = z.object({
     .optional(),
   orderBy: z.enum(['address', 'chainId', 'id', 'totalAssetsUsd']).default('totalAssetsUsd'),
   orderDirection: z.enum(['asc', 'desc']).default('desc'),
+  // Length-capped to prevent memory amplification via the in-memory cache key.
+  search: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe('Free-text search across vault name, symbol, asset, network, curator, integrator'),
+  // Whitelisted shape (curator:<id> or integrator:<id>) — keeps the filter
+  // contract enforceable instead of relying on the backend resolver to reject.
+  entityIds: z
+    .array(
+      z
+        .string()
+        .regex(
+          /^(curator|integrator):[A-Za-z0-9_-]{1,64}$/,
+          'Must be curator:<id> or integrator:<id>'
+        )
+    )
+    .min(1)
+    .max(50)
+    .optional()
+    .describe('Filter by entity refs (e.g. ["curator:abc", "integrator:xyz"]); OR semantics'),
   // NEW: Response format for token optimization
   responseFormat: z
     .enum(['list', 'summary', 'full'])
@@ -145,19 +168,47 @@ export const getTransactionsInputSchema = z.object({
   transactionTypes: z
     .array(
       z.enum([
+        // Settlement & async claim flow
         'SettleDeposit',
         'SettleRedeem',
         'DepositRequest',
+        'DepositRequestCanceled',
         'RedeemRequest',
+        'RedeemRequestCanceled',
+        'Deposit',
+        'Withdraw',
+        // Sync 4626 flow
+        'DepositSync',
+        'WithdrawSync',
+        'PreMint',
+        // Vault state markers
         'NewTotalAssetsUpdated',
         'TotalAssetsUpdated',
         'PeriodSummary',
-        'DepositSync',
-        'DepositRequestCanceled',
-        'RatesUpdated',
         'StateUpdated',
         'VaultState',
+        // Fees
+        'RatesUpdated',
+        'FeeTaken',
+        'HaircutTaken',
+        // Access control / governance
+        'AccessModeUpdated',
+        'AsyncOnlyActivated',
+        'BlacklistUpdated',
         'WhitelistUpdated',
+        'ExternalSanctionsListUpdated',
+        'GuardrailsStatusUpdated',
+        'GuardrailsUpdated',
+        'MaxCapUpdated',
+        'NameUpdated',
+        'SymbolUpdated',
+        'SyncModeUpdated',
+        'TotalAssetsExpirationUpdated',
+        'SafeUpdated',
+        'SecurityCouncilUpdated',
+        'SuperOperatorUpdated',
+        // Factory
+        'ProxyDeployed',
       ])
     )
     .optional(),

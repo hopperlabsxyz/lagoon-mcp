@@ -28,6 +28,9 @@ export interface VaultData {
   averageSettlement: number | null;
   isVisible: boolean;
 
+  // Unix timestamp (seconds, fractional from Float) of vault initialization onchain.
+  creationDate: number;
+
   // Chain information
   chain: {
     id: number;
@@ -192,6 +195,7 @@ export const VAULT_FRAGMENT = `
     logoUrl
     averageSettlement
     isVisible
+    creationDate
     asset {
       ...AssetInfoFragment
     }

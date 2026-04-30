@@ -1,6 +1,6 @@
 {
   "name": "@lagoon-protocol/lagoon-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "MCP server for Lagoon DeFi vault analytics - FOR INFORMATIONAL USE ONLY, NOT FINANCIAL ADVICE. Natural language access to vault data, portfolios, and performance metrics",
   "type": "module",
   "main": "./dist/index.js",
