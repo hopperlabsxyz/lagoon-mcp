@@ -5,42 +5,33 @@
  * Includes historical performance data for ML-based yield prediction.
  */
 
-import { VAULT_FRAGMENT, VAULT_LIST_FRAGMENT } from '../fragments/index.js';
+import { VAULT_FRAGMENT } from '../fragments/index.js';
 
 /**
- * Response format type for yield prediction query
+ * Response format type for yield prediction output verbosity.
+ *
+ * Note: this only affects the formatted output produced by the tool.
+ * The GraphQL query itself always uses VAULT_FRAGMENT because the
+ * yield calculation requires vault.decimals, asset.decimals,
+ * state.pricePerShare, state.highWaterMark, state.managementFee,
+ * and state.performanceFee — none of which are present on
+ * VaultListFragment.
  */
 export type PredictionResponseFormat = 'quick' | 'detailed';
 
 /**
- * Get fragment and fragment name based on response format for prediction queries
- */
-function getFragmentForPredictionResponseFormat(responseFormat: PredictionResponseFormat): {
-  fragment: string;
-  fragmentName: string;
-} {
-  switch (responseFormat) {
-    case 'quick':
-      return { fragment: VAULT_LIST_FRAGMENT, fragmentName: 'VaultListFragment' };
-    case 'detailed':
-      return { fragment: VAULT_FRAGMENT, fragmentName: 'VaultFragment' };
-    default:
-      return { fragment: VAULT_LIST_FRAGMENT, fragmentName: 'VaultListFragment' };
-  }
-}
-
-/**
- * Create yield prediction GraphQL query with dynamic fragment selection
+ * Create yield prediction GraphQL query.
+ *
+ * The `responseFormat` parameter is accepted for API compatibility but does
+ * not change the query — see PredictionResponseFormat doc for why.
  */
 export function createYieldPredictionQuery(
-  responseFormat: PredictionResponseFormat = 'quick'
+  _responseFormat: PredictionResponseFormat = 'quick'
 ): string {
-  const { fragment, fragmentName } = getFragmentForPredictionResponseFormat(responseFormat);
-
   return `
     query YieldPrediction($vaultAddress: Address!, $chainId: Int!) {
       vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
-        ...${fragmentName}
+        ...VaultFragment
       }
 
       # Get historical performance data
@@ -85,7 +76,7 @@ export function createYieldPredictionQuery(
         }
       }
     }
-    ${fragment}
+    ${VAULT_FRAGMENT}
   `;
 }
 
@@ -98,17 +89,5 @@ export function createYieldPredictionQuery(
  * - TVL history (TotalAssetsUpdated) for growth tracking
  *
  * Used by: predict_yield tool
- *
- * Usage:
- * ```typescript
- * const data = await graphqlClient.request<YieldPredictionResponse>(
- *   YIELD_PREDICTION_QUERY,
- *   {
- *     vaultAddress: '0x...',
- *     chainId: 1,
- *     timestamp_gte: '1234567890'
- *   }
- * );
- * ```
  */
 export const YIELD_PREDICTION_QUERY = createYieldPredictionQuery('detailed');

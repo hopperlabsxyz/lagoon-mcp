@@ -48,32 +48,6 @@ function createMockTotalAssetsUpdated(
 }
 
 /**
- * Helper to create mock PeriodSummary transaction
- */
-function createMockPeriodSummary(
-  timestamp: number,
-  totalAssetsAtEnd: number,
-  totalAssetsAtStart: string = '900000000000000000000',
-  totalSupplyAtStart: string = '1000000000000000000000',
-  totalSupplyAtEnd: string = '1000000000000000000000'
-): unknown {
-  return {
-    id: `tx-${timestamp}`,
-    type: 'PeriodSummary',
-    timestamp: timestamp.toString(),
-    blockNumber: '1000000',
-    data: {
-      duration: '86400',
-      totalAssetsAtStart,
-      totalAssetsAtEnd: totalAssetsAtEnd.toString(),
-      totalSupplyAtStart,
-      totalSupplyAtEnd,
-      netTotalSupplyAtEnd: totalSupplyAtEnd,
-    },
-  };
-}
-
-/**
  * Helper to create mock performance response
  */
 function createMockPerformanceResponse(transactions: unknown[]): unknown {
@@ -231,42 +205,31 @@ describe('get_vault_performance Tool', () => {
       expect(data.metrics[2].totalAssetsUsd).toBe(1000000);
     });
 
-    it('should aggregate PeriodSummary transactions', async () => {
-      // Arrange
-      const now = Math.floor(Date.now() / 1000);
-      const mockResponse = createMockPerformanceResponse([
-        createMockPeriodSummary(now - 7200, 900000),
-        createMockPeriodSummary(now - 3600, 950000),
-      ]);
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
-
-      // Act
-      const result = await executeGetVaultPerformance({
-        vaultAddress: mockVaultAddress,
-        chainId: mockChainId,
-        timeRange: '7d',
-        includeSDKCalculations: false,
-      });
-
-      // Assert
-      expect(result.isError).toBe(false);
-      const data = parseJsonWithDisclaimer(result.content[0].text as string);
-      expect(data.metrics).toHaveLength(2);
-      expect(data.metrics[0].totalAssetsUsd).toBe(900000);
-      expect(data.metrics[1].totalAssetsUsd).toBe(950000);
-    });
-
-    it('should aggregate mixed transaction types', async () => {
-      // Arrange
+    it('should ignore non-TotalAssetsUpdated transaction types', async () => {
+      // PeriodSummary records carry totalAssetsAtEnd as a raw token amount in
+      // wei, not USD. They must not be aggregated into the USD time-series,
+      // even if the backend includes them in the response.
       const now = Math.floor(Date.now() / 1000);
       const mockResponse = createMockPerformanceResponse([
         createMockTotalAssetsUpdated(now - 7200, 900000),
-        createMockPeriodSummary(now - 3600, 950000),
+        {
+          id: `tx-${now - 3600}`,
+          type: 'PeriodSummary',
+          timestamp: (now - 3600).toString(),
+          blockNumber: '1000000',
+          data: {
+            duration: '86400',
+            totalAssetsAtStart: '900000000000000000000',
+            totalAssetsAtEnd: '950000000000000000000',
+            totalSupplyAtStart: '1000000000000000000000',
+            totalSupplyAtEnd: '1000000000000000000000',
+            netTotalSupplyAtEnd: '1000000000000000000000',
+          },
+        },
         createMockTotalAssetsUpdated(now - 1800, 1000000),
       ]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
-      // Act
       const result = await executeGetVaultPerformance({
         vaultAddress: mockVaultAddress,
         chainId: mockChainId,
@@ -274,10 +237,13 @@ describe('get_vault_performance Tool', () => {
         includeSDKCalculations: false,
       });
 
-      // Assert
       expect(result.isError).toBe(false);
       const data = parseJsonWithDisclaimer(result.content[0].text as string);
-      expect(data.metrics).toHaveLength(3);
+      // Only the two TotalAssetsUpdated entries should be in the USD series
+      expect(data.metrics).toHaveLength(2);
+      expect(data.metrics[0].totalAssetsUsd).toBe(900000);
+      expect(data.metrics[1].totalAssetsUsd).toBe(1000000);
+      // transactionCount counts the filtered transactions, not the raw response
       expect(data.summary.transactionCount).toBe(3);
     });
   });
@@ -335,8 +301,8 @@ describe('get_vault_performance Tool', () => {
       // Arrange
       const now = Math.floor(Date.now() / 1000);
       const mockResponse = createMockPerformanceResponse([
-        createMockPeriodSummary(now - 3600, 1000000),
-        createMockPeriodSummary(now - 1800, 1100000),
+        createMockTotalAssetsUpdated(now - 3600, 1000000),
+        createMockTotalAssetsUpdated(now - 1800, 1100000),
       ]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);
 
@@ -360,9 +326,9 @@ describe('get_vault_performance Tool', () => {
       const now = Math.floor(Date.now() / 1000);
       const mockResponse = createMockPerformanceResponse([
         createMockTotalAssetsUpdated(now - 7200, 900000),
-        createMockPeriodSummary(now - 5400, 920000),
+        createMockTotalAssetsUpdated(now - 5400, 920000),
         createMockTotalAssetsUpdated(now - 3600, 950000),
-        createMockPeriodSummary(now - 1800, 980000),
+        createMockTotalAssetsUpdated(now - 1800, 980000),
         createMockTotalAssetsUpdated(now - 900, 1000000),
       ]);
       vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(mockResponse);

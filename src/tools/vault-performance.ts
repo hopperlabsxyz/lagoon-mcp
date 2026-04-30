@@ -57,21 +57,12 @@ interface TotalAssetsUpdatedData {
   totalAssets: string;
 }
 
-interface PeriodSummaryData {
-  duration: string;
-  totalAssetsAtStart: string;
-  totalAssetsAtEnd: string;
-  totalSupplyAtStart: string;
-  totalSupplyAtEnd: string;
-  netTotalSupplyAtEnd: string;
-}
-
 interface Transaction {
   id: string;
-  type: 'TotalAssetsUpdated' | 'PeriodSummary';
+  type: 'TotalAssetsUpdated';
   timestamp: string; // BigInt as string
   blockNumber: string; // BigInt as string
-  data: TotalAssetsUpdatedData | PeriodSummaryData;
+  data: TotalAssetsUpdatedData;
 }
 
 interface PageInfo {
@@ -152,20 +143,12 @@ function isTotalAssetsUpdated(data: unknown): data is TotalAssetsUpdatedData {
 }
 
 /**
- * Type guard for PeriodSummaryData
- */
-function isPeriodSummary(data: unknown): data is PeriodSummaryData {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    'duration' in data &&
-    'totalAssetsAtStart' in data &&
-    'totalSupplyAtStart' in data
-  );
-}
-
-/**
  * Aggregate transaction data into time-series metrics
+ *
+ * Only TotalAssetsUpdated events are considered: they carry totalAssetsUsd in
+ * USD. PeriodSummary events carry totalAssetsAtEnd as a raw token amount in
+ * wei, so mixing them into a USD-denominated series produced wildly wrong
+ * summaries.
  */
 function aggregateMetrics(transactions: Transaction[]): MetricPoint[] {
   const metrics: MetricPoint[] = [];
@@ -175,13 +158,6 @@ function aggregateMetrics(transactions: Transaction[]): MetricPoint[] {
       metrics.push({
         timestamp: parseInt(tx.timestamp, 10),
         totalAssetsUsd: tx.data.totalAssetsUsd,
-        blockNumber: tx.blockNumber,
-      });
-    } else if (tx.type === 'PeriodSummary' && isPeriodSummary(tx.data)) {
-      // PeriodSummary contains totalAssetsAtEnd which represents the total assets at period end
-      metrics.push({
-        timestamp: parseInt(tx.timestamp, 10),
-        totalAssetsUsd: parseFloat(tx.data.totalAssetsAtEnd),
         blockNumber: tx.blockNumber,
       });
     }
@@ -244,7 +220,10 @@ async function calculateSDKAPR(
       transactions: {
         items: Array<{
           timestamp: string;
-          data: PeriodSummaryData;
+          data: {
+            totalAssetsAtStart: string;
+            totalSupplyAtStart: string;
+          };
         }>;
         pageInfo: PageInfo;
       };
@@ -409,7 +388,7 @@ export function createExecuteGetVaultPerformance(
       variables: (input) => ({
         where: {
           vault_in: [input.vaultAddress],
-          type_in: ['TotalAssetsUpdated', 'PeriodSummary'],
+          type_in: ['TotalAssetsUpdated'],
         },
         orderBy: 'timestamp',
         orderDirection: 'asc',
