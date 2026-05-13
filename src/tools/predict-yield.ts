@@ -44,6 +44,25 @@ const TIME_RANGES = {
   '90d': 90 * 24 * 60 * 60,
 } as const;
 
+// Outlier-robustness guards on the per-period APR series. See
+// .claude/plans/predict-yield-outlier-robustness.md for design rationale.
+//
+// MIN_PERIOD_DAYS: drop period-over-period APR samples whose elapsed time is
+// shorter than this. annualizedAPR = priceChange × 365 / daysElapsed, so a
+// 14-minute period turns a 0.01% PPS tick into a 365% APR observation — one
+// such outlier shifts the regression slope used at predict-yield.ts to forecast
+// the next day. 6h is the smallest threshold that bounds a 0.01% PPS bump to
+// ~14.6% annualized (a believable real-world rate).
+const MIN_PERIOD_DAYS = 0.25;
+
+// APR_CLAMP_*: even after the 6h filter, a flash-loan / oracle blip can produce
+// extreme values across a 1d+ window. Bound them so a single outlier can't
+// dominate the regression. -100% floor (a vault cannot lose >100% in a year),
+// 500% ceiling (anything sustainably above is exotic enough that prediction
+// confidence intervals are meaningless anyway).
+const APR_CLAMP_MIN = -100;
+const APR_CLAMP_MAX = 500;
+
 /**
  * GraphQL response type
  */
@@ -201,6 +220,10 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
     // Prepare historical data points
     const historicalData: YieldDataPoint[] = [];
 
+    // Outlier-robustness counters (surfaced as insights in the output).
+    let droppedShortPeriods = 0;
+    let clampedPeriods = 0;
+
     // Build period-over-period APR series for yield prediction
     if (data.performanceHistory && data.performanceHistory.items.length > 0) {
       // Calculate period-over-period APR for each data point
@@ -218,6 +241,12 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
         const timestamp = parseInt(item.timestamp, 10);
         const prevTimestamp = parseInt(prevItem.timestamp, 10);
 
+        const daysElapsed = (timestamp - prevTimestamp) / (24 * 60 * 60);
+        if (daysElapsed < MIN_PERIOD_DAYS) {
+          droppedShortPeriods++;
+          continue;
+        }
+
         const currentPeriod: PeriodSummary = {
           timestamp: item.timestamp,
           totalAssetsAtStart: item.data.totalAssetsAtStart,
@@ -233,22 +262,23 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
         const prevAPRData = transformPeriodSummariesToAPRData([prevPeriod], data.vault);
 
         if (prevAPRData.inception && currentAPRData.inception) {
-          const daysElapsed = (timestamp - prevTimestamp) / (24 * 60 * 60);
-          if (daysElapsed > 0) {
-            const apr = calculateAPRFromPriceChange(
-              prevAPRData.inception.pricePerShare,
-              currentAPRData.inception.pricePerShare,
-              daysElapsed
-            );
-            historicalData.push({ timestamp, apr, tvl: Number(item.data.totalAssetsAtEnd) });
-          }
+          const rawApr = calculateAPRFromPriceChange(
+            prevAPRData.inception.pricePerShare,
+            currentAPRData.inception.pricePerShare,
+            daysElapsed
+          );
+          const apr = Math.max(APR_CLAMP_MIN, Math.min(APR_CLAMP_MAX, rawApr));
+          if (apr !== rawApr) clampedPeriods++;
+          historicalData.push({ timestamp, apr, tvl: Number(item.data.totalAssetsAtEnd) });
         }
       }
     }
 
-    // Extract fee data for fee-adjusted predictions
-    const managementFee = data.vault.state?.managementFee ?? 0;
-    const performanceFee = data.vault.state?.performanceFee ?? 0;
+    // Extract fee data for fee-adjusted predictions.
+    // GraphQL returns fees as uint16 basis points (10000 = 100%); convert to
+    // percent for the predictor and the markdown formatter.
+    const managementFee = (data.vault.state?.managementFee ?? 0) / 100;
+    const performanceFee = (data.vault.state?.performanceFee ?? 0) / 100;
     const pricePerShare = BigInt(data.vault.state?.pricePerShare || '0');
     const highWaterMark = BigInt(data.vault.state?.highWaterMark || '0');
     const performanceFeeActive = pricePerShare > highWaterMark;
@@ -305,7 +335,8 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
             performanceFeeActive,
             actualProfitMargin,
           }
-        : undefined
+        : undefined,
+      { droppedShortPeriods, clampedPeriods }
     );
 
     // Format prediction as markdown

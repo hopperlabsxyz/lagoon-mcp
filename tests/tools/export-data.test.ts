@@ -95,7 +95,6 @@ function createMockTransaction(
   }> = {}
 ): unknown {
   const defaults = {
-    id: 'tx-123',
     type: 'SettleDeposit',
     timestamp: '1704067200', // 2024-01-01
     blockNumber: '12345',
@@ -107,10 +106,13 @@ function createMockTransaction(
   const merged = { ...defaults, ...overrides };
 
   return {
-    id: merged.id,
+    // Backend v0.6.0 removed Transaction.id; export-data synthesizes
+    // ${hash}-${logIndex} as the unique event identifier.
     type: merged.type,
     timestamp: merged.timestamp,
     blockNumber: merged.blockNumber,
+    hash: '0xtxhash123',
+    logIndex: 0,
     vault: {
       address: merged.vaultAddress,
     },
@@ -296,7 +298,7 @@ describe('export_data Tool', () => {
       const text = (result.content[0] as { type: 'text'; text: string }).text;
       expect(text).toContain('```csv');
       expect(text).toContain('id,type,timestamp');
-      expect(text).toContain('tx-123');
+      expect(text).toContain('1-0xtxhash123-0');
       expect(text).toContain('SettleDeposit');
     });
 
@@ -318,7 +320,7 @@ describe('export_data Tool', () => {
       expect(result.isError).toBe(false);
       const text = (result.content[0] as { type: 'text'; text: string }).text;
       expect(text).toContain('```json');
-      expect(text).toContain('"id": "tx-123"');
+      expect(text).toContain('"id": "1-0xtxhash123-0"');
       expect(text).toContain('"type": "SettleDeposit"');
     });
 
@@ -347,28 +349,36 @@ describe('export_data Tool', () => {
   // ==========================================
 
   describe('Price History Export', () => {
-    it('should export price history in CSV format with OHLCV aggregation', async () => {
-      const mockPriceTx1 = createMockPriceTransaction({
-        timestamp: '1704067200', // 2024-01-01 00:00
-        pricePerShareUsd: 1.0,
-        totalAssetsUsd: 1000000,
-      });
-      const mockPriceTx2 = createMockPriceTransaction({
-        timestamp: '1704070800', // 2024-01-01 01:00
-        pricePerShareUsd: 1.05,
-        totalAssetsUsd: 1050000,
-      });
-      const mockPriceTx3 = createMockPriceTransaction({
-        timestamp: '1704074400', // 2024-01-01 02:00
-        pricePerShareUsd: 0.98,
-        totalAssetsUsd: 980000,
-      });
-
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        transactions: {
-          items: [mockPriceTx1, mockPriceTx2, mockPriceTx3],
+    /**
+     * Build a backend v0.6.0 EXPORT_PRICE_HISTORY_QUERY response. The query is
+     * single-vault per call, so callers chain mockResolvedValueOnce per vault.
+     */
+    function mockPriceHistoryResponse(
+      points: Array<{ x: number; y: number }>,
+      vaultAddress = '0x1234567890123456789012345678901234567890'
+    ): unknown {
+      return {
+        vault: {
+          address: vaultAddress,
+          symbol: 'TEST',
+          decimals: 18,
+          asset: { decimals: 6 },
+          stateHistory: {
+            pricePerShareUsd: points,
+            totalAssetsUsd: points.map((p) => ({ x: p.x, y: p.y * 1_000_000 })),
+          },
         },
-      });
+      };
+    }
+
+    it('should export price history in CSV format with OHLCV aggregation', async () => {
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(
+        mockPriceHistoryResponse([
+          { x: 1704067200, y: 1.0 }, // 2024-01-01 00:00
+          { x: 1704070800, y: 1.05 }, // 2024-01-01 01:00
+          { x: 1704074400, y: 0.98 }, // 2024-01-01 02:00
+        ])
+      );
 
       const result = await executeExportData({
         vaultAddresses: ['0x1234567890123456789012345678901234567890'],
@@ -385,12 +395,9 @@ describe('export_data Tool', () => {
     });
 
     it('should export price history in JSON format', async () => {
-      const mockPriceTx = createMockPriceTransaction();
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        transactions: {
-          items: [mockPriceTx],
-        },
-      });
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(
+        mockPriceHistoryResponse([{ x: 1704067200, y: 1.05 }])
+      );
 
       const result = await executeExportData({
         vaultAddresses: ['0x1234567890123456789012345678901234567890'],
@@ -411,11 +418,9 @@ describe('export_data Tool', () => {
     });
 
     it('should handle empty price history results', async () => {
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        transactions: {
-          items: [],
-        },
-      });
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(
+        mockPriceHistoryResponse([])
+      );
 
       const result = await executeExportData({
         vaultAddresses: ['0x1234567890123456789012345678901234567890'],
@@ -429,26 +434,13 @@ describe('export_data Tool', () => {
       expect(text).toContain('No price history found');
     });
 
-    it('should calculate price per share using SDK with correct decimal scaling', async () => {
-      // Create mock transaction with realistic values
-      // totalAssets: 1,000,000 USDC (6 decimals) = 1000000000000
-      // totalSupply: 950,000 shares (18 decimals) = 950000000000000000000000
-      // Expected pricePerShare: ~1.052631 USDC per share
-      const mockPriceTx = createMockPriceTransaction({
-        timestamp: '1704067200',
-        pricePerShareUsd: 1.05,
-        totalAssetsUsd: 1000000,
-      });
-
-      // Override with specific values for precision testing
-      (mockPriceTx as any).data.totalAssets = '1000000000000'; // 1M USDC in 6 decimals
-      (mockPriceTx as any).data.totalSupply = '950000000000000000000000'; // 950K shares in 18 decimals
-
-      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue({
-        transactions: {
-          items: [mockPriceTx],
-        },
-      });
+    it('should pass through the typed pricePerShareUsd from stateHistory', async () => {
+      // Backend v0.6.0+ exposes pricePerShareUsd directly on Vault.stateHistory;
+      // export-data no longer reconstructs PPS from totalAssets/totalSupply, so
+      // the value flowing through the OHLCV aggregation should match the input.
+      vi.spyOn(graphqlClientModule.graphqlClient, 'request').mockResolvedValue(
+        mockPriceHistoryResponse([{ x: 1704067200, y: 1.052631 }])
+      );
 
       const result = await executeExportData({
         vaultAddresses: ['0x1234567890123456789012345678901234567890'],
@@ -460,18 +452,10 @@ describe('export_data Tool', () => {
       expect(result.isError).toBe(false);
       const text = (result.content[0] as { type: 'text'; text: string }).text;
       const jsonData = JSON.parse(text.split('```json\n')[1].split('\n```')[0]);
-
-      // Verify price is in reasonable range (not scientific notation like 1e-12)
-      expect(jsonData[0].open).toBeGreaterThan(1);
-      expect(jsonData[0].open).toBeLessThan(2);
-
-      // Verify it's approximately 1.052631 (1000000 / 950000)
       expect(jsonData[0].open).toBeCloseTo(1.052631, 4);
-
-      // Verify all OHLCV values are in correct range
-      expect(jsonData[0].high).toBeGreaterThan(1);
-      expect(jsonData[0].low).toBeGreaterThan(1);
-      expect(jsonData[0].close).toBeGreaterThan(1);
+      expect(jsonData[0].high).toBeCloseTo(1.052631, 4);
+      expect(jsonData[0].low).toBeCloseTo(1.052631, 4);
+      expect(jsonData[0].close).toBeCloseTo(1.052631, 4);
     });
   });
 

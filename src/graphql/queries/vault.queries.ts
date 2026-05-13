@@ -192,3 +192,42 @@ export interface BatchVaultFirstTransactionsResponse {
     }>;
   };
 }
+
+/**
+ * Historical price-per-share series for a single vault.
+ *
+ * Used by: get_price_history tool. The `options` variable accepts a
+ * `TimeRangeOptions` window (`startTimestamp`/`endTimestamp`); pass `null` for
+ * full history since vault creation. Each series caps at 1000 most recent
+ * points per backend rate-limiting policy — there is no pagination cursor, so
+ * consumers narrow the window via `options` rather than paging.
+ *
+ * Usage:
+ * ```typescript
+ * const data = await graphqlClient.request<PriceHistoryResponse>(
+ *   PRICE_HISTORY_QUERY,
+ *   { vaultAddress: '0x...', chainId: 1, options: { startTimestamp: 1700000000 } }
+ * );
+ * ```
+ */
+export const PRICE_HISTORY_QUERY = `
+  query GetPriceHistory(
+    $vaultAddress: Address!,
+    $chainId: Int!,
+    $options: TimeRangeOptions
+  ) {
+    vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
+      address
+      stateHistory {
+        pricePerShareUsd(options: $options) {
+          x
+          y
+        }
+        totalAssetsUsd(options: $options) {
+          x
+          y
+        }
+      }
+    }
+  }
+`;

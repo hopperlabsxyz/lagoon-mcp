@@ -10,8 +10,10 @@ import { TRANSACTION_BASE_FRAGMENT, PAGEINFO_MINIMAL_FRAGMENT } from '../fragmen
 /**
  * Vault performance GraphQL query
  *
- * Fetches transactions with TotalAssetsUpdated and PeriodSummary data for
- * historical metrics and trend analysis. Provides time-series performance data.
+ * Fetches TotalAssetsUpdated transactions for historical TVL time-series.
+ * Only TotalAssetsUpdated is queried because it carries totalAssetsUsd in
+ * USD. PeriodSummary records carry totalAssetsAtEnd as a raw token amount in
+ * wei, which is not USD-comparable.
  *
  * Used by: get_vault_performance tool
  *
@@ -22,7 +24,7 @@ import { TRANSACTION_BASE_FRAGMENT, PAGEINFO_MINIMAL_FRAGMENT } from '../fragmen
  *   {
  *     where: {
  *       vault_in: ['0x...'],
- *       type_in: ['TotalAssetsUpdated', 'PeriodSummary']
+ *       type_in: ['TotalAssetsUpdated']
  *     },
  *     orderBy: 'timestamp',
  *     orderDirection: 'asc',
@@ -50,14 +52,6 @@ export const GET_VAULT_PERFORMANCE_QUERY = `
           ... on TotalAssetsUpdated {
             totalAssetsUsd
             totalAssets
-          }
-          ... on PeriodSummary {
-            duration
-            totalAssetsAtStart
-            totalAssetsAtEnd
-            totalSupplyAtStart
-            totalSupplyAtEnd
-            netTotalSupplyAtEnd
           }
         }
       }

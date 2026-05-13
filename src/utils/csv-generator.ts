@@ -7,20 +7,25 @@
 
 /**
  * Escape CSV field value
- * Handles quotes, commas, newlines according to RFC 4180
+ * Handles quotes, commas, newlines according to RFC 4180, and neutralizes
+ * spreadsheet formula prefixes (=, +, -, @, \t, \r) by prepending a single
+ * quote so Excel/Google Sheets treat the value as text rather than evaluating
+ * it as a formula. Defends against CSV injection from upstream string fields.
  */
 export function escapeCSVField(value: unknown): string {
   if (value === null || value === undefined) {
     return '';
   }
 
-  const strValue = String(value);
+  let strValue = String(value);
 
-  // Check if field needs quoting (contains comma, quote, or newline)
+  if (/^[=+\-@\t\r]/.test(strValue)) {
+    strValue = "'" + strValue;
+  }
+
   const needsQuoting = /[",\n\r]/.test(strValue);
 
   if (needsQuoting) {
-    // Escape quotes by doubling them and wrap in quotes
     return `"${strValue.replace(/"/g, '""')}"`;
   }
 

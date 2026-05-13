@@ -581,9 +581,9 @@ describe('predict_yield Tool', () => {
         tvlHistory: { items: [] },
       };
 
-      // Set fees to trigger fee-adjusted predictions
-      (mockData.vault as any).state.managementFee = 2.0; // 2% management fee
-      (mockData.vault as any).state.performanceFee = 20.0; // 20% performance fee
+      // Set fees to trigger fee-adjusted predictions (basis points: 200 = 2%, 2000 = 20%)
+      (mockData.vault as any).state.managementFee = 200; // 2% management fee
+      (mockData.vault as any).state.performanceFee = 2000; // 20% performance fee
       // Set price above high water mark to make performance fee active
       (mockData.vault as any).state.pricePerShare = '1050000000000000000'; // 1.05 (above HWM of 1.0)
       (mockData.vault as any).state.highWaterMark = '1000000000000000000'; // 1.0
@@ -635,9 +635,9 @@ describe('predict_yield Tool', () => {
       // Set price below high water mark
       mockVault.state.pricePerShare = '950000000000000000'; // 0.95 (below HWM of 1.0)
       mockVault.state.highWaterMark = '1000000000000000000'; // 1.0
-      // Set fees to trigger fee analysis
-      mockVault.state.managementFee = 2.0; // 2% management fee
-      mockVault.state.performanceFee = 20.0; // 20% performance fee
+      // Set fees to trigger fee analysis (basis points: 200 = 2%, 2000 = 20%)
+      mockVault.state.managementFee = 200; // 2% management fee
+      mockVault.state.performanceFee = 2000; // 20% performance fee
 
       const mockData = {
         vault: mockVault,
@@ -683,9 +683,9 @@ describe('predict_yield Tool', () => {
         tvlHistory: { items: [] },
       };
 
-      // Set high fees and ensure performance fee is active (price above HWM)
-      (mockData.vault as any).state.managementFee = 3.5; // 3.5% management fee
-      (mockData.vault as any).state.performanceFee = 25.0; // 25% performance fee
+      // Set high fees and ensure performance fee is active (basis points: 350 = 3.5%, 2500 = 25%)
+      (mockData.vault as any).state.managementFee = 350; // 3.5% management fee
+      (mockData.vault as any).state.performanceFee = 2500; // 25% performance fee
       (mockData.vault as any).state.pricePerShare = '1100000000000000000'; // 1.1 (above HWM)
       (mockData.vault as any).state.highWaterMark = '1000000000000000000'; // 1.0
 
@@ -728,9 +728,9 @@ describe('predict_yield Tool', () => {
       };
 
       // Set known fees: 2% management + 20% performance (active)
-      // Total fee drag = 2 + (20 * 0.1) = 4% annually
-      (mockData.vault as any).state.managementFee = 2.0; // 2% management fee
-      (mockData.vault as any).state.performanceFee = 20.0; // 20% performance fee
+      // Basis points: 200 = 2%, 2000 = 20%; total fee drag ≈ 2 + (20 * 0.1) = 4% annually
+      (mockData.vault as any).state.managementFee = 200; // 2% management fee
+      (mockData.vault as any).state.performanceFee = 2000; // 20% performance fee
       (mockData.vault as any).state.pricePerShare = '1100000000000000000'; // 1.1 (above HWM)
       (mockData.vault as any).state.highWaterMark = '1000000000000000000'; // 1.0
 
@@ -803,6 +803,147 @@ describe('predict_yield Tool', () => {
 
       // Should have standard returns table
       expect(text).toContain('| Timeframe | Expected Return | Range (Min-Max) |');
+    });
+  });
+
+  // ==========================================
+  // Outlier Robustness
+  // ==========================================
+  //
+  // These tests cover the per-period sanitation guards in
+  // src/tools/predict-yield.ts (MIN_PERIOD_DAYS filter, APR clamp). They
+  // construct PeriodSummary streams directly because the standard helper
+  // derives PPS from APR — for outlier tests we need control of the jump.
+
+  describe('Outlier Robustness', () => {
+    /**
+     * Build a performanceHistory stream with explicit totalAssets values per
+     * timestamp. totalSupply is held constant so PPS = totalAssets / totalSupply.
+     */
+    function buildRawHistory(points: Array<{ timestamp: number; totalAssets: string }>): unknown {
+      const totalSupply = '1000000000000'; // 1M shares (constant)
+      return {
+        items: points.map((p) => ({
+          timestamp: String(p.timestamp),
+          data: {
+            totalAssetsAtStart: p.totalAssets,
+            totalSupplyAtStart: totalSupply,
+            totalAssetsAtEnd: p.totalAssets,
+          },
+        })),
+      };
+    }
+
+    it('drops periods shorter than 6 hours and surfaces the count', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const day = 24 * 60 * 60;
+
+      // 5 well-spaced periods (5-day cadence) at a realistic ~7% APR
+      // (≈0.096% growth per 5d), plus one extra event 1 hour after period 3.
+      // Without the filter, that 1h pair annualizes its +0.01% PPS bump to
+      // ~87% APR and dominates the regression. With the filter it's dropped.
+      const points = [
+        { timestamp: now - 25 * day, totalAssets: '1000000000000' },
+        { timestamp: now - 20 * day, totalAssets: '1000958904109' },
+        { timestamp: now - 15 * day, totalAssets: '1001918715754' },
+        { timestamp: now - 15 * day + 3600, totalAssets: '1002018906625' }, // +1h, +0.01%
+        { timestamp: now - 10 * day, totalAssets: '1002879438400' },
+        { timestamp: now - 5 * day, totalAssets: '1003841072700' },
+      ];
+
+      const mockData = {
+        vault: createMockVault('Short Period Vault'),
+        performanceHistory: buildRawHistory(points),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'detailed',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+
+      // The insight surfaces exactly 1 dropped period.
+      expect(text).toContain('1 period(s) shorter than 6 hours excluded');
+
+      // Predicted APR stays in a sensible single/double-digit range — without
+      // the filter the 1h period would annualize the +0.01% PPS bump to ~87%
+      // and skew the regression upward.
+      const predictedMatch = text.match(/Predicted APR.*?(\d+\.\d+)%/);
+      expect(predictedMatch).toBeTruthy();
+      const predicted = parseFloat(predictedMatch![1]);
+      expect(predicted).toBeGreaterThan(0);
+      expect(predicted).toBeLessThan(50);
+    });
+
+    it('clamps per-period APR to [-100%, 500%] and surfaces the count', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const day = 24 * 60 * 60;
+
+      // 5 normally-spaced periods with one extreme PPS jump (50x over 5 days)
+      // that annualizes far past 500%.
+      const points = [
+        { timestamp: now - 25 * day, totalAssets: '1000000000000' },
+        { timestamp: now - 20 * day, totalAssets: '1010000000000' },
+        { timestamp: now - 15 * day, totalAssets: '1020000000000' },
+        { timestamp: now - 10 * day, totalAssets: '51000000000000' }, // 50x jump
+        { timestamp: now - 5 * day, totalAssets: '51500000000000' },
+      ];
+
+      const mockData = {
+        vault: createMockVault('Clamp Vault'),
+        performanceHistory: buildRawHistory(points),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'detailed',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+
+      expect(text).toMatch(/\d+ period\(s\) had outlier APR clamped/);
+    });
+
+    it('does not surface diagnostics when all periods are well-formed', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const day = 24 * 60 * 60;
+
+      // 6 well-spaced periods, mild monotonic growth, no outliers.
+      const points = Array.from({ length: 6 }, (_, i) => ({
+        timestamp: now - (25 - i * 5) * day,
+        totalAssets: String(1000000000000n + BigInt(i) * 10000000000n),
+      }));
+
+      const mockData = {
+        vault: createMockVault('Clean Vault'),
+        performanceHistory: buildRawHistory(points),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'detailed',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+
+      expect(text).not.toContain('shorter than 6 hours excluded');
+      expect(text).not.toContain('outlier APR clamped');
     });
   });
 });

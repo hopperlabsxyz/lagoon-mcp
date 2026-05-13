@@ -39,6 +39,10 @@ function getFragmentForPortfolioResponseFormat(responseFormat: PortfolioResponse
  *
  * Used by: get_user_portfolio tool
  *
+ * Aliases: `state.sharesUsd: usd` — backend deprecated
+ * `VaultPositionState.sharesUsd` (schema.gql:2466) in favor of `usd`. The alias
+ * keeps the downstream TS field name stable while reading the canonical field.
+ *
  * @param responseFormat - Detail level: 'list' (~60 tokens/vault), 'summary' (~170 tokens/vault), 'full' (~600 tokens/vault)
  * @returns GraphQL query string with appropriate fragment
  *
@@ -80,7 +84,7 @@ export function createGetUserPortfolioQuery(
             state {
               assets
               shares
-              sharesUsd
+              sharesUsd: usd
             }
           }
         }
@@ -117,35 +121,17 @@ export const GET_USER_PORTFOLIO_QUERY = createGetUserPortfolioQuery('full');
  * ```
  */
 export const SINGLE_VAULT_OPTIMIZATION_QUERY = `
-  query SingleVaultOptimization($vaultAddress: Address!, $chainId: Int!) {
+  query SingleVaultOptimization(
+    $vaultAddress: Address!,
+    $chainId: Int!,
+    $options: TimeRangeOptions
+  ) {
     vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
       ...VaultFragment
-    }
-
-    # Get price history for volatility calculation
-    priceHistory: transactions(
-      where: {
-        vault_in: [$vaultAddress],
-        type_in: [TotalAssetsUpdated]
-      },
-      orderBy: timestamp,
-      orderDirection: asc,
-      first: 1000
-    ) {
-      items {
-        timestamp
-        data {
-          ... on TotalAssetsUpdated {
-            totalAssets
-            totalAssetsUsd
-            totalSupply
-            vault {
-              decimals
-              asset {
-                decimals
-              }
-            }
-          }
+      stateHistory {
+        pricePerShareUsd(options: $options) {
+          x
+          y
         }
       }
     }
@@ -178,64 +164,4 @@ export const SINGLE_VAULT_COMPOSITION_QUERY = `
   query SingleVaultComposition($walletAddress: Address!) {
     vaultComposition(walletAddress: $walletAddress)
   }
-`;
-
-/**
- * GraphQL query for portfolio optimization data (DEPRECATED)
- *
- * This query is deprecated in favor of SINGLE_VAULT_OPTIMIZATION_QUERY
- * executed in parallel for each vault. Multi-vault queries cannot
- * distinguish which transactions belong to which vault.
- *
- * @deprecated Use SINGLE_VAULT_OPTIMIZATION_QUERY with Promise.all instead
- */
-export const PORTFOLIO_OPTIMIZATION_QUERY = `
-  query PortfolioOptimization($vaultAddresses: [String!]!, $chainId: Int!) {
-    vaults(where: { address_in: $vaultAddresses, chainId_eq: $chainId }) {
-      items {
-        ...VaultFragment
-      }
-    }
-
-    # Get price history for volatility calculation
-    priceHistory: transactions(
-      where: {
-        vault_in: $vaultAddresses,
-        type_in: ["TotalAssetsUpdated"]
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: 1000
-    ) {
-      items {
-        timestamp
-        data {
-          ... on TotalAssetsUpdated {
-            pricePerShareUsd
-          }
-        }
-      }
-    }
-
-    # Get APR data for return estimation
-    performanceData: transactions(
-      where: {
-        vault_in: $vaultAddresses,
-        type_in: ["PeriodSummary"]
-      },
-      orderBy: "timestamp",
-      orderDirection: "asc",
-      first: 1000
-    ) {
-      items {
-        timestamp
-        data {
-          ... on PeriodSummary {
-            linearNetApr
-          }
-        }
-      }
-    }
-  }
-  ${VAULT_FRAGMENT}
 `;

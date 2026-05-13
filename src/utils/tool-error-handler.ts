@@ -31,18 +31,20 @@ export function handleToolError(error: unknown, toolName: string): CallToolResul
     return errorResponse(validationError);
   }
 
-  // Handle GraphQL errors — sanitize in production to avoid leaking internals
+  // Handle GraphQL errors — sanitize by default; the MCP runs over stdio in
+  // user environments where NODE_ENV is rarely 'production', so a production-only
+  // gate effectively unmasks backend internals to LLM clients. Verbose output
+  // is opt-in via LAGOON_DEBUG=1.
   if (error && typeof error === 'object' && 'response' in error) {
     const gqlError = error as {
       response?: { errors?: Array<{ message?: string }> };
     };
     if (gqlError.response?.errors) {
       logError(error, toolName);
-      // Production: return only message fields. Dev: full details.
-      const isProduction = process.env.NODE_ENV === 'production';
-      const sanitized = isProduction
-        ? gqlError.response.errors.map((e) => e.message ?? 'Unknown error').join('; ')
-        : JSON.stringify(gqlError.response.errors, null, 2);
+      const verbose = process.env.LAGOON_DEBUG === '1';
+      const sanitized = verbose
+        ? JSON.stringify(gqlError.response.errors, null, 2)
+        : gqlError.response.errors.map((e) => e.message ?? 'Unknown error').join('; ');
       return {
         content: [
           {

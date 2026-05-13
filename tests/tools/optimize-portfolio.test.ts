@@ -66,7 +66,10 @@ describe('optimize_portfolio', () => {
     rebalanceThreshold: 5.0,
   };
 
-  // Mock data for individual vault queries (new implementation uses parallel queries)
+  // Mock data for individual vault queries.
+  // Backend v0.6.0+ exposes price-per-share via Vault.stateHistory.pricePerShareUsd
+  // as [{x: timestamp, y: pricePerShareUsd}] — the tool consumes this directly,
+  // so fixtures embed the typed series on the vault.
   const mockVaultDataA = {
     vault: {
       address: '0x1234567890123456789012345678901234567890',
@@ -77,43 +80,13 @@ describe('optimize_portfolio', () => {
       decimals: 18,
       asset: { decimals: 6 },
       state: { totalAssetsUsd: 1000000, sharePrice: 1.05 },
-    },
-    priceHistory: {
-      items: [
-        {
-          timestamp: '1704067200',
-          data: {
-            totalAssets: '1000000000000', // 1M USDC in 6 decimals
-            totalAssetsUsd: 1000000,
-            totalSupply: '1000000000000000000000000', // 1M shares in 18 decimals (1:1 ratio)
-            vault: { decimals: 18, asset: { decimals: 6 } },
-          },
-        },
-        {
-          timestamp: '1704153600',
-          data: {
-            totalAssets: '1020000000000', // 1.02M USDC
-            totalAssetsUsd: 1020000,
-            totalSupply: '1000000000000000000000000',
-            vault: { decimals: 18, asset: { decimals: 6 } },
-          },
-        },
-        {
-          timestamp: '1704240000',
-          data: {
-            totalAssets: '1050000000000', // 1.05M USDC
-            totalAssetsUsd: 1050000,
-            totalSupply: '1000000000000000000000000',
-            vault: { decimals: 18, asset: { decimals: 6 } },
-          },
-        },
-      ],
-    },
-    performanceData: {
-      items: [
-        { timestamp: '1704067200', data: { linearNetApr: 0.05 } },
-        { timestamp: '1704153600', data: { linearNetApr: 0.052 } },
-      ],
+      stateHistory: {
+        pricePerShareUsd: [
+          { x: 1704067200, y: 1.0 },
+          { x: 1704153600, y: 1.02 },
+          { x: 1704240000, y: 1.05 },
+        ],
+      },
     },
   };
 
@@ -127,43 +100,13 @@ describe('optimize_portfolio', () => {
       decimals: 18,
       asset: { decimals: 6 },
       state: { totalAssetsUsd: 500000, sharePrice: 1.02 },
-    },
-    priceHistory: {
-      items: [
-        {
-          timestamp: '1704067200',
-          data: {
-            totalAssets: '500000000000', // 500K USDT in 6 decimals
-            totalAssetsUsd: 500000,
-            totalSupply: '500000000000000000000000', // 500K shares in 18 decimals (1:1 ratio)
-            vault: { decimals: 18, asset: { decimals: 6 } },
-          },
-        },
-        {
-          timestamp: '1704153600',
-          data: {
-            totalAssets: '505000000000', // 505K USDT
-            totalAssetsUsd: 505000,
-            totalSupply: '500000000000000000000000',
-            vault: { decimals: 18, asset: { decimals: 6 } },
-          },
-        },
-        {
-          timestamp: '1704240000',
-          data: {
-            totalAssets: '510000000000', // 510K USDT
-            totalAssetsUsd: 510000,
-            totalSupply: '500000000000000000000000',
-            vault: { decimals: 18, asset: { decimals: 6 } },
-          },
-        },
-      ],
-    },
-    performanceData: {
-      items: [
-        { timestamp: '1704067200', data: { linearNetApr: 0.04 } },
-        { timestamp: '1704153600', data: { linearNetApr: 0.041 } },
-      ],
+      stateHistory: {
+        pricePerShareUsd: [
+          { x: 1704067200, y: 1.0 },
+          { x: 1704153600, y: 1.01 },
+          { x: 1704240000, y: 1.02 },
+        ],
+      },
     },
   };
 
@@ -177,43 +120,13 @@ describe('optimize_portfolio', () => {
       decimals: 18,
       asset: { decimals: 18 },
       state: { totalAssetsUsd: 250000, sharePrice: 1.08 },
-    },
-    priceHistory: {
-      items: [
-        {
-          timestamp: '1704067200',
-          data: {
-            totalAssets: '250000000000000000000000', // 250K DAI in 18 decimals
-            totalAssetsUsd: 250000,
-            totalSupply: '250000000000000000000000', // 250K shares in 18 decimals (1:1 ratio)
-            vault: { decimals: 18, asset: { decimals: 18 } },
-          },
-        },
-        {
-          timestamp: '1704153600',
-          data: {
-            totalAssets: '260000000000000000000000', // 260K DAI
-            totalAssetsUsd: 260000,
-            totalSupply: '250000000000000000000000',
-            vault: { decimals: 18, asset: { decimals: 18 } },
-          },
-        },
-        {
-          timestamp: '1704240000',
-          data: {
-            totalAssets: '270000000000000000000000', // 270K DAI
-            totalAssetsUsd: 270000,
-            totalSupply: '250000000000000000000000',
-            vault: { decimals: 18, asset: { decimals: 18 } },
-          },
-        },
-      ],
-    },
-    performanceData: {
-      items: [
-        { timestamp: '1704067200', data: { linearNetApr: 0.08 } },
-        { timestamp: '1704153600', data: { linearNetApr: 0.085 } },
-      ],
+      stateHistory: {
+        pricePerShareUsd: [
+          { x: 1704067200, y: 1.0 },
+          { x: 1704153600, y: 1.04 },
+          { x: 1704240000, y: 1.08 },
+        ],
+      },
     },
   };
 
@@ -507,21 +420,9 @@ describe('optimize_portfolio', () => {
   describe('Edge Cases', () => {
     it('should handle vaults not found', async () => {
       mockGraphqlRequest
-        .mockResolvedValueOnce({
-          vault: null,
-          priceHistory: { items: [] },
-          performanceData: { items: [] },
-        })
-        .mockResolvedValueOnce({
-          vault: null,
-          priceHistory: { items: [] },
-          performanceData: { items: [] },
-        })
-        .mockResolvedValueOnce({
-          vault: null,
-          priceHistory: { items: [] },
-          performanceData: { items: [] },
-        });
+        .mockResolvedValueOnce({ vault: null })
+        .mockResolvedValueOnce({ vault: null })
+        .mockResolvedValueOnce({ vault: null });
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -530,10 +431,11 @@ describe('optimize_portfolio', () => {
     });
 
     it('should handle missing price history gracefully', async () => {
+      const empty = { stateHistory: { pricePerShareUsd: [] } };
       mockGraphqlRequest
-        .mockResolvedValueOnce({ ...mockVaultDataA, priceHistory: { items: [] } })
-        .mockResolvedValueOnce({ ...mockVaultDataB, priceHistory: { items: [] } })
-        .mockResolvedValueOnce({ ...mockVaultDataC, priceHistory: { items: [] } });
+        .mockResolvedValueOnce({ vault: { ...mockVaultDataA.vault, ...empty } })
+        .mockResolvedValueOnce({ vault: { ...mockVaultDataB.vault, ...empty } })
+        .mockResolvedValueOnce({ vault: { ...mockVaultDataC.vault, ...empty } });
 
       const result = await executeOptimizePortfolio(baseInput);
 
@@ -611,32 +513,9 @@ describe('optimize_portfolio', () => {
               incentives: [{ apr: merged.incentivesApr }],
             },
           },
-        },
-        priceHistory: {
-          items: [
-            {
-              timestamp: '1704067200',
-              data: {
-                totalAssets: '1000000000000',
-                totalAssetsUsd: 1000000,
-                totalSupply: '1000000000000000000000000',
-                vault: { decimals: 18, asset: { decimals: 6 } },
-              },
-            },
-          ],
-        },
-        performanceData: {
-          items: [
-            {
-              timestamp: '1704067200',
-              data: {
-                linearNetApr: totalApr,
-                nativeYields: [{ apr: merged.nativeYieldsApr }],
-                airdrops: [{ apr: merged.airdropsApr }],
-                incentives: [{ apr: merged.incentivesApr }],
-              },
-            },
-          ],
+          stateHistory: {
+            pricePerShareUsd: [{ x: 1704067200, y: 1.0 }],
+          },
         },
       };
     }
@@ -770,23 +649,10 @@ describe('optimize_portfolio', () => {
           decimals: 18,
           asset: { decimals: 6 },
           state: { totalAssetsUsd: 1000000, sharePrice: 1.05 },
+          stateHistory: {
+            pricePerShareUsd: [{ x: 1704067200, y: 1.0 }],
+          },
           // No riskBreakdown
-        },
-        priceHistory: {
-          items: [
-            {
-              timestamp: '1704067200',
-              data: {
-                totalAssets: '1000000000000',
-                totalAssetsUsd: 1000000,
-                totalSupply: '1000000000000000000000000',
-                vault: { decimals: 18, asset: { decimals: 6 } },
-              },
-            },
-          ],
-        },
-        performanceData: {
-          items: [{ timestamp: '1704067200', data: { linearNetApr: 0.1 } }],
         },
       };
 

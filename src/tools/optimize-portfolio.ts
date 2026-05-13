@@ -36,7 +36,6 @@ import {
   VaultForOptimization,
   PortfolioOptimization,
 } from '../utils/portfolio-optimization.js';
-import { calculatePricePerShare } from '../sdk/vault-utils.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheTTL } from '../cache/index.js';
@@ -44,26 +43,16 @@ import { analyzeRisk, RiskScoreBreakdown } from '../utils/risk-scoring.js';
 import { rateLimitedMap } from '../utils/rate-limiter.js';
 
 /**
- * GraphQL response type for single vault query
+ * GraphQL response type for single vault query.
  */
 interface SingleVaultOptimizationResponse {
-  vault: VaultData | null;
-  priceHistory: {
-    items: Array<{
-      timestamp: string;
-      data: {
-        totalAssets: string;
-        totalAssetsUsd: number;
-        totalSupply: string;
-        vault: {
-          decimals: number;
-          asset: {
-            decimals: number;
-          };
+  vault:
+    | (VaultData & {
+        stateHistory: {
+          pricePerShareUsd: Array<{ x: number; y: number | null }>;
         };
-      };
-    }>;
-  };
+      })
+    | null;
 }
 
 /**
@@ -319,26 +308,17 @@ function processSingleVaultData(
     return null;
   }
 
-  // Extract price history with timestamp filtering
-  // Calculate price per share using Lagoon SDK
-  const prices: number[] = [];
-  if (data.priceHistory && data.priceHistory.items) {
-    for (const item of data.priceHistory.items) {
-      if (parseInt(item.timestamp) >= timestampThreshold) {
-        const vaultDecimals = item.data.vault.decimals;
-        const assetDecimals = item.data.vault.asset.decimals;
-        const pricePerShareBigInt = calculatePricePerShare(
-          BigInt(item.data.totalAssets),
-          BigInt(item.data.totalSupply),
-          vaultDecimals,
-          assetDecimals
-        );
-        // Convert to number for volatility calculations (in asset decimals)
-        const pricePerShare = Number(pricePerShareBigInt) / 10 ** assetDecimals;
-        prices.push(pricePerShare);
-      }
-    }
-  }
+  const {
+    stateHistory,
+    ...vault
+  }: VaultData & { stateHistory: { pricePerShareUsd: Array<{ x: number; y: number | null }> } } =
+    data.vault;
+
+  const prices: number[] = stateHistory.pricePerShareUsd
+    .filter(
+      (p): p is { x: number; y: number } => p.y !== null && p.y > 0 && p.x >= timestampThreshold
+    )
+    .map((p) => p.y);
 
   // Use pre-calculated APR from vault state
   // Prefer monthlyApr, fallback to weeklyApr, then yearlyApr
@@ -358,7 +338,7 @@ function processSingleVaultData(
   }
 
   return {
-    vault: data.vault,
+    vault,
     prices,
     performance,
   };
@@ -558,6 +538,7 @@ export function createExecuteOptimizePortfolio(
             {
               vaultAddress,
               chainId: input.chainId,
+              options: { startTimestamp: timestampThreshold },
             }
           ),
         2 // Max 2 concurrent requests to respect rate limits

@@ -124,9 +124,7 @@ export const EXPORT_TRANSACTIONS_QUERY = `
 `;
 
 /**
- * GraphQL query for price history export
- *
- * Fetches historical price data for OHLCV export.
+ * GraphQL query for price history export — typed PPS time series for one vault.
  *
  * Used by: export_data tool (dataType: 'price_history')
  *
@@ -134,35 +132,31 @@ export const EXPORT_TRANSACTIONS_QUERY = `
  * ```typescript
  * const data = await graphqlClient.request<PriceHistoryExportResponse>(
  *   EXPORT_PRICE_HISTORY_QUERY,
- *   { vault_in: ['0x...'], first: 1000 }
+ *   { vaultAddress: '0x...', chainId: 1 }
  * );
  * ```
  */
 export const EXPORT_PRICE_HISTORY_QUERY = `
-  query ExportPriceHistory($vault_in: [Address!]!, $first: Int!) {
-    transactions(
-      where: { vault_in: $vault_in, type_in: [TotalAssetsUpdated] },
-      orderBy: timestamp,
-      orderDirection: asc,
-      first: $first
-    ) {
-      items {
-        timestamp
-        data {
-          ... on TotalAssetsUpdated {
-            totalAssets
-            totalAssetsUsd
-            totalSupply
-            vault {
-              id
-              address
-              symbol
-              decimals
-              asset {
-                decimals
-              }
-            }
-          }
+  query ExportPriceHistory(
+    $vaultAddress: Address!,
+    $chainId: Int!,
+    $options: TimeRangeOptions
+  ) {
+    vault: vaultByAddress(address: $vaultAddress, chainId: $chainId) {
+      address
+      symbol
+      decimals
+      asset {
+        decimals
+      }
+      stateHistory {
+        pricePerShareUsd(options: $options) {
+          x
+          y
+        }
+        totalAssetsUsd(options: $options) {
+          x
+          y
         }
       }
     }

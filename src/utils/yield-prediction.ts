@@ -171,6 +171,10 @@ export function predictYield(
      * will be omitted entirely (no placeholder assumptions).
      */
     actualProfitMargin?: number;
+  },
+  dataQualityFlags?: {
+    droppedShortPeriods: number;
+    clampedPeriods: number;
   }
 ): YieldPrediction {
   if (historicalData.length === 0) {
@@ -345,6 +349,7 @@ export function predictYield(
     feeAdjustedAPR,
     feeImpact,
     regimeChangeDetected,
+    dataQualityFlags,
   });
 
   return {
@@ -379,6 +384,10 @@ function generateInsights(params: {
     performanceFeeActive: boolean;
   };
   regimeChangeDetected?: boolean;
+  dataQualityFlags?: {
+    droppedShortPeriods: number;
+    clampedPeriods: number;
+  };
 }): string[] {
   const insights: string[] = [];
 
@@ -388,6 +397,22 @@ function generateInsights(params: {
       'REGIME CHANGE DETECTED: Short-term and long-term yield trends have diverged >50%. ' +
         'Prediction confidence reduced — yield source may have fundamentally changed'
     );
+  }
+
+  // Data sanitation flags — explain why some periods were excluded so users
+  // don't compare dataPoints to the raw history count and conclude data is missing.
+  if (params.dataQualityFlags) {
+    const { droppedShortPeriods, clampedPeriods } = params.dataQualityFlags;
+    if (droppedShortPeriods > 0) {
+      insights.push(
+        `${droppedShortPeriods} period(s) shorter than 6 hours excluded — increases prediction stability`
+      );
+    }
+    if (clampedPeriods > 0) {
+      insights.push(
+        `${clampedPeriods} period(s) had outlier APR clamped to [-100%, 500%] range — may indicate reporting anomaly or extreme yield event`
+      );
+    }
   }
 
   // Data quality insight

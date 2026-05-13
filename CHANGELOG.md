@@ -5,6 +5,59 @@ All notable changes to the Lagoon MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-04-30
+
+### Sync with backend v0.6.0
+
+This release aligns every query and tool with breaking schema changes shipped in
+the Lagoon backend v0.6.0 release. Tools that were silently producing `NaN` /
+`undefined` numerics now return correct, typed data.
+
+#### Changed
+
+- **Price history migrated to `Vault.stateHistory`**: `get_price_history`,
+  `analyze_risk`, `optimize_portfolio`, and `export_data` (price_history) now
+  consume `Vault.stateHistory.pricePerShareUsd: [{x, y}]` directly. The previous
+  `totalAssetsUsd / (totalSupply / 1e18)` reconstruction from
+  `TotalAssetsUpdated` events is gone — the backend removed the placeholder
+  `totalSupply` field on those events, which had broken the reconstruction.
+- **Transaction event coverage expanded**: `get_transactions` now selects 23
+  additional `TransactionData` union variants (Deposit, Withdraw, WithdrawSync,
+  RedeemRequestCanceled, FeeTaken, HaircutTaken, PreMint, AccessModeUpdated,
+  AsyncOnlyActivated, BlacklistUpdated, ExternalSanctionsListUpdated,
+  GuardrailsUpdated, GuardrailsStatusUpdated, MaxCapUpdated, NameUpdated,
+  ProxyDeployed, SafeUpdated, SecurityCouncilUpdated, SuperOperatorUpdated,
+  SymbolUpdated, SyncModeUpdated, TotalAssetsExpirationUpdated,
+  WhitelistUpdated). The validator's `transactionTypes` enum reflects the same
+  set.
+- **Server version bumped to 0.6.0** in both `package.json` and `src/config.ts`
+  (the previous mismatch where config still reported 0.4.0 is resolved).
+
+#### Removed
+
+- `totalSupply` field from `TotalAssetsUpdated` and `NewTotalAssetsUpdated`
+  selections (backend removed it as a placeholder; querying it now 400s).
+- Deprecated `PORTFOLIO_OPTIMIZATION_QUERY` (already replaced by
+  `SINGLE_VAULT_OPTIMIZATION_QUERY` running in parallel; kept around for no
+  reason).
+- Truncation indicator in `get_price_history` output — `Vault.stateHistory`
+  doesn't expose pagination, so the "More data available" line was unrealizable.
+
+#### Deferred
+
+- Migration from the deprecated `vaultComposition(walletAddress:)` query to the
+  typed `Vault.composition: CompositionData` field. The deprecated query is
+  still alive on backend v0.6.0 (commit 25f8ab9) and four consumers
+  (`get_vault_composition`, `get_user_portfolio`, `compare_vaults`,
+  `analyze_risk`) depend on the JSONObject shape via `transformRawComposition` /
+  `calculateCompositionMetrics`. Tracked for a follow-up release.
+
+#### Notes
+
+- Codegen now points at `https://api.lagoon.finance/query`.
+- `npm run codegen` regenerates `src/types/generated.ts` from the live v0.6.0
+  schema.
+
 ## [0.1.0] - 2025-01-07
 
 ### Added
