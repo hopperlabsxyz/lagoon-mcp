@@ -100,7 +100,9 @@ jobs:
         run: npm run build
 
       - name: Upgrade npm for Trusted Publishing
-        run: npm install -g npm@latest
+        # Pinned to npm@11 (latest stable major). `npm@latest` has intermittently
+        # failed bootstrap with `Cannot find module 'promise-retry'` since v0.4.0.
+        run: npm install -g npm@11
 
       - name: Publish to npm (Trusted Publishing)
         run: npm publish --provenance --access public
