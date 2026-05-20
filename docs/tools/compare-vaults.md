@@ -311,4 +311,4 @@ See [main disclaimer](../../README.md#️-important-legal-disclaimer) for full d
 
 - [Comparison Validators](../../src/utils/validators.ts) - Input validation
 - [Comparison Metrics](../../src/utils/comparison-metrics.ts) - Ranking algorithms
-- [Development Guide](../DEVELOPMENT.md#comparison-tool) - Implementation details
+- [Development Guide](../agent-notes.md) - Implementation details

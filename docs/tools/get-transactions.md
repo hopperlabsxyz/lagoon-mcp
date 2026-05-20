@@ -241,4 +241,4 @@ See [main disclaimer](../../README.md#️-important-legal-disclaimer) for full d
 
 - [Transaction Validators](../../src/utils/validators.ts) - Filter options
 - [GraphQL Transaction Types](../../README.md#resources) - Union type details
-- [Development Guide](../DEVELOPMENT.md#transaction-tool) - Implementation
+- [Development Guide](../agent-notes.md) - Implementation

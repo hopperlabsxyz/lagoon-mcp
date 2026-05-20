@@ -140,4 +140,4 @@ Tools use intelligent caching based on data volatility:
 - [GraphQL Schema Resource](../resources/graphql-schema.md) - Complete schema reference
 - [DeFi Glossary Resource](../resources/defi-glossary.md) - Terminology guide
 - [Financial Analysis Prompt](../prompts/financial-analysis.md) - Analysis guidance
-- [Development Guide](../DEVELOPMENT.md) - Contributing and extending tools
+- [Development Guide](../agent-notes.md) - Contributing and extending tools

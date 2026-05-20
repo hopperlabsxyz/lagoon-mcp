@@ -149,5 +149,5 @@ Returns detailed error information for:
 ## See Also
 
 - [GraphQL Schema Resource](../../README.md#resources) - Complete schema reference
-- [Development Guide](../DEVELOPMENT.md) - Adding custom queries
+- [Development Guide](../agent-notes.md) - Adding custom queries
 - [Backend API Documentation](./.claude/BACKEND_CONTEXT.md) - GraphQL API details

@@ -256,5 +256,5 @@ See the analytical guide for:
 ## See Also
 
 - [Performance Validators](../../src/utils/validators.ts) - Time range options
-- [Development Guide](../DEVELOPMENT.md#performance-tool) - Implementation
+- [Development Guide](../agent-notes.md) - Implementation
 - [DeFi Glossary](../../README.md#resources) - Understanding metrics

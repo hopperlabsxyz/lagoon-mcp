@@ -276,5 +276,5 @@ See the analytical guide for:
 ## See Also
 
 - [Search Validators](../../src/utils/validators.ts) - Complete filter reference
-- [Development Guide](../DEVELOPMENT.md#search-tool) - Implementation details
+- [Development Guide](../agent-notes.md) - Implementation details
 - [GraphQL Filters](../../README.md#resources) - Backend filter capabilities

@@ -293,5 +293,5 @@ See the analytical guide for:
 ## See Also
 
 - [Yield Prediction Algorithm](../../src/utils/yield-prediction.ts) - Implementation
-- [Development Guide](../DEVELOPMENT.md#yield-prediction-tool) - Technical specs
+- [Development Guide](../agent-notes.md) - Technical specs
 - [DeFi Glossary](../../README.md#resources) - Understanding APR

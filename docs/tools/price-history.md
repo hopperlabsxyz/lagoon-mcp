@@ -214,5 +214,5 @@ See [main disclaimer](../../README.md#️-important-legal-disclaimer) for full d
 ## See Also
 
 - [Price Validators](../../src/utils/validators.ts) - Time range options
-- [Development Guide](../DEVELOPMENT.md#price-history-tool) - Implementation
+- [Development Guide](../agent-notes.md) - Implementation
 - [DeFi Glossary](../../README.md#resources) - Understanding share price

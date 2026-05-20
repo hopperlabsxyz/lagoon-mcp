@@ -314,5 +314,5 @@ See the analytical guide for:
 ## See Also
 
 - [Risk Scoring Algorithm](../../src/utils/risk-scoring.ts) - Implementation details
-- [Development Guide](../DEVELOPMENT.md#risk-analysis-tool) - Technical specs
+- [Development Guide](../agent-notes.md) - Technical specs
 - [DeFi Glossary](../../README.md#resources) - Understanding risk factors

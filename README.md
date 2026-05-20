@@ -1,5 +1,10 @@
 # Lagoon MCP Server
 
+[![npm](https://img.shields.io/npm/v/@lagoon-protocol/lagoon-mcp)](https://www.npmjs.com/package/@lagoon-protocol/lagoon-mcp)
+[![CI](https://github.com/hopperlabsxyz/lagoon-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/hopperlabsxyz/lagoon-mcp/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/@lagoon-protocol/lagoon-mcp)](./LICENSE)
+[![node](https://img.shields.io/node/v/@lagoon-protocol/lagoon-mcp)](https://nodejs.org)
+
 Model Context Protocol (MCP) server providing Claude Code with conversational access to Lagoon DeFi vault analytics.
 
 ## Overview
@@ -24,14 +29,14 @@ Lagoon MCP enables natural language queries about DeFi vaults, user portfolios, 
 - Claude Desktop app
 - Access to Lagoon backend GraphQL endpoint
 
-### Installation (will be updated after publishing)
+### Installation
 
 ```bash
 # Install globally
-npm install -g @hopperlabsxyz/lagoon-mcp
+npm install -g @lagoon-protocol/lagoon-mcp
 
 # Or install locally
-npm install @hopperlabsxyz/lagoon-mcp
+npm install @lagoon-protocol/lagoon-mcp
 ```
 
 ### Configuration
@@ -43,8 +48,19 @@ npm install @hopperlabsxyz/lagoon-mcp
 | **Claude Desktop** | ✅ Available Now | JSON | [↓ See below](#claude-desktop) |
 | **Claude Code (CLI)** | ✅ Available Now | JSON | [↓ See below](#claude-code-cli) |
 | **OpenAI Agents SDK** | ✅ Available Now | YAML | [↓ See below](#openai-agents-sdk) |
-| **ChatGPT Desktop** | ⏳ Coming Soon | JSON (expected) | [↓ See below](#chatgpt-desktop) |
-| **Grok** | ❌ Not Supported | N/A | No native MCP support |
+
+> The server uses the standard MCP stdio transport, so **any MCP-compatible client** (Cursor, Cline, and others) works with no code changes — only the config format differs.
+
+#### Environment Variables
+
+All configuration is supplied through environment variables (validated at startup). See [.env.example](./.env.example).
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `LAGOON_GRAPHQL_URL` | Recommended | `http://localhost:3001/query` | Lagoon backend GraphQL endpoint (use `https://api.lagoon.finance/query` for production) |
+| `NODE_ENV` | No | `development` | Runtime mode: `development` / `production` / `test` |
+| `CACHE_TTL` | No | `600` | Default cache TTL, in seconds |
+| `CACHE_MAX_KEYS` | No | `1000` | Maximum number of cache entries |
 
 ---
 
@@ -76,7 +92,7 @@ Add to your Claude Desktop config file:
       "command": "node",
       "args": ["/path/to/lagoon-mcp/dist/index.js"],
       "env": {
-        "LAGOON_GRAPHQL_URL": "http://localhost:3000/query"
+        "LAGOON_GRAPHQL_URL": "http://localhost:3001/query"
       }
     }
   }
@@ -95,7 +111,7 @@ Claude Code CLI uses a project-scoped configuration system. You can configure MC
 
 Edit your `~/.claude.json` file and add lagoon-mcp to your project:
 
-**For production use** (after `npm install -g @hopperlabsxyz/lagoon-mcp`):
+**For production use** (after `npm install -g @lagoon-protocol/lagoon-mcp`):
 
 ```json
 {
@@ -127,7 +143,7 @@ Edit your `~/.claude.json` file and add lagoon-mcp to your project:
           "command": "node",
           "args": ["/absolute/path/to/lagoon-mcp/dist/index.js"],
           "env": {
-            "LAGOON_GRAPHQL_URL": "http://localhost:3000/query"
+            "LAGOON_GRAPHQL_URL": "http://localhost:3001/query"
           }
         }
       }
@@ -207,33 +223,9 @@ const lagoonServer = new MCPServerStdio({
 
 ---
 
-#### ChatGPT Desktop
+#### Other MCP clients
 
-**Status**: MCP support for ChatGPT Desktop is currently in development and expected "in the coming months" per OpenAI.
-
-**Availability**:
-- ⏳ Desktop app with MCP: Not yet released
-- ⏳ Enterprise/Team: Limited beta access only
-- ❌ Individual ChatGPT Plus: Not available yet
-
-**Expected Configuration** (once available):
-
-Configuration file location will likely follow a similar pattern to Claude Desktop (exact location TBD).
-
-```json
-{
-  "mcpServers": {
-    "lagoon": {
-      "command": "lagoon-mcp",
-      "env": {
-        "LAGOON_GRAPHQL_URL": "https://api.lagoon.finance/query"
-      }
-    }
-  }
-}
-```
-
-**Technical Note**: The lagoon-mcp server is already compatible with ChatGPT's MCP implementation (uses standard MCP protocol and stdio transport). No code changes will be needed once ChatGPT Desktop launches with MCP support
+The server speaks the standard MCP protocol over stdio transport, so any MCP-compatible client works — including new clients as they add MCP support. Only the configuration format differs from the examples above; point the client at the `lagoon-mcp` command and set `LAGOON_GRAPHQL_URL`.
 
 ### Usage
 
@@ -291,18 +283,22 @@ Complete tool documentation available in [docs/tools/](./docs/tools/).
 
 | Tool | Description | Documentation |
 |------|-------------|---------------|
+| **discover_tools** | Search and discover available tools by category or keyword | — |
 | **query_graphql** | Execute raw GraphQL queries for advanced use cases | [→ Details](./docs/tools/query-graphql.md) |
 | **get_vault_data** | Get comprehensive vault information by address and chain | [→ Details](./docs/tools/get-vault-data.md) |
 | **get_user_portfolio** | Aggregate user holdings across all supported chains | [→ Details](./docs/tools/user-portfolio.md) |
 | **search_vaults** | Search and filter vaults with 20+ advanced criteria | [→ Details](./docs/tools/search-vaults.md) |
 | **get_vault_performance** | Historical metrics and performance analysis | [→ Details](./docs/tools/vault-performance.md) |
 | **get_transactions** | Query vault transaction history with flexible filtering | [→ Details](./docs/tools/get-transactions.md) |
-| **compare_vaults** | Side-by-side vault comparison with 12-factor risk analysis and rankings | [→ Details](./docs/tools/compare-vaults.md) |
-| **optimize_portfolio** | Modern Portfolio Theory optimization with yield sustainability warnings | [→ Details](./docs/tools/optimize-portfolio.md) |
+| **compare_vaults** | Side-by-side vault comparison with normalized metrics and rankings (2–20 vaults, cross-chain) | [→ Details](./docs/tools/compare-vaults.md) |
 | **get_price_history** | Historical share price data with OHLCV time-series | [→ Details](./docs/tools/price-history.md) |
-| **export_data** | Export vault data in CSV/JSON format | [→ Details](./docs/tools/export-data.md) |
+| **export_data** | Export vault data, transactions, price history, or performance in CSV/JSON format | [→ Details](./docs/tools/export-data.md) |
 | **analyze_risk** | Multi-factor risk analysis with comprehensive scoring | [→ Details](./docs/tools/analyze-risk.md) |
+| **analyze_risks** | Batch risk analysis for 2–20 vaults in a single call (cross-chain) | — |
 | **predict_yield** | ML-based yield forecasting with confidence intervals | [→ Details](./docs/tools/predict-yield.md) |
+| **optimize_portfolio** | Modern Portfolio Theory optimization with yield sustainability warnings | [→ Details](./docs/tools/optimize-portfolio.md) |
+| **simulate_vault** | Simulate vault behavior under different parameters for scenario analysis | [→ Details](./docs/tools/simulate-vault.md) |
+| **get_vault_composition** | DeFi protocol composition with HHI diversification scoring (via Octav) | — |
 
 **See also**: [Tool Selection Guide](./docs/tools/README.md#tool-selection-guide) | [Common Workflows](./docs/tools/README.md#common-workflows)
 
@@ -379,11 +375,21 @@ Skills are procedural knowledge modules that enhance how Claude uses MCP tools. 
 
 ### Available Skills
 
+**Customer-facing**
+
 | Skill | Purpose | Audience |
 |-------|---------|----------|
 | `lagoon-onboarding` | Guide new users to first vault selection | New Users |
 | `lagoon-portfolio-review` | Quarterly portfolio health checks | Existing Users |
 | `lagoon-risk-expert` | Comprehensive risk evaluation | Advanced Users |
+
+**Internal team**
+
+| Skill | Purpose | Audience |
+|-------|---------|----------|
+| `lagoon-protocol-health` | Daily/weekly KPI monitoring | Operations |
+| `lagoon-curator-evaluation` | Partnership assessment with scoring | Business Development |
+| `lagoon-customer-support` | Support response templates | Support Team |
 
 ### Using Skills
 
@@ -413,7 +419,7 @@ const { systemPrompt, detectedSkill, tokensAdded } = buildSkillAwarePrompt(
 );
 
 const response = await claude.messages.create({
-  model: 'claude-sonnet-4-20250514',
+  model: 'claude-sonnet-4-6',
   system: systemPrompt,
   tools: mcpTools,
   messages: [{ role: 'user', content: userMessage }]
@@ -424,7 +430,7 @@ const response = await claude.messages.create({
 
 ## Development
 
-For development setup, testing, and contributing guidelines, see [DEVELOPMENT.md](./docs/DEVELOPMENT.md).
+For gotchas, conventions, testing, and how to add a tool, see [docs/agent-notes.md](./docs/agent-notes.md) (the developer reference, also imported by [CLAUDE.md](./CLAUDE.md)).
 
 ### Quick Start
 
@@ -452,16 +458,21 @@ npm test
 ```
 lagoon-mcp/
 ├── docs/
-│   ├── DEVELOPMENT.md          # Development guide
+│   ├── agent-notes.md          # Developer reference (gotchas, conventions, add-a-tool)
 │   └── tools/                  # Individual tool documentation
 ├── skills/                     # Claude Skills for enhanced interactions
 ├── src/
-│   ├── tools/                  # Tool implementations
+│   ├── tools/                  # Tool implementations + registry.ts
+│   ├── services/               # Business-logic services (e.g. RiskService)
 │   ├── resources/              # MCP resources
 │   ├── prompts/                # MCP prompts
 │   ├── skills/                 # Skills TypeScript API
-│   ├── graphql/                # GraphQL client and fragments
-│   ├── cache/                  # Caching layer
+│   ├── graphql/                # GraphQL client, queries, fragments
+│   ├── sdk/                    # APR, simulation, and math utilities
+│   ├── core/                   # DI container, cache adapter, invalidation
+│   ├── cache/                  # Cache TTL and key definitions
+│   ├── schemas/                # Zod config/env schemas
+│   ├── types/                  # TypeScript + generated GraphQL types
 │   └── utils/                  # Utilities
 ├── tests/                      # Test suite
 └── package.json
@@ -489,8 +500,8 @@ lagoon-mcp/
 ### Architecture Patterns
 
 **Hybrid Service Layer**:
-- **Direct GraphQL** for simple operations (12/13 tools)
-- **Service Layer** for complex multi-step operations (e.g., RiskService)
+- **Direct GraphQL** for simple operations (most tools)
+- **Service Layer** for complex multi-step operations (e.g., `RiskService` for risk analysis)
 - See [ADR-001](./docs/architecture/ADR-001-service-layer.md) for decision rationale
 
 **Dependency Injection**:
@@ -544,12 +555,14 @@ export function createExecuteAnalyzeRisk(container: ServiceContainer) {
 
 | Data Type | TTL | Rationale | Cache Tag |
 |-----------|-----|-----------|-----------|
-| Transactions | 5 min | Frequently changing | `TRANSACTION` |
 | User portfolios | 5 min | Dynamic user holdings | `PORTFOLIO` |
 | Search results | 10 min | Balance freshness/performance | `VAULT` |
+| Transactions | 15 min | Recent activity, moderately static | `TRANSACTION` |
 | Vault data | 15 min | Relatively static | `VAULT` |
+| Vault composition | 15 min | Backend caches Octav data ~6h | `VAULT` |
 | Risk analysis | 15 min | Multi-factor metrics | `RISK` |
 | Performance data | 30 min | Historical, less volatile | `PERFORMANCE` |
+| Price history | 30 min | Daily aggregates | `PERFORMANCE` |
 | Yield predictions | 60 min | ML forecasts valid longer | `PREDICTION` |
 | Schema | 24 hours | Rarely changes | `SCHEMA` |
 
@@ -621,11 +634,8 @@ Type 'unknown' is not assignable to type 'Vault'
 
 ## FAQ
 
-**Q: Does this work with ChatGPT?**  
-A: Not yet for end users. ChatGPT Desktop MCP support is "coming in the coming months" per OpenAI. Currently available for API developers via OpenAI Agents SDK (YAML config format). See the [ChatGPT Desktop section](#chatgpt-desktop) above.
-
-**Q: Does this work with Grok?**  
-A: No. xAI has not announced native MCP support for Grok, and there is no Grok desktop app with MCP capabilities. We recommend using Claude Desktop or waiting for ChatGPT Desktop MCP support.
+**Q: Which clients does this work with?**  
+A: Any MCP-compatible client. It's verified with Claude Desktop, Claude Code (CLI), and the OpenAI Agents SDK, and works with other MCP clients (e.g. Cursor, Cline) since it uses the standard stdio transport. Clients without native MCP support cannot use it until they add MCP.
 
 **Q: Do I need to modify the code for different platforms?**  
 A: No! The lagoon-mcp server is already compatible with all MCP clients (uses standard MCP protocol and stdio transport). Only configuration format differs between platforms.
@@ -643,10 +653,10 @@ A: Yes! The MCP protocol is standard. Any MCP-compatible client should work (e.g
 A: No rate limiting in MCP. Backend GraphQL API is public with no auth.
 
 **Q: Can I add custom tools?**
-A: Yes! Fork the repo, add your tool in `src/tools/`, and register in `src/tools/index.ts`.
+A: Yes! Fork the repo, add your tool in `src/tools/`, and register it in `TOOL_REGISTRY` in `src/tools/registry.ts`.
 
 **Q: How do I update to a new version?**
-A: Run `npm update -g @hopperlabsxyz/lagoon-mcp` and restart Claude Desktop.
+A: Run `npm update -g @lagoon-protocol/lagoon-mcp` and restart Claude Desktop.
 
 **Q: Does this work with all chains?**
 A: Yes! Supports all chains available in the Lagoon backend (12+ networks).
@@ -659,7 +669,8 @@ MIT License - see [LICENSE](./LICENSE) for details
 
 - **Issues**: [GitHub Issues](https://github.com/hopperlabsxyz/lagoon-mcp/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/hopperlabsxyz/lagoon-mcp/discussions)
-- **Documentation**: [Tool Docs](./docs/tools/) | [Development Guide](./docs/DEVELOPMENT.md)
+- **Documentation**: [Tool Docs](./docs/tools/) | [Developer Reference](./docs/agent-notes.md)
+- **Release history**: [CHANGELOG.md](./CHANGELOG.md)
 
 ## Acknowledgments
 
