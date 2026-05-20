@@ -195,5 +195,5 @@ See [main disclaimer](../../README.md#️-important-legal-disclaimer) for full d
 ## See Also
 
 - [VaultFragment Definition](../../src/graphql/fragments.ts) - Complete field list
-- [Development Guide](../DEVELOPMENT.md#vault-data-tool) - Technical implementation
+- [Development Guide](../agent-notes.md) - Technical implementation
 - [GraphQL Schema](../../README.md#resources) - Schema reference

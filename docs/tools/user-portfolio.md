@@ -192,5 +192,5 @@ See the analytical guide for:
 ## See Also
 
 - [GraphQL User Queries](../../src/graphql/client.ts) - Query implementation
-- [Development Guide](../DEVELOPMENT.md#portfolio-tool) - Technical details
+- [Development Guide](../agent-notes.md) - Technical details
 - [DeFi Glossary](../../README.md#resources) - Understanding positions and shares

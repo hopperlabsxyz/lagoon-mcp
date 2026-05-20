@@ -250,4 +250,4 @@ See [main disclaimer](../../README.md#️-important-legal-disclaimer) for full d
 
 - [Export Validators](../../src/utils/validators.ts) - Data type options
 - [CSV Generator](../../src/utils/csv-generator.ts) - CSV formatting implementation
-- [Development Guide](../DEVELOPMENT.md#export-tool) - Technical details
+- [Development Guide](../agent-notes.md) - Technical details
