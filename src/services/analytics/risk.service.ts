@@ -18,6 +18,13 @@ import {
   GET_VAULT_COMPOSITION_QUERY,
 } from '../../graphql/queries/index.js';
 import { analyzeRisk, RiskScoreBreakdown } from '../../utils/risk-scoring.js';
+import { basisPointsToPercent } from '../../utils/fee-formatting.js';
+import {
+  evaluateOperationalSignals,
+  operationalSignalFloor,
+  riskLevelMax,
+  type OperationalSignal,
+} from '../../utils/operational-signals.js';
 
 /**
  * Risk analysis input data extracted from GraphQL.
@@ -59,10 +66,41 @@ export interface ComparativeRiskContext {
 }
 
 /**
- * Extended risk score breakdown with comparative context
+ * Cost-of-trade summary surfaced alongside the weighted risk score.
+ * Transactional fees (entry/exit/haircut) belong here rather than in
+ * `calculateFeeRisk()` because that function models annualized drag, not
+ * one-shot deposit/redeem cost.
+ *
+ * All percentages have already been converted from basis points via
+ * `basisPointsToPercent` in `src/utils/fee-formatting.ts`.
+ */
+export interface TradingCosts {
+  entryPct: number;
+  exitPct: number;
+  /** Applied only on syncRedeem, after the exit fee. Burned shares. */
+  haircutPct: number;
+  upcomingManagementPct: number | null;
+  upcomingPerformancePct: number | null;
+  /** Cooldown between rate update and enforcement, in seconds (BigInt string). */
+  feeRatesCooldownSeconds: string | null;
+  /** Unix timestamp at which the upcoming rates take effect (BigInt string). */
+  newRatesActivateAt: string | null;
+}
+
+/**
+ * Extended risk score breakdown with comparative context, operational
+ * signals (v0.6+), and trading-cost summary.
+ *
+ * `operationalSignals` and `effectiveRiskLevel` do NOT modify
+ * `overallRisk` (the numeric weighted score). They can only raise
+ * `effectiveRiskLevel` ABOVE `riskLevel` (the bucket derived from the score),
+ * never lower it. See `src/utils/operational-signals.ts` for the rules.
  */
 export interface ExtendedRiskScoreBreakdown extends RiskScoreBreakdown {
   comparative?: ComparativeRiskContext;
+  operationalSignals?: OperationalSignal[];
+  effectiveRiskLevel?: 'Low' | 'Medium' | 'High' | 'Critical';
+  tradingCosts?: TradingCosts;
 }
 
 /**
@@ -136,6 +174,10 @@ export interface StructuredRiskData {
     isOutlier: boolean;
   };
   dataQuality: 'high' | 'medium' | 'low';
+  // v0.6+ additions — see ExtendedRiskScoreBreakdown for semantics.
+  operationalSignals?: OperationalSignal[];
+  effectiveRiskLevel?: 'low' | 'medium' | 'high' | 'critical';
+  tradingCosts?: TradingCosts;
 }
 
 /**
@@ -151,6 +193,83 @@ export interface StructuredBatchRiskData {
     highestRisk: { address: string; score: number; scoreFormatted: string } | null;
   };
   vaults: StructuredRiskData[];
+}
+
+/**
+ * Render the "Operational warnings" markdown section. Returns an empty
+ * string when no signals are present so consumers can concatenate safely.
+ * Signals are listed in severity order (Critical > High > Medium), with
+ * stable secondary order matching the evaluator's encounter order.
+ */
+function renderOperationalWarnings(signals: OperationalSignal[] | undefined): string {
+  if (!signals || signals.length === 0) return '';
+  const severityEmoji: Record<'Critical' | 'High' | 'Medium', string> = {
+    Critical: '🔴',
+    High: '🟠',
+    Medium: '🟡',
+  };
+  const severityRank: Record<'Critical' | 'High' | 'Medium', number> = {
+    Critical: 0,
+    High: 1,
+    Medium: 2,
+  };
+  const sorted = [...signals].sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
+  const lines = sorted.map((s) => `- ${severityEmoji[s.severity]} **${s.severity}**: ${s.message}`);
+  return `### ⚠️ Operational Warnings\n\n${lines.join('\n')}\n\n`;
+}
+
+/**
+ * Render the "Trading costs" markdown one-liner. Returns empty string when
+ * no costs are configured (all zero / null).
+ */
+function renderTradingCosts(costs: TradingCosts | undefined): string {
+  if (!costs) return '';
+  const hasAnyFee = costs.entryPct > 0 || costs.exitPct > 0 || costs.haircutPct > 0;
+  const hasUpcoming = costs.upcomingManagementPct !== null || costs.upcomingPerformancePct !== null;
+  if (!hasAnyFee && !hasUpcoming) return '';
+
+  const parts: string[] = [];
+  if (costs.entryPct > 0) parts.push(`entry ${costs.entryPct.toFixed(2)}%`);
+  if (costs.exitPct > 0) parts.push(`exit ${costs.exitPct.toFixed(2)}%`);
+  if (costs.haircutPct > 0)
+    parts.push(`haircut ${costs.haircutPct.toFixed(2)}% (sync redeems only)`);
+
+  let md = '';
+  if (parts.length > 0) {
+    md += `### 💸 Trading Costs (v0.6+ transactional fees)\n\n- ${parts.join(' · ')}\n\n`;
+  }
+  if (hasUpcoming) {
+    const u: string[] = [];
+    if (costs.upcomingManagementPct !== null)
+      u.push(`management → ${costs.upcomingManagementPct.toFixed(2)}%`);
+    if (costs.upcomingPerformancePct !== null)
+      u.push(`performance → ${costs.upcomingPerformancePct.toFixed(2)}%`);
+    const activateAt = costs.newRatesActivateAt ? ` at unix ${costs.newRatesActivateAt}` : '';
+    md += `- **Upcoming rates**: ${u.join(' · ')}${activateAt}\n\n`;
+  }
+  return md;
+}
+
+/**
+ * Build the v0.6+ trading-cost summary from a vault. All percentages are
+ * converted from basis points via `basisPointsToPercent` — never re-inline
+ * `/ 100` here. Returns nullable fields for staged rates that aren't set.
+ */
+function buildTradingCosts(vault: VaultData): TradingCosts {
+  const state = vault.state;
+  const upcomingMgmt = state?.upcomingManagementFee;
+  const upcomingPerf = state?.upcomingPerformanceFee;
+  return {
+    entryPct: basisPointsToPercent(state?.entryRate),
+    exitPct: basisPointsToPercent(state?.exitRate),
+    haircutPct: basisPointsToPercent(state?.haircutRate),
+    upcomingManagementPct:
+      typeof upcomingMgmt === 'number' ? basisPointsToPercent(upcomingMgmt) : null,
+    upcomingPerformancePct:
+      typeof upcomingPerf === 'number' ? basisPointsToPercent(upcomingPerf) : null,
+    feeRatesCooldownSeconds: state?.feeRatesCooldown ?? null,
+    newRatesActivateAt: state?.newRatesTimestamp ?? null,
+  };
 }
 
 /**
@@ -573,8 +692,21 @@ export class RiskService extends BaseService {
       return null;
     }
 
-    // Calculate risk breakdown
+    // Calculate weighted risk breakdown (numeric scores + bucket level).
     const riskBreakdown = this.calculateRisk(data);
+
+    // Evaluate operational signals on every call — they derive from
+    // already-cached vault state (cheap) and have their own freshness
+    // semantics (e.g. stale_total_assets must not be cached past expiry).
+    const operationalSignals = evaluateOperationalSignals(
+      data.vault.state,
+      Math.floor(Date.now() / 1000)
+    );
+    const floor = operationalSignalFloor(operationalSignals);
+    const effectiveRiskLevel = riskLevelMax(riskBreakdown.riskLevel, floor);
+
+    // Compute v0.6+ cost-of-trade summary (transactional fees, not drag).
+    const tradingCosts = buildTradingCosts(data.vault);
 
     // Add comparative context if requested
     if (includeComparative && data.allVaults.items.length > 0) {
@@ -585,10 +717,18 @@ export class RiskService extends BaseService {
       return {
         ...riskBreakdown,
         comparative,
+        operationalSignals,
+        effectiveRiskLevel,
+        tradingCosts,
       };
     }
 
-    return riskBreakdown;
+    return {
+      ...riskBreakdown,
+      operationalSignals,
+      effectiveRiskLevel,
+      tradingCosts,
+    };
   }
 
   /**
@@ -624,9 +764,19 @@ export class RiskService extends BaseService {
       }
     };
 
+    const operationalWarnings = renderOperationalWarnings(breakdown.operationalSignals);
+    const effectiveLevelLine =
+      breakdown.effectiveRiskLevel && breakdown.effectiveRiskLevel !== breakdown.riskLevel
+        ? `**Effective level (after operational signals)**: ${riskLevelToEmoji(breakdown.effectiveRiskLevel)}\n\n`
+        : '';
+
     // Score format: Just the overall risk score (~30 tokens)
     if (responseFormat === 'score') {
-      return `# Risk Score: ${scoreToPercentage(breakdown.overallRisk)} | ${riskLevelToEmoji(breakdown.riskLevel)}`;
+      const baseLine = `# Risk Score: ${scoreToPercentage(breakdown.overallRisk)} | ${riskLevelToEmoji(breakdown.riskLevel)}`;
+      if (effectiveLevelLine) {
+        return `${baseLine}\n\n${effectiveLevelLine}${operationalWarnings}`.trimEnd();
+      }
+      return operationalWarnings ? `${baseLine}\n\n${operationalWarnings}`.trimEnd() : baseLine;
     }
 
     // Summary format: Risk score with key metrics (~200 tokens)
@@ -672,11 +822,13 @@ ${breakdown.dataQualityNotes.map((note: string) => `- ${note}`).join('\n')}
 `
           : '';
 
+      const tradingCostsBlock = renderTradingCosts(breakdown.tradingCosts);
       return `
 ## Risk Analysis Dashboard
 
 **Overall Risk**: ${scoreToPercentage(breakdown.overallRisk)} ${scoreToEmoji(breakdown.overallRisk)} | **Level**: ${riskLevelToEmoji(breakdown.riskLevel)}
-${comparativeSection}
+
+${effectiveLevelLine}${operationalWarnings}${tradingCostsBlock}${comparativeSection}
 ### 🎯 Top Risk Concerns
 
 | Factor | Score | Status |
@@ -752,8 +904,9 @@ ${breakdown.dataQualityNotes.map((note: string) => `- ${note}`).join('\n')}
 `
         : '';
 
+    const detailedTradingCosts = renderTradingCosts(breakdown.tradingCosts);
     return `
-${comparativeDetailedSection}## Risk Analysis Breakdown
+${comparativeDetailedSection}${effectiveLevelLine}${operationalWarnings}${detailedTradingCosts}## Risk Analysis Breakdown
 
 ### Performance & Returns Risk
 | Risk Factor | Score | Level |
@@ -1243,6 +1396,11 @@ ${vaultDetails.join('\n---\n\n')}`;
           }
         : undefined,
       dataQuality: breakdown.dataQuality,
+      operationalSignals: breakdown.operationalSignals,
+      effectiveRiskLevel: breakdown.effectiveRiskLevel
+        ? (breakdown.effectiveRiskLevel.toLowerCase() as 'low' | 'medium' | 'high' | 'critical')
+        : undefined,
+      tradingCosts: breakdown.tradingCosts,
     };
   }
 

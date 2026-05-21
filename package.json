@@ -43,7 +43,7 @@
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "test": "vitest",
-    "test:unit": "vitest run tests/tools/ tests/graphql/ src/sdk/__tests__/",
+    "test:unit": "vitest run tests/tools/ tests/utils/ tests/graphql/ src/sdk/__tests__/",
     "test:integration": "./scripts/test-integration.sh",
     "test:coverage": "vitest run --coverage",
     "test:quick": "vitest run --changed",
