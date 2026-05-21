@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: 'npm'
 
       - name: Check if version changed
@@ -55,7 +55,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: 'npm'
 
       - name: Install dependencies
@@ -89,7 +89,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
@@ -99,10 +99,12 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Upgrade npm for Trusted Publishing
-        # Pinned to npm@11 (latest stable major). `npm@latest` has intermittently
-        # failed bootstrap with `Cannot find module 'promise-retry'` since v0.4.0.
-        run: npm install -g npm@11
+      # No explicit npm upgrade — Node 24 ships with npm 11+ bundled, which
+      # is the minimum for Trusted Publishing OIDC + --provenance. The prior
+      # `npm install -g npm@11` step would crash on Node 22's bundled npm
+      # with `Cannot find module 'promise-retry'` (broken bootstrap tree).
+      # See: https://github.com/hopperlabsxyz/lagoon-mcp/pull/9 (commits
+      # 887329b → this fix).
 
       - name: Publish to npm (Trusted Publishing)
         run: npm publish --provenance --access public
