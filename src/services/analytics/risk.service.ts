@@ -354,10 +354,11 @@ export class RiskService extends BaseService {
       curatorCount: curators.length,
     };
 
-    // Extract fee data. GraphQL returns fees as uint16 basis points
-    // (10000 = 100%); convert to percent for calculateFeeRisk's bucket thresholds.
-    const managementFee = (data.vault.state?.managementFee || 0) / 100;
-    const performanceFee = (data.vault.state?.performanceFee || 0) / 100;
+    // Extract fee data. GraphQL returns fees as uint16 basis points;
+    // basisPointsToPercent converts to a percentage for calculateFeeRisk's
+    // bucket thresholds (single source of truth in src/utils/fee-formatting.ts).
+    const managementFee = basisPointsToPercent(data.vault.state?.managementFee);
+    const performanceFee = basisPointsToPercent(data.vault.state?.performanceFee);
     const pricePerShare = BigInt(data.vault.state?.pricePerShare || '0');
     const highWaterMark = BigInt(data.vault.state?.highWaterMark || '0');
     const performanceFeeActive = pricePerShare > highWaterMark;

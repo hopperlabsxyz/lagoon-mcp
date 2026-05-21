@@ -26,6 +26,7 @@ import * as PredictionQueries from '../graphql/queries/prediction.queries.js';
 import type { PredictionResponseFormat } from '../graphql/queries/prediction.queries.js';
 import { predictYield, YieldDataPoint, YieldPrediction } from '../utils/yield-prediction.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
+import { basisPointsToPercent } from '../utils/fee-formatting.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheTTL } from '../cache/index.js';
@@ -337,10 +338,11 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
     }
 
     // Extract fee data for fee-adjusted predictions.
-    // GraphQL returns fees as uint16 basis points (10000 = 100%); convert to
-    // percent for the predictor and the markdown formatter.
-    const managementFee = (data.vault.state?.managementFee ?? 0) / 100;
-    const performanceFee = (data.vault.state?.performanceFee ?? 0) / 100;
+    // basisPointsToPercent converts uint16 basis points to a percentage for
+    // the predictor and the markdown formatter (single source of truth in
+    // src/utils/fee-formatting.ts).
+    const managementFee = basisPointsToPercent(data.vault.state?.managementFee);
+    const performanceFee = basisPointsToPercent(data.vault.state?.performanceFee);
     const pricePerShare = BigInt(data.vault.state?.pricePerShare || '0');
     const highWaterMark = BigInt(data.vault.state?.highWaterMark || '0');
     const performanceFeeActive = pricePerShare > highWaterMark;

@@ -28,6 +28,11 @@ import { CompareVaultsInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { VaultData, CompositionData } from '../graphql/fragments/index.js';
 import {
+  calculateHHI,
+  getDiversificationLevel,
+  type DiversificationLevel,
+} from '../utils/composition-metrics.js';
+import {
   COMPARE_VAULTS_QUERY,
   BATCH_VAULT_FIRST_TRANSACTIONS_QUERY,
   type BatchVaultFirstTransactionsResponse,
@@ -76,17 +81,17 @@ interface SingleVaultCompositionResponse {
 }
 
 /**
- * Composition metrics for a vault (protocol-based)
- * Uses assetByProtocols from Octav API for DeFi protocol analysis
- * "wallet" protocol (idle assets) is excluded from HHI but tracked as idlePercent
+ * Composition metrics for a vault, derived from typed Vault.composition.
+ * Backend pre-computes repartition and pre-sorts entries by it descending —
+ * we just walk the array. No "Wallet" / idle entry exists in the typed API
+ * (see docs/agent-notes.md gotcha #8).
  */
 interface VaultCompositionMetrics {
-  hhi: number; // Herfindahl-Hirschman Index (0-1), excludes wallet
-  diversificationLevel: 'High' | 'Medium' | 'Low';
+  hhi: number; // Herfindahl-Hirschman Index (0-1)
+  diversificationLevel: DiversificationLevel; // 'High' | 'Medium' | 'Low' | 'Unknown'
   topProtocol: string | null;
   topProtocolPercent: number | null;
-  protocolCount: number; // DeFi protocols only (excludes wallet)
-  idlePercent: number; // Percentage in "wallet" protocol (not deployed in DeFi)
+  protocolCount: number;
 }
 
 /**
@@ -516,8 +521,7 @@ function normalizeRiskLevel(
  * Calculate composition metrics from typed Vault.composition (v0.6+).
  * Backend provides `repartition` (percentage) sorted desc — no client
  * recalculation. The typed API has no "Wallet" entry, so HHI walks every
- * row (see docs/agent-notes.md gotcha #8). `idlePercent` is preserved on
- * the output for backward compat but is always 0.
+ * row (see docs/agent-notes.md gotcha #8).
  */
 function calculateCompositionMetrics(
   composition: CompositionData | null
@@ -529,17 +533,14 @@ function calculateCompositionMetrics(
   const entries = composition.compositions.filter((p) => p.valueInUsd > 0);
   if (entries.length === 0) return undefined;
 
-  const hhi = entries.reduce((sum, p) => sum + Math.pow(p.repartition / 100, 2), 0);
-  const diversificationLevel: 'High' | 'Medium' | 'Low' =
-    hhi < 0.15 ? 'High' : hhi < 0.25 ? 'Medium' : 'Low';
+  const hhi = calculateHHI(entries.map((p) => p.repartition));
 
   return {
-    hhi: parseFloat(hhi.toFixed(4)),
-    diversificationLevel,
+    hhi,
+    diversificationLevel: getDiversificationLevel(hhi),
     topProtocol: entries[0]?.protocol ?? null,
     topProtocolPercent: entries[0] ? parseFloat(entries[0].repartition.toFixed(2)) : null,
     protocolCount: entries.length,
-    idlePercent: 0,
   };
 }
 

@@ -1084,5 +1084,102 @@ describe('predict_yield Tool', () => {
       // No incentive-warning emitted when sustainable APR is unavailable.
       expect(text).not.toContain('comes from temporary incentives');
     });
+
+    it('100% incentive contribution: emits warning', async () => {
+      const mockData = {
+        vault: vaultWithWeeklyApr({
+          linearNetApr: 10,
+          linearNetAprWithoutExtraYields: 0,
+          airdrops: 1,
+        }),
+        performanceHistory: flatPerfHistory(),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'quick',
+      });
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('100.0% of total APR');
+      expect(text).toMatch(/⚠️.*100\.0% of headline APR comes from temporary incentives/);
+    });
+
+    it('exactly at the 25% threshold: warning is NOT emitted (strict > check)', async () => {
+      // 25% incentive = sustainable is 75% of total. With total=10, sustainable=7.5.
+      const mockData = {
+        vault: vaultWithWeeklyApr({
+          linearNetApr: 10,
+          linearNetAprWithoutExtraYields: 7.5,
+          nativeYields: 1,
+        }),
+        performanceHistory: flatPerfHistory(),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'quick',
+      });
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('25.0% of total APR');
+      expect(text).not.toContain('comes from temporary incentives');
+    });
+
+    it('just above the 25% threshold: warning IS emitted', async () => {
+      // 25.1% incentive. With total=1000, sustainable=749 → 25.1% incentive.
+      const mockData = {
+        vault: vaultWithWeeklyApr({
+          linearNetApr: 1000,
+          linearNetAprWithoutExtraYields: 749,
+        }),
+        performanceHistory: flatPerfHistory(),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'quick',
+      });
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('25.1% of total APR');
+      expect(text).toContain('comes from temporary incentives');
+    });
+
+    it('0% incentive (sustainable === total): no warning, clean breakdown', async () => {
+      const mockData = {
+        vault: vaultWithWeeklyApr({
+          linearNetApr: 5,
+          linearNetAprWithoutExtraYields: 5,
+          nativeYields: 2,
+        }),
+        performanceHistory: flatPerfHistory(),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'quick',
+      });
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('0.0% of total APR');
+      expect(text).not.toContain('comes from temporary incentives');
+    });
   });
 });

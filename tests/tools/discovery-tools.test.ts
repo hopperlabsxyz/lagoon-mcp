@@ -120,9 +120,11 @@ describe('list_chains', () => {
     const result = await tool({});
     const body = parseJsonWithDisclaimer(text(result));
     expect(body.items[0].name).toBe('Ethereum');
+    // Default page size now matches paginationFirstSchema (20) so cache key
+    // and GraphQL variables stay in lockstep (no cache-poisoning class bug).
     expect(mockRequest).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ first: 100, skip: 0, where: null })
+      expect.objectContaining({ first: 20, skip: 0, where: null })
     );
   });
 

@@ -35,17 +35,18 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetVaultCompositionInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
-import {
-  CompositionData,
-  ProtocolComposition,
-  TokenComposition,
-} from '../graphql/fragments/index.js';
+import { CompositionData, TokenComposition } from '../graphql/fragments/index.js';
 import { GET_VAULT_COMPOSITION_QUERY } from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
 import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheKeys, cacheTTL } from '../cache/index.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
+import {
+  calculateHHI,
+  getDiversificationLevel,
+  type DiversificationLevel,
+} from '../utils/composition-metrics.js';
 
 type CompositionResponseFormat = 'summary' | 'protocols' | 'full';
 
@@ -82,8 +83,13 @@ interface CompositionAnalysis {
   topProtocol: ProtocolSummary | null;
   /** Herfindahl-Hirschman Index for protocol concentration (0–1, lower = more diversified). */
   hhi: number;
-  /** Diversification level derived from HHI. */
-  diversificationLevel: 'High' | 'Medium' | 'Low';
+  /**
+   * Diversification level derived from HHI. 'Unknown' is returned when the
+   * vault has no composition data yet (HHI=0 here means "no data", NOT
+   * "highly diversified" — risk-conscious consumers should treat 'Unknown'
+   * accordingly).
+   */
+  diversificationLevel: DiversificationLevel;
 }
 
 interface FullCompositionData {
@@ -117,29 +123,9 @@ interface FullResponse {
 type CompositionOutput = SummaryResponse | ProtocolsResponse | FullResponse;
 
 /**
- * Herfindahl-Hirschman Index over backend-provided repartition percentages.
- * Walks every entry (no Wallet to filter — concept doesn't exist in the
- * typed API). Range: 0 → 1; lower = more diversified.
- *
- * Thresholds (DeFi-tuned, not antitrust standards):
- * - < 0.15: High diversification
- * - 0.15–0.25: Medium concentration
- * - > 0.25: High concentration
- */
-function calculateHHI(protocols: ProtocolComposition[]): number {
-  if (protocols.length === 0) return 0;
-  return protocols.reduce((sum, p) => sum + Math.pow(p.repartition / 100, 2), 0);
-}
-
-function getDiversificationLevel(hhi: number): 'High' | 'Medium' | 'Low' {
-  if (hhi < 0.15) return 'High';
-  if (hhi < 0.25) return 'Medium';
-  return 'Low';
-}
-
-/**
  * Transform the typed `Vault.composition` payload into the analyst-friendly
- * `FullCompositionData` shape. No-op for empty / null composition.
+ * `FullCompositionData` shape. Returns an empty analysis (with
+ * `diversificationLevel: 'Unknown'`) when composition is null/empty.
  */
 function transformTypedComposition(
   composition: CompositionData | null,
@@ -156,7 +142,7 @@ function transformTypedComposition(
         protocolCount: 0,
         topProtocol: null,
         hhi: 0,
-        diversificationLevel: 'High',
+        diversificationLevel: 'Unknown',
       },
     };
   }
@@ -169,7 +155,7 @@ function transformTypedComposition(
     logoUrl: p.logoUrl ?? null,
   }));
 
-  const hhi = calculateHHI(composition.compositions);
+  const hhi = calculateHHI(composition.compositions.map((p) => p.repartition));
 
   return {
     vaultAddress,
@@ -180,7 +166,7 @@ function transformTypedComposition(
       totalValueUsd: composition.totalValueInUsd ?? 0,
       protocolCount: protocols.length,
       topProtocol: protocols[0] ?? null,
-      hhi: Math.round(hhi * 10000) / 10000,
+      hhi,
       diversificationLevel: getDiversificationLevel(hhi),
     },
   };

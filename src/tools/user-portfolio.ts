@@ -24,6 +24,11 @@ import { GetUserPortfolioInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { VaultData, CompositionData } from '../graphql/fragments/index.js';
 import {
+  calculateHHI,
+  getDiversificationLevel,
+  type DiversificationLevel,
+} from '../utils/composition-metrics.js';
+import {
   createGetUserPortfolioQuery,
   SINGLE_VAULT_COMPOSITION_QUERY,
 } from '../graphql/queries/portfolio.queries.js';
@@ -101,17 +106,17 @@ interface AccidentalConcentration {
 }
 
 /**
- * Portfolio composition summary with diversification metrics
- * Uses protocol-based composition from Octav API's assetByProtocols
+ * Portfolio composition summary derived from typed Vault.composition
+ * (v0.6+). Backend pre-computes repartition and pre-sorts; we just
+ * aggregate per-protocol exposure across the user's vaults and run HHI
+ * against the totals.
  */
 interface PortfolioCompositionSummary {
   protocolExposure: ProtocolExposure[];
   portfolioHHI: number;
-  diversificationLevel: 'High' | 'Medium' | 'Low';
+  diversificationLevel: DiversificationLevel; // 'High' | 'Medium' | 'Low' | 'Unknown'
   topProtocol: string | null;
   topProtocolPercent: number | null;
-  /** Percentage of assets in "wallet" (idle, not deployed in DeFi) */
-  idleAssetsPercent: number;
   accidentalConcentration: AccidentalConcentration[];
 }
 
@@ -242,10 +247,7 @@ function aggregatePortfolioComposition(
 
   // The v0.6+ typed CompositionData doesn't surface a "Wallet" / idle-assets
   // entry — see docs/agent-notes.md gotcha #8. HHI walks every entry.
-  const portfolioHHI = allExposures.reduce((sum, e) => sum + Math.pow(e.repartition / 100, 2), 0);
-
-  const diversificationLevel: 'High' | 'Medium' | 'Low' =
-    portfolioHHI < 0.15 ? 'High' : portfolioHHI < 0.25 ? 'Medium' : 'Low';
+  const portfolioHHI = calculateHHI(allExposures.map((e) => e.repartition));
 
   // Detect accidental concentration (same protocol in 3+ vaults with >20% total exposure)
   const accidentalConcentration: AccidentalConcentration[] = [];
@@ -264,13 +266,10 @@ function aggregatePortfolioComposition(
 
   return {
     protocolExposure: allExposures.slice(0, 10),
-    portfolioHHI: parseFloat(portfolioHHI.toFixed(4)),
-    diversificationLevel,
+    portfolioHHI,
+    diversificationLevel: getDiversificationLevel(portfolioHHI, allExposures.length === 0),
     topProtocol: allExposures[0]?.protocolName || null,
     topProtocolPercent: allExposures[0]?.repartition || null,
-    // idleAssetsPercent: typed Vault.composition has no Wallet entry. Kept on
-    // the response for backward compatibility; always 0 in the new world.
-    idleAssetsPercent: 0,
     accidentalConcentration,
   };
 }

@@ -10,16 +10,20 @@
  * - "What were the fees at vault inception vs today?"
  * - "Was the vault paused at the time of incident Y?"
  *
- * Cache: 60 minutes — historical state by timestamp is immutable once past.
+ * Cache: cacheTTL.historicalState (60 minutes — historical state by
+ * timestamp is immutable once past).
+ *
+ * Cache tag: vault-adjacent. Registered under CacheTag.VAULT.
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetHistoricalStateInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { GET_HISTORICAL_STATE_QUERY } from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
-
-const HISTORICAL_STATE_TTL = 3600;
+import { CacheTag } from '../core/cache-invalidation.js';
+import { cacheTTL } from '../cache/index.js';
 
 interface HistoricalStateResponse {
   vaultByAddress: {
@@ -34,19 +38,22 @@ interface HistoricalStateVariables {
   timestamp: number;
 }
 
+function cacheKeyFor(input: GetHistoricalStateInput): string {
+  return `historical_state:${input.vaultAddress}:${input.chainId}:${input.timestamp}`;
+}
+
 export function createExecuteGetHistoricalState(
   container: ServiceContainer
 ): (input: GetHistoricalStateInput) => Promise<CallToolResult> {
-  return executeToolWithCache<
+  const executor = executeToolWithCache<
     GetHistoricalStateInput,
     HistoricalStateResponse,
     HistoricalStateVariables,
     HistoricalStateResponse
   >({
     container,
-    cacheKey: (input) =>
-      `historical_state:${input.vaultAddress}:${input.chainId}:${input.timestamp}`,
-    cacheTTL: HISTORICAL_STATE_TTL,
+    cacheKey: cacheKeyFor,
+    cacheTTL: cacheTTL.historicalState,
     query: GET_HISTORICAL_STATE_QUERY,
     variables: (input) => ({
       address: input.vaultAddress,
@@ -73,4 +80,13 @@ export function createExecuteGetHistoricalState(
     },
     toolName: 'get_historical_state',
   });
+
+  return async (input: GetHistoricalStateInput): Promise<CallToolResult> => {
+    container.cacheInvalidator.register(cacheKeyFor(input), [CacheTag.VAULT]);
+    const result = await executor(input);
+    if (!result.isError && result.content[0]?.type === 'text') {
+      result.content[0].text = result.content[0].text + getToolDisclaimer('get_historical_state');
+    }
+    return result;
+  };
 }

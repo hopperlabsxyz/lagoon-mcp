@@ -5,14 +5,20 @@
  * Lets the LLM resolve "which curators are on Lagoon?" without scanning all
  * vaults.
  *
- * Cache: 15 minutes (curator metadata changes infrequently).
+ * Cache: cacheTTL.vaultData (15 minutes — curator metadata changes infrequently).
+ *
+ * Cache tag: curator directory is vault-adjacent; registered under
+ * CacheTag.VAULT so a flush invalidates both vault data and curator metadata
+ * together.
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { ListCuratorsInput } from '../utils/validators.js';
+import { getToolDisclaimer } from '../utils/disclaimers.js';
 import { LIST_CURATORS_QUERY } from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
 import { ServiceContainer } from '../core/container.js';
+import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheTTL } from '../cache/index.js';
 
 interface CuratorEntry {
@@ -37,29 +43,42 @@ interface ListCuratorsVariables {
   where: { isVisible_eq?: boolean } | null;
 }
 
+function cacheKeyFor(input: ListCuratorsInput): string {
+  const first = input.pagination?.first ?? 20;
+  const skip = input.pagination?.skip ?? 0;
+  return `curators:${first}:${skip}:${input.isVisible ?? 'any'}`;
+}
+
 export function createExecuteListCurators(
   container: ServiceContainer
 ): (input: ListCuratorsInput) => Promise<CallToolResult> {
-  return executeToolWithCache<
+  // Fallbacks align with paginationFirstSchema's documented default (20)
+  // so the cache key matches the GraphQL variables.
+  const executor = executeToolWithCache<
     ListCuratorsInput,
     ListCuratorsResponse,
     ListCuratorsVariables,
     ListCuratorsResponse['curators']
   >({
     container,
-    cacheKey: (input) => {
-      const first = input.pagination?.first ?? 100;
-      const skip = input.pagination?.skip ?? 0;
-      return `curators:${first}:${skip}:${input.isVisible ?? 'any'}`;
-    },
+    cacheKey: cacheKeyFor,
     cacheTTL: cacheTTL.vaultData,
     query: LIST_CURATORS_QUERY,
     variables: (input) => ({
-      first: input.pagination?.first ?? 100,
+      first: input.pagination?.first ?? 20,
       skip: input.pagination?.skip ?? 0,
       where: input.isVisible == null ? null : { isVisible_eq: input.isVisible },
     }),
     transformResult: (data) => data.curators,
     toolName: 'list_curators',
   });
+
+  return async (input: ListCuratorsInput): Promise<CallToolResult> => {
+    container.cacheInvalidator.register(cacheKeyFor(input), [CacheTag.VAULT]);
+    const result = await executor(input);
+    if (!result.isError && result.content[0]?.type === 'text') {
+      result.content[0].text = result.content[0].text + getToolDisclaimer('list_curators');
+    }
+    return result;
+  };
 }

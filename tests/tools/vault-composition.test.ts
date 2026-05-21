@@ -140,6 +140,10 @@ describe('get_vault_composition (typed)', () => {
     expect(body.analysis.topProtocol).toBeNull();
     expect(body.analysis.hhi).toBe(0);
     expect(body.topProtocols).toEqual([]);
+    // Empty composition must NOT report 'High' — that would mislead a
+    // risk-conscious consumer ("no data" vs "highly diversified"). The
+    // typed shape now uses an explicit 'Unknown' for this state.
+    expect(body.analysis.diversificationLevel).toBe('Unknown');
   });
 
   it('returns a non-error "vault not found" message when the vault does not exist on chain', async () => {

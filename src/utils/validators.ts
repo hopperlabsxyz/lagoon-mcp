@@ -423,13 +423,19 @@ export const listCuratorsInputSchema = z.object({
 });
 
 // get_curator input
+// Length-bounded + character-bounded to keep the value safe to use as a cache
+// key (node-cache has a 1000-entry limit; unbounded variants would let a
+// caller churn the cache). Mirrors the entityIds pattern in searchVaultsInputSchema.
 export const getCuratorInputSchema = z.object({
   curatorId: z
     .string()
     .trim()
-    .min(1, 'curatorId is required')
-    .max(128, 'curatorId too long')
-    .describe('Curator ID as exposed by the backend (e.g. "steakhouse").'),
+    .toLowerCase()
+    .regex(
+      /^[a-z0-9_-]{1,64}$/,
+      'curatorId must be 1-64 chars of [a-z0-9_-] (e.g. "steakhouse", "mev-capital", "1212-capital")'
+    )
+    .describe('Curator ID as exposed by the backend (e.g. "steakhouse", "1212-capital").'),
 });
 
 // get_asset input

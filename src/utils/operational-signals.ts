@@ -91,10 +91,14 @@ export function evaluateOperationalSignals(
     Array.isArray(state.blacklist) &&
     state.blacklist.length > 0
   ) {
+    // Don't embed the exact blacklist size — for vault-operator (non-OFAC)
+    // blacklists the count can be sensitive operator metadata, and it adds
+    // no risk-analytic value beyond "non-empty". Callers needing the exact
+    // size can read state.blacklist directly via get_vault_data.
     signals.push({
       code: 'blacklist_mode_active',
       severity: 'Medium',
-      message: `Vault enforces a non-empty blacklist (${state.blacklist.length} address${state.blacklist.length === 1 ? '' : 'es'}) — operator can deny specific users access.`,
+      message: 'Vault enforces a non-empty blacklist — operator can deny specific users access.',
     });
   }
 
