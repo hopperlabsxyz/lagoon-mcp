@@ -61,3 +61,14 @@ export {
 
 // Composition Queries
 export { GET_VAULT_COMPOSITION_QUERY } from './composition.queries.js';
+
+// Discovery Queries (Tier 2: thin wrappers around backend metadata endpoints)
+export {
+  GET_GLOBAL_TVL_QUERY,
+  GET_INDEXING_STATUS_QUERY,
+  LIST_CHAINS_QUERY,
+  LIST_CURATORS_QUERY,
+  GET_CURATOR_QUERY,
+  GET_ASSET_QUERY,
+  GET_HISTORICAL_STATE_QUERY,
+} from './discovery.queries.js';

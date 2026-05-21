@@ -6,11 +6,7 @@
  */
 
 import { BaseService } from '../base.service.js';
-import {
-  VaultData,
-  VaultCompositionFullResponse,
-  ProtocolCompositionData,
-} from '../../graphql/fragments/index.js';
+import { VaultData, CompositionData } from '../../graphql/fragments/index.js';
 import {
   RISK_ANALYSIS_QUERY,
   BATCH_RISK_ANALYSIS_QUERY,
@@ -18,6 +14,13 @@ import {
   GET_VAULT_COMPOSITION_QUERY,
 } from '../../graphql/queries/index.js';
 import { analyzeRisk, RiskScoreBreakdown } from '../../utils/risk-scoring.js';
+import { basisPointsToPercent } from '../../utils/fee-formatting.js';
+import {
+  evaluateOperationalSignals,
+  operationalSignalFloor,
+  riskLevelMax,
+  type OperationalSignal,
+} from '../../utils/operational-signals.js';
 
 /**
  * Risk analysis input data extracted from GraphQL.
@@ -31,8 +34,10 @@ export interface RiskAnalysisData {
   allVaults: { items: Array<{ state: { totalAssetsUsd: number } }> };
   curatorVaults: { items: Array<{ address: string; state: { totalAssetsUsd: number } }> };
   priceHistory: Array<{ timestamp: number; pricePerShareUsd: number }>;
-  // Note: Backend API returns full response with assetByProtocols for protocol analysis
-  composition: VaultCompositionFullResponse | null;
+  // Typed `Vault.composition` (v0.6+). null when Octav hasn't been queried
+  // yet for this vault. compositions[] is pre-sorted desc by repartition
+  // and pre-normalized to sum to ~100%.
+  composition: CompositionData | null;
 }
 
 interface RawRiskAnalysisResponse extends Pick<RiskAnalysisData, 'allVaults' | 'curatorVaults'> {
@@ -59,10 +64,41 @@ export interface ComparativeRiskContext {
 }
 
 /**
- * Extended risk score breakdown with comparative context
+ * Cost-of-trade summary surfaced alongside the weighted risk score.
+ * Transactional fees (entry/exit/haircut) belong here rather than in
+ * `calculateFeeRisk()` because that function models annualized drag, not
+ * one-shot deposit/redeem cost.
+ *
+ * All percentages have already been converted from basis points via
+ * `basisPointsToPercent` in `src/utils/fee-formatting.ts`.
+ */
+export interface TradingCosts {
+  entryPct: number;
+  exitPct: number;
+  /** Applied only on syncRedeem, after the exit fee. Burned shares. */
+  haircutPct: number;
+  upcomingManagementPct: number | null;
+  upcomingPerformancePct: number | null;
+  /** Cooldown between rate update and enforcement, in seconds (BigInt string). */
+  feeRatesCooldownSeconds: string | null;
+  /** Unix timestamp at which the upcoming rates take effect (BigInt string). */
+  newRatesActivateAt: string | null;
+}
+
+/**
+ * Extended risk score breakdown with comparative context, operational
+ * signals (v0.6+), and trading-cost summary.
+ *
+ * `operationalSignals` and `effectiveRiskLevel` do NOT modify
+ * `overallRisk` (the numeric weighted score). They can only raise
+ * `effectiveRiskLevel` ABOVE `riskLevel` (the bucket derived from the score),
+ * never lower it. See `src/utils/operational-signals.ts` for the rules.
  */
 export interface ExtendedRiskScoreBreakdown extends RiskScoreBreakdown {
   comparative?: ComparativeRiskContext;
+  operationalSignals?: OperationalSignal[];
+  effectiveRiskLevel?: 'Low' | 'Medium' | 'High' | 'Critical';
+  tradingCosts?: TradingCosts;
 }
 
 /**
@@ -136,6 +172,10 @@ export interface StructuredRiskData {
     isOutlier: boolean;
   };
   dataQuality: 'high' | 'medium' | 'low';
+  // v0.6+ additions — see ExtendedRiskScoreBreakdown for semantics.
+  operationalSignals?: OperationalSignal[];
+  effectiveRiskLevel?: 'low' | 'medium' | 'high' | 'critical';
+  tradingCosts?: TradingCosts;
 }
 
 /**
@@ -151,6 +191,83 @@ export interface StructuredBatchRiskData {
     highestRisk: { address: string; score: number; scoreFormatted: string } | null;
   };
   vaults: StructuredRiskData[];
+}
+
+/**
+ * Render the "Operational warnings" markdown section. Returns an empty
+ * string when no signals are present so consumers can concatenate safely.
+ * Signals are listed in severity order (Critical > High > Medium), with
+ * stable secondary order matching the evaluator's encounter order.
+ */
+function renderOperationalWarnings(signals: OperationalSignal[] | undefined): string {
+  if (!signals || signals.length === 0) return '';
+  const severityEmoji: Record<'Critical' | 'High' | 'Medium', string> = {
+    Critical: '🔴',
+    High: '🟠',
+    Medium: '🟡',
+  };
+  const severityRank: Record<'Critical' | 'High' | 'Medium', number> = {
+    Critical: 0,
+    High: 1,
+    Medium: 2,
+  };
+  const sorted = [...signals].sort((a, b) => severityRank[a.severity] - severityRank[b.severity]);
+  const lines = sorted.map((s) => `- ${severityEmoji[s.severity]} **${s.severity}**: ${s.message}`);
+  return `### ⚠️ Operational Warnings\n\n${lines.join('\n')}\n\n`;
+}
+
+/**
+ * Render the "Trading costs" markdown one-liner. Returns empty string when
+ * no costs are configured (all zero / null).
+ */
+function renderTradingCosts(costs: TradingCosts | undefined): string {
+  if (!costs) return '';
+  const hasAnyFee = costs.entryPct > 0 || costs.exitPct > 0 || costs.haircutPct > 0;
+  const hasUpcoming = costs.upcomingManagementPct !== null || costs.upcomingPerformancePct !== null;
+  if (!hasAnyFee && !hasUpcoming) return '';
+
+  const parts: string[] = [];
+  if (costs.entryPct > 0) parts.push(`entry ${costs.entryPct.toFixed(2)}%`);
+  if (costs.exitPct > 0) parts.push(`exit ${costs.exitPct.toFixed(2)}%`);
+  if (costs.haircutPct > 0)
+    parts.push(`haircut ${costs.haircutPct.toFixed(2)}% (sync redeems only)`);
+
+  let md = '';
+  if (parts.length > 0) {
+    md += `### 💸 Trading Costs (v0.6+ transactional fees)\n\n- ${parts.join(' · ')}\n\n`;
+  }
+  if (hasUpcoming) {
+    const u: string[] = [];
+    if (costs.upcomingManagementPct !== null)
+      u.push(`management → ${costs.upcomingManagementPct.toFixed(2)}%`);
+    if (costs.upcomingPerformancePct !== null)
+      u.push(`performance → ${costs.upcomingPerformancePct.toFixed(2)}%`);
+    const activateAt = costs.newRatesActivateAt ? ` at unix ${costs.newRatesActivateAt}` : '';
+    md += `- **Upcoming rates**: ${u.join(' · ')}${activateAt}\n\n`;
+  }
+  return md;
+}
+
+/**
+ * Build the v0.6+ trading-cost summary from a vault. All percentages are
+ * converted from basis points via `basisPointsToPercent` — never re-inline
+ * `/ 100` here. Returns nullable fields for staged rates that aren't set.
+ */
+function buildTradingCosts(vault: VaultData): TradingCosts {
+  const state = vault.state;
+  const upcomingMgmt = state?.upcomingManagementFee;
+  const upcomingPerf = state?.upcomingPerformanceFee;
+  return {
+    entryPct: basisPointsToPercent(state?.entryRate),
+    exitPct: basisPointsToPercent(state?.exitRate),
+    haircutPct: basisPointsToPercent(state?.haircutRate),
+    upcomingManagementPct:
+      typeof upcomingMgmt === 'number' ? basisPointsToPercent(upcomingMgmt) : null,
+    upcomingPerformancePct:
+      typeof upcomingPerf === 'number' ? basisPointsToPercent(upcomingPerf) : null,
+    feeRatesCooldownSeconds: state?.feeRatesCooldown ?? null,
+    newRatesActivateAt: state?.newRatesTimestamp ?? null,
+  };
 }
 
 /**
@@ -237,10 +354,11 @@ export class RiskService extends BaseService {
       curatorCount: curators.length,
     };
 
-    // Extract fee data. GraphQL returns fees as uint16 basis points
-    // (10000 = 100%); convert to percent for calculateFeeRisk's bucket thresholds.
-    const managementFee = (data.vault.state?.managementFee || 0) / 100;
-    const performanceFee = (data.vault.state?.performanceFee || 0) / 100;
+    // Extract fee data. GraphQL returns fees as uint16 basis points;
+    // basisPointsToPercent converts to a percentage for calculateFeeRisk's
+    // bucket thresholds (single source of truth in src/utils/fee-formatting.ts).
+    const managementFee = basisPointsToPercent(data.vault.state?.managementFee);
+    const performanceFee = basisPointsToPercent(data.vault.state?.performanceFee);
     const pricePerShare = BigInt(data.vault.state?.pricePerShare || '0');
     const highWaterMark = BigInt(data.vault.state?.highWaterMark || '0');
     const performanceFeeActive = pricePerShare > highWaterMark;
@@ -287,55 +405,19 @@ export class RiskService extends BaseService {
       maxCapacity,
     };
 
-    // Extract composition data for protocol diversification risk
-    // Uses assetByProtocols from VaultCompositionFullResponse for DeFi protocol analysis
-    // "wallet" protocol (idle assets) is excluded from diversification calculation
+    // Extract composition data for protocol diversification risk.
+    // Backend's typed CompositionData (v0.6+) provides `repartition` already
+    // computed and pre-sorted desc — no client-side filter/sort/recalc needed.
+    // The "Wallet" / idle-assets entry doesn't exist in this API, so we walk
+    // every entry (compositions sums to ~100% across DeFi protocols only).
     let compositionData:
       | { compositions: Array<{ repartition: number }>; topProtocolPercent: number | null }
       | undefined;
-    if (
-      data.composition &&
-      data.composition.assetByProtocols &&
-      Object.keys(data.composition.assetByProtocols).length > 0
-    ) {
-      // Filter active protocols (value > 0) and transform to risk format
-      const allProtocols = Object.entries(data.composition.assetByProtocols)
-        .filter(([, protocol]: [string, ProtocolCompositionData]) => {
-          const value = parseFloat(protocol.value);
-          return !isNaN(value) && value > 0;
-        })
-        .map(([key, protocol]: [string, ProtocolCompositionData]) => ({
-          key,
-          value: parseFloat(protocol.value),
-          repartition: 0, // Will calculate after total
-        }));
-
-      // Calculate total value (including wallet)
-      const totalValue = allProtocols.reduce((sum, p) => sum + p.value, 0);
-
-      // Calculate repartition (percentage) for each protocol
-      allProtocols.forEach((p) => {
-        p.repartition = totalValue > 0 ? (p.value / totalValue) * 100 : 0;
-      });
-
-      // Exclude wallet (idle assets) from diversification analysis
-      // Wallet represents undeployed capital, not DeFi protocol concentration
-      const defiProtocols = allProtocols.filter((p) => p.key !== 'wallet');
-
-      // Recalculate percentages for DeFi-only (for HHI calculation)
-      const defiTotalValue = defiProtocols.reduce((sum, p) => sum + p.value, 0);
-      defiProtocols.forEach((p) => {
-        p.repartition = defiTotalValue > 0 ? (p.value / defiTotalValue) * 100 : 0;
-      });
-
-      // Sort by value descending to get top protocol
-      defiProtocols.sort((a, b) => b.value - a.value);
-
-      const topProtocolPercent = defiProtocols[0]?.repartition ?? null;
-
+    if (data.composition && data.composition.compositions.length > 0) {
+      const entries = data.composition.compositions.filter((p) => p.valueInUsd > 0);
       compositionData = {
-        compositions: defiProtocols.map((p) => ({ repartition: p.repartition })),
-        topProtocolPercent,
+        compositions: entries.map((p) => ({ repartition: p.repartition })),
+        topProtocolPercent: entries[0]?.repartition ?? null,
       };
     }
 
@@ -363,112 +445,26 @@ export class RiskService extends BaseService {
   }
 
   /**
-   * Extract addresses from Octav bundle URL
-   * Example: https://pro.octav.fi/?addresses=0x123,0x456
+   * Fetch the typed `Vault.composition` for a single (address, chainId)
+   * pair. Returns null on backend error so callers can degrade gracefully
+   * without composition-derived risk factors.
+   *
+   * The old Octav-bundle-URL parsing and multi-composition merging are
+   * gone — `Vault.composition` is a single direct call per vault.
    */
-  private extractAddressesFromOctavUrl(url: string): string[] {
-    try {
-      const urlObj = new URL(url);
-      const addresses = urlObj.searchParams.get('addresses');
-      if (!addresses) return [];
-      return addresses
-        .split(',')
-        .map((addr) => addr.trim())
-        .filter(Boolean);
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * Fetch composition for a single address
-   */
-  private async fetchSingleComposition(
-    address: string
-  ): Promise<VaultCompositionFullResponse | null> {
+  private async fetchCompositionForVault(vault: VaultData): Promise<CompositionData | null> {
     try {
       const result = await this.client.request<{
-        vaultComposition: VaultCompositionFullResponse | null;
-      }>(GET_VAULT_COMPOSITION_QUERY, { walletAddress: address });
-      return result.vaultComposition;
+        vaultByAddress: { composition: CompositionData | null } | null;
+      }>(GET_VAULT_COMPOSITION_QUERY, {
+        address: vault.address,
+        chainId: vault.chain?.id ?? 0,
+      });
+      return result.vaultByAddress?.composition ?? null;
     } catch (error) {
-      // Graceful degradation - log warning and continue without composition
-      console.warn(`Failed to fetch composition for ${address}: ${String(error)}`);
+      console.warn(`Failed to fetch composition for ${vault.address}: ${String(error)}`);
       return null;
     }
-  }
-
-  /**
-   * Fetch composition using correct addresses from bundles.octav URL
-   * - Parses octav URL to get addresses
-   * - Fetches composition for each address
-   * - Merges if multiple addresses (bundle)
-   */
-  private async fetchCompositionForVault(
-    vault: VaultData
-  ): Promise<VaultCompositionFullResponse | null> {
-    // Get addresses from bundles.octav URL if available
-    let addresses: string[] = [];
-    if (vault.bundles?.octav) {
-      addresses = this.extractAddressesFromOctavUrl(vault.bundles.octav);
-    }
-
-    // Fallback to vault address if no bundle addresses
-    if (addresses.length === 0) {
-      addresses = [vault.address];
-    }
-
-    // Single address - direct fetch
-    if (addresses.length === 1) {
-      return this.fetchSingleComposition(addresses[0]);
-    }
-
-    // Multiple addresses (bundle) - fetch all and merge
-    const compositions = await Promise.all(
-      addresses.map((addr) => this.fetchSingleComposition(addr))
-    );
-
-    // Filter out nulls and merge
-    const validCompositions = compositions.filter(
-      (c): c is VaultCompositionFullResponse => c !== null
-    );
-    if (validCompositions.length === 0) return null;
-    if (validCompositions.length === 1) return validCompositions[0];
-
-    return this.mergeCompositions(validCompositions);
-  }
-
-  /**
-   * Merge multiple compositions (for bundle vaults)
-   * Aggregates assetByProtocols values across all compositions
-   */
-  private mergeCompositions(
-    compositions: VaultCompositionFullResponse[]
-  ): VaultCompositionFullResponse {
-    // Aggregate assetByProtocols values
-    const protocolMap = new Map<string, ProtocolCompositionData>();
-    let totalNetworth = 0;
-
-    for (const comp of compositions) {
-      totalNetworth += parseFloat(comp.networth || '0');
-      for (const [key, protocol] of Object.entries(comp.assetByProtocols || {})) {
-        const existing = protocolMap.get(key);
-        if (existing) {
-          // Add values together
-          existing.value = String(parseFloat(existing.value) + parseFloat(protocol.value));
-        } else {
-          // Clone the protocol data
-          protocolMap.set(key, { ...protocol });
-        }
-      }
-    }
-
-    return {
-      address: compositions[0].address,
-      networth: String(totalNetworth),
-      assetByProtocols: Object.fromEntries(protocolMap),
-      chains: compositions[0].chains, // Use first composition's chains as base
-    };
   }
 
   /**
@@ -573,8 +569,21 @@ export class RiskService extends BaseService {
       return null;
     }
 
-    // Calculate risk breakdown
+    // Calculate weighted risk breakdown (numeric scores + bucket level).
     const riskBreakdown = this.calculateRisk(data);
+
+    // Evaluate operational signals on every call — they derive from
+    // already-cached vault state (cheap) and have their own freshness
+    // semantics (e.g. stale_total_assets must not be cached past expiry).
+    const operationalSignals = evaluateOperationalSignals(
+      data.vault.state,
+      Math.floor(Date.now() / 1000)
+    );
+    const floor = operationalSignalFloor(operationalSignals);
+    const effectiveRiskLevel = riskLevelMax(riskBreakdown.riskLevel, floor);
+
+    // Compute v0.6+ cost-of-trade summary (transactional fees, not drag).
+    const tradingCosts = buildTradingCosts(data.vault);
 
     // Add comparative context if requested
     if (includeComparative && data.allVaults.items.length > 0) {
@@ -585,10 +594,18 @@ export class RiskService extends BaseService {
       return {
         ...riskBreakdown,
         comparative,
+        operationalSignals,
+        effectiveRiskLevel,
+        tradingCosts,
       };
     }
 
-    return riskBreakdown;
+    return {
+      ...riskBreakdown,
+      operationalSignals,
+      effectiveRiskLevel,
+      tradingCosts,
+    };
   }
 
   /**
@@ -624,9 +641,19 @@ export class RiskService extends BaseService {
       }
     };
 
+    const operationalWarnings = renderOperationalWarnings(breakdown.operationalSignals);
+    const effectiveLevelLine =
+      breakdown.effectiveRiskLevel && breakdown.effectiveRiskLevel !== breakdown.riskLevel
+        ? `**Effective level (after operational signals)**: ${riskLevelToEmoji(breakdown.effectiveRiskLevel)}\n\n`
+        : '';
+
     // Score format: Just the overall risk score (~30 tokens)
     if (responseFormat === 'score') {
-      return `# Risk Score: ${scoreToPercentage(breakdown.overallRisk)} | ${riskLevelToEmoji(breakdown.riskLevel)}`;
+      const baseLine = `# Risk Score: ${scoreToPercentage(breakdown.overallRisk)} | ${riskLevelToEmoji(breakdown.riskLevel)}`;
+      if (effectiveLevelLine) {
+        return `${baseLine}\n\n${effectiveLevelLine}${operationalWarnings}`.trimEnd();
+      }
+      return operationalWarnings ? `${baseLine}\n\n${operationalWarnings}`.trimEnd() : baseLine;
     }
 
     // Summary format: Risk score with key metrics (~200 tokens)
@@ -672,11 +699,13 @@ ${breakdown.dataQualityNotes.map((note: string) => `- ${note}`).join('\n')}
 `
           : '';
 
+      const tradingCostsBlock = renderTradingCosts(breakdown.tradingCosts);
       return `
 ## Risk Analysis Dashboard
 
 **Overall Risk**: ${scoreToPercentage(breakdown.overallRisk)} ${scoreToEmoji(breakdown.overallRisk)} | **Level**: ${riskLevelToEmoji(breakdown.riskLevel)}
-${comparativeSection}
+
+${effectiveLevelLine}${operationalWarnings}${tradingCostsBlock}${comparativeSection}
 ### 🎯 Top Risk Concerns
 
 | Factor | Score | Status |
@@ -752,8 +781,9 @@ ${breakdown.dataQualityNotes.map((note: string) => `- ${note}`).join('\n')}
 `
         : '';
 
+    const detailedTradingCosts = renderTradingCosts(breakdown.tradingCosts);
     return `
-${comparativeDetailedSection}## Risk Analysis Breakdown
+${comparativeDetailedSection}${effectiveLevelLine}${operationalWarnings}${detailedTradingCosts}## Risk Analysis Breakdown
 
 ### Performance & Returns Risk
 | Risk Factor | Score | Level |
@@ -990,7 +1020,7 @@ ${detailedDataQualitySection}`;
     vault: VaultData,
     chainId: number,
     allVaultsContext: { items: Array<{ state: { totalAssetsUsd: number } }> },
-    composition: VaultCompositionFullResponse | null = null
+    composition: CompositionData | null = null
   ): BatchVaultRiskResult | null {
     // Build minimal RiskAnalysisData for calculation
     // For batch, we skip per-vault curator/price queries for efficiency
@@ -1243,6 +1273,11 @@ ${vaultDetails.join('\n---\n\n')}`;
           }
         : undefined,
       dataQuality: breakdown.dataQuality,
+      operationalSignals: breakdown.operationalSignals,
+      effectiveRiskLevel: breakdown.effectiveRiskLevel
+        ? (breakdown.effectiveRiskLevel.toLowerCase() as 'low' | 'medium' | 'high' | 'critical')
+        : undefined,
+      tradingCosts: breakdown.tradingCosts,
     };
   }
 

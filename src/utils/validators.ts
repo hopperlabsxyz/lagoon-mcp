@@ -246,6 +246,12 @@ export const compareVaultsInputSchema = z
       .describe(
         'Response detail level: summary (~170 tokens/vault), full (~600 tokens/vault). Default: summary'
       ),
+    rankBy: z
+      .enum(['totalApr', 'sustainableApr'])
+      .default('totalApr')
+      .describe(
+        'Ranking strategy. "totalApr" (default) ranks by net APR including airdrops/incentives; "sustainableApr" ranks by APR excluding extra yields — fair comparison when some vaults are incentive-heavy.'
+      ),
   })
   .refine((data) => data.chainId !== undefined || (data.chainIds && data.chainIds.length > 0), {
     message: 'Either chainId or chainIds must be provided',
@@ -375,14 +381,78 @@ export const optimizePortfolioInputSchema = z.object({
 });
 
 // get_vault_composition input
+// chainId required (the deprecated query merged chains silently — see gotcha #2).
 export const getVaultCompositionInputSchema = z.object({
   vaultAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
   responseFormat: z
     .enum(['summary', 'protocols', 'full'])
     .default('summary')
     .describe(
-      'Response detail level: summary (totals + top protocols ~100 tokens), protocols (non-zero protocols only ~200-500 tokens), full (all protocol data ~1000+ tokens). Default: summary'
+      'Response detail level: summary (totals + top protocols ~100 tokens), protocols (non-zero protocols only ~200-500 tokens), full (all protocol data including tokenCompositions ~600-1000 tokens). Default: summary'
     ),
+});
+
+// get_global_tvl input — no args
+export const getGlobalTvlInputSchema = z.object({});
+
+// get_indexing_status input — optional chainIds filter
+export const getIndexingStatusInputSchema = z.object({
+  chainIds: z
+    .array(chainIdSchema)
+    .optional()
+    .describe('Optional list of chain IDs to filter; omit to return all chains.'),
+});
+
+// list_chains input
+export const listChainsInputSchema = z.object({
+  isVisible: z
+    .boolean()
+    .optional()
+    .describe('If true, only return chains visible in the Lagoon frontend.'),
+  pagination: z.object({ first: paginationFirstSchema, skip: paginationSkipSchema }).optional(),
+});
+
+// list_curators input
+export const listCuratorsInputSchema = z.object({
+  isVisible: z
+    .boolean()
+    .optional()
+    .describe('If true, only return curators visible in the Lagoon frontend.'),
+  pagination: z.object({ first: paginationFirstSchema, skip: paginationSkipSchema }).optional(),
+});
+
+// get_curator input
+// Length-bounded + character-bounded to keep the value safe to use as a cache
+// key (node-cache has a 1000-entry limit; unbounded variants would let a
+// caller churn the cache). Mirrors the entityIds pattern in searchVaultsInputSchema.
+export const getCuratorInputSchema = z.object({
+  curatorId: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(
+      /^[a-z0-9_-]{1,64}$/,
+      'curatorId must be 1-64 chars of [a-z0-9_-] (e.g. "steakhouse", "mev-capital", "1212-capital")'
+    )
+    .describe('Curator ID as exposed by the backend (e.g. "steakhouse", "1212-capital").'),
+});
+
+// get_asset input
+export const getAssetInputSchema = z.object({
+  assetAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
+});
+
+// get_historical_state input — wraps Vault.stateAt(timestamp)
+export const getHistoricalStateInputSchema = z.object({
+  vaultAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
+  timestamp: z
+    .number()
+    .int()
+    .positive('timestamp must be a positive Unix epoch in seconds')
+    .describe('Unix timestamp (seconds) at which to read the vault state.'),
 });
 
 /**
@@ -403,3 +473,10 @@ export type AnalyzeRisksInput = z.infer<typeof analyzeRisksInputSchema>;
 export type PredictYieldInput = z.infer<typeof predictYieldInputSchema>;
 export type OptimizePortfolioInput = z.infer<typeof optimizePortfolioInputSchema>;
 export type GetVaultCompositionInput = z.infer<typeof getVaultCompositionInputSchema>;
+export type GetGlobalTvlInput = z.infer<typeof getGlobalTvlInputSchema>;
+export type GetIndexingStatusInput = z.infer<typeof getIndexingStatusInputSchema>;
+export type ListChainsInput = z.infer<typeof listChainsInputSchema>;
+export type ListCuratorsInput = z.infer<typeof listCuratorsInputSchema>;
+export type GetCuratorInput = z.infer<typeof getCuratorInputSchema>;
+export type GetAssetInput = z.infer<typeof getAssetInputSchema>;
+export type GetHistoricalStateInput = z.infer<typeof getHistoricalStateInputSchema>;

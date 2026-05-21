@@ -1372,4 +1372,154 @@ describe('compare_vaults Tool', () => {
       expect(text).toContain('0.00%');
     });
   });
+
+  describe('Sustainable APR & rankBy (unit test on normalizeAndRankVaults)', () => {
+    it('default rankBy=totalApr ranks the high-total-APR vault first', async () => {
+      const { normalizeAndRankVaults } = await import('../../src/utils/comparison-metrics');
+      const ranked = normalizeAndRankVaults([
+        {
+          address: '0xaaaa',
+          name: 'Incentivized',
+          symbol: 'INC',
+          chainId: 1,
+          tvl: 1_000_000,
+          apr: 20,
+          sustainableNetApr: 4,
+        },
+        {
+          address: '0xbbbb',
+          name: 'Organic',
+          symbol: 'ORG',
+          chainId: 1,
+          tvl: 1_000_000,
+          apr: 8,
+          sustainableNetApr: 8,
+        },
+      ]);
+      const byName = new Map(ranked.map((v) => [v.name, v.rank]));
+      expect(byName.get('Incentivized')).toBe(1);
+      expect(byName.get('Organic')).toBe(2);
+    });
+
+    it('rankBy=sustainableApr flips the ranking — organic wins', async () => {
+      const { normalizeAndRankVaults } = await import('../../src/utils/comparison-metrics');
+      const ranked = normalizeAndRankVaults(
+        [
+          {
+            address: '0xaaaa',
+            name: 'Incentivized',
+            symbol: 'INC',
+            chainId: 1,
+            tvl: 1_000_000,
+            apr: 20,
+            sustainableNetApr: 4,
+          },
+          {
+            address: '0xbbbb',
+            name: 'Organic',
+            symbol: 'ORG',
+            chainId: 1,
+            tvl: 1_000_000,
+            apr: 8,
+            sustainableNetApr: 8,
+          },
+        ],
+        'sustainableApr'
+      );
+      const byName = new Map(ranked.map((v) => [v.name, v.rank]));
+      expect(byName.get('Organic')).toBe(1);
+      expect(byName.get('Incentivized')).toBe(2);
+    });
+
+    it('exposes sustainableAprPercentile and sustainableAprDelta on the normalized vault', async () => {
+      const { normalizeAndRankVaults } = await import('../../src/utils/comparison-metrics');
+      const ranked = normalizeAndRankVaults([
+        {
+          address: '0xa',
+          name: 'A',
+          symbol: 'A',
+          chainId: 1,
+          tvl: 1,
+          apr: 10,
+          sustainableNetApr: 4,
+        },
+        {
+          address: '0xb',
+          name: 'B',
+          symbol: 'B',
+          chainId: 1,
+          tvl: 1,
+          apr: 10,
+          sustainableNetApr: 8,
+        },
+      ]);
+      const a = ranked.find((v) => v.name === 'A')!;
+      const b = ranked.find((v) => v.name === 'B')!;
+      expect(a.sustainableAprPercentile).toBe(0);
+      expect(b.sustainableAprPercentile).toBe(100);
+      // average = 6, so A (4) is -33.33%, B (8) is +33.33%
+      expect(a.sustainableAprDelta).toBeCloseTo(-33.33, 1);
+      expect(b.sustainableAprDelta).toBeCloseTo(33.33, 1);
+    });
+
+    it('leaves sustainable fields undefined when no vault provides sustainableNetApr', async () => {
+      const { normalizeAndRankVaults } = await import('../../src/utils/comparison-metrics');
+      const ranked = normalizeAndRankVaults([
+        { address: '0xa', name: 'A', symbol: 'A', chainId: 1, tvl: 1, apr: 10 },
+        { address: '0xb', name: 'B', symbol: 'B', chainId: 1, tvl: 1, apr: 10 },
+      ]);
+      expect(ranked[0].sustainableAprPercentile).toBeUndefined();
+      expect(ranked[0].sustainableAprDelta).toBeUndefined();
+    });
+
+    it('falls back to total-APR ranking when sustainable data is absent even if rankBy=sustainableApr', async () => {
+      const { normalizeAndRankVaults } = await import('../../src/utils/comparison-metrics');
+      const ranked = normalizeAndRankVaults(
+        [
+          { address: '0xa', name: 'High', symbol: 'H', chainId: 1, tvl: 1, apr: 20 },
+          { address: '0xb', name: 'Low', symbol: 'L', chainId: 1, tvl: 1, apr: 5 },
+        ],
+        'sustainableApr'
+      );
+      const byName = new Map(ranked.map((v) => [v.name, v.rank]));
+      // Falls back gracefully: High still wins because no sustainable data to flip on.
+      expect(byName.get('High')).toBe(1);
+    });
+
+    it('falls back to total-APR when sustainable data is INCOMPLETE (mixed) — Copilot review #3', async () => {
+      // Vault A has higher total APR (20) but lower sustainable (4).
+      // Vault B has higher total AND sustainable (40 / 30) AND is the only
+      // one with sustainable data; including only A's percentile would mix
+      // measures. The fix: if ANY vault lacks sustainable data, fall back
+      // to total APR for the whole pass.
+      const { normalizeAndRankVaults } = await import('../../src/utils/comparison-metrics');
+      const ranked = normalizeAndRankVaults(
+        [
+          {
+            address: '0xa',
+            name: 'Incentivized',
+            symbol: 'INC',
+            chainId: 1,
+            tvl: 1,
+            apr: 20,
+            sustainableNetApr: 4, // has sustainable
+          },
+          {
+            address: '0xb',
+            name: 'Higher Total',
+            symbol: 'HT',
+            chainId: 1,
+            tvl: 1,
+            apr: 40, // no sustainable — would force fallback
+          },
+        ],
+        'sustainableApr'
+      );
+      const byName = new Map(ranked.map((v) => [v.name, v.rank]));
+      // Fallback engaged: highest TOTAL APR (Higher Total = 40) wins because
+      // we ranked by total APR rather than mixing sustainable + total.
+      expect(byName.get('Higher Total')).toBe(1);
+      expect(byName.get('Incentivized')).toBe(2);
+    });
+  });
 });

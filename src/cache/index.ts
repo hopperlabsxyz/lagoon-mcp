@@ -54,6 +54,9 @@ export const cacheTTL = {
   yieldPrediction: 3600, // 60 minutes - ML-based forecast, expensive computation
   portfolioOptimization: 300, // 5 minutes - user-specific, interactive use case
   composition: 900, // 15 minutes - protocol composition from Octav API (backend caches 6h)
+  globalTvl: 300, // 5 minutes - protocol-wide TVL; ticks slowly but markets move
+  indexingStatus: 60, // 60 seconds - indexer health, block-by-block freshness needed
+  historicalState: 3600, // 60 minutes - historical state by timestamp is immutable once past
 } as const;
 
 /**
@@ -108,7 +111,8 @@ export const cacheKeys = {
   priceHistory: (address: string, chainId: number, range: string): string =>
     `price_history:${address}:${chainId}:${range}`,
 
-  composition: (address: string): string => `composition:${address.toLowerCase()}`,
+  composition: (address: string, chainId: number): string =>
+    `composition:${address.toLowerCase()}:${chainId}`,
 };
 
 /**

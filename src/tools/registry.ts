@@ -25,6 +25,13 @@ import { createExecutePredictYield } from './predict-yield.js';
 import { createExecuteOptimizePortfolio } from './optimize-portfolio.js';
 import { createExecuteSimulateVault, simulateVaultInputSchema } from './simulate-vault.js';
 import { createExecuteGetVaultComposition } from './vault-composition.js';
+import { createExecuteGetGlobalTvl } from './get-global-tvl.js';
+import { createExecuteGetIndexingStatus } from './get-indexing-status.js';
+import { createExecuteListChains } from './list-chains.js';
+import { createExecuteListCurators } from './list-curators.js';
+import { createExecuteGetCurator } from './get-curator.js';
+import { createExecuteGetAsset } from './get-asset.js';
+import { createExecuteGetHistoricalState } from './get-historical-state.js';
 
 // Service container
 import { ServiceContainer } from '../core/container.js';
@@ -45,6 +52,13 @@ import {
   predictYieldInputSchema,
   optimizePortfolioInputSchema,
   getVaultCompositionInputSchema,
+  getGlobalTvlInputSchema,
+  getIndexingStatusInputSchema,
+  listChainsInputSchema,
+  listCuratorsInputSchema,
+  getCuratorInputSchema,
+  getAssetInputSchema,
+  getHistoricalStateInputSchema,
 } from '../utils/validators.js';
 
 // Tool utilities
@@ -165,6 +179,8 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Calculates deltas from averages and identifies best/worst performers automatically. ' +
       'Returns formatted comparison table with summary statistics and individual vault rankings. ' +
       'Best for: evaluating investment opportunities, identifying top performers, risk-adjusted return analysis, portfolio construction. ' +
+      'New: each vault output includes sustainableNetApr (linearNetAprWithoutExtraYields), incentiveContribution, and twrrNetApr. ' +
+      'Set rankBy="sustainableApr" to rank by organic yield (excluding airdrops/incentives) — fair comparison when some vaults are incentive-heavy. ' +
       'Performance: ~300 tokens per vault. ' +
       'Features 15-minute caching based on vault address and chain combinations.',
     schema: compareVaultsInputSchema,
@@ -272,20 +288,90 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
   {
     name: 'get_vault_composition',
     description:
-      'Fetch vault DeFi protocol composition with diversification analysis from Octav API. ' +
-      'Returns breakdown by protocol (e.g., Spark, Morpho, Yield Basis, Lagoon) with USD values. ' +
-      'Calculates HHI (Herfindahl-Hirschman Index) for protocol diversification scoring. ' +
-      '"wallet" protocol represents idle assets not deployed in DeFi (excluded from HHI, tracked as idleAssetsPercent). ' +
+      'Typed DeFi protocol composition via Vault.composition (v0.6+, replaces the retired ' +
+      'vaultComposition query). Requires vaultAddress + chainId — the deprecated query merged ' +
+      'chains silently, this is now chain-safe. ' +
+      'Returns protocol breakdown (morphoblue, spark, yieldbasis, ...) with USD value and pre-computed repartition %. ' +
+      'Calculates HHI (Herfindahl-Hirschman Index) over every entry — backend groups the long tail into a single ' +
+      '"Other" bucket, no "Wallet"/idle entry exists in the typed shape. ' +
       'Diversification levels: High (HHI < 0.15), Medium (0.15-0.25), Low (> 0.25). ' +
-      'Supports 3 response formats for token optimization: ' +
-      'summary (totals + top 5 protocols ~100 tokens), ' +
-      'protocols (all non-zero protocols ~200-500 tokens), ' +
-      'full (all data including raw ~1000+ tokens). ' +
-      'Best for: understanding DeFi protocol exposure, identifying concentration risks, capital efficiency analysis. ' +
-      'Default: summary for token efficiency. ' +
+      'Response formats: summary (top 5 + analysis ~100 tokens), protocols (all entries ~200-500 tokens), ' +
+      'full (adds tokenCompositions + totalValueInUsd ~600-1000 tokens). ' +
       'Features 15-minute caching (backend caches Octav API data for 6 hours).',
     schema: getVaultCompositionInputSchema,
     executorFactory: createExecuteGetVaultComposition,
+  },
+  {
+    name: 'get_global_tvl',
+    description:
+      'Live total value locked across all Lagoon vaults and chains, in USD. ' +
+      'Single number, no arguments. Use for headline "how big is Lagoon" context. ' +
+      'Performance: ~30 tokens. Cache: 5 minutes.',
+    schema: getGlobalTvlInputSchema,
+    executorFactory: createExecuteGetGlobalTvl,
+  },
+  {
+    name: 'get_indexing_status',
+    description:
+      'Indexer health: last indexed block per chain. ' +
+      'Use BEFORE running predict_yield / analyze_risk on a freshly active vault to detect ' +
+      'stale data. If a chain is lagging far behind head, downstream analytics may report ' +
+      'wrong APR/TVL. Optional `chainIds` filter; omit for all chains. ' +
+      'Performance: ~100 tokens per chain. Cache: 60s.',
+    schema: getIndexingStatusInputSchema,
+    executorFactory: createExecuteGetIndexingStatus,
+  },
+  {
+    name: 'list_chains',
+    description:
+      'Directory of Lagoon-supported chains with chainId, name, native token, factory address, ' +
+      'and wrapped native token. Use to discover valid chain IDs instead of hardcoding. ' +
+      'Optional `isVisible: true` filter restricts to chains exposed in the Lagoon frontend. ' +
+      'Performance: ~80 tokens per chain. Cache: 24h.',
+    schema: listChainsInputSchema,
+    executorFactory: createExecuteListChains,
+  },
+  {
+    name: 'list_curators',
+    description:
+      'Directory of vault curators on Lagoon (id, name, logo, description, website). ' +
+      "Pair with `search_vaults` filter `curatorIds_contains` to enumerate a curator's vaults. " +
+      'Optional `isVisible: true` for frontend-listed only. ' +
+      'Performance: ~60 tokens per curator. Cache: 15 minutes.',
+    schema: listCuratorsInputSchema,
+    executorFactory: createExecuteListCurators,
+  },
+  {
+    name: 'get_curator',
+    description:
+      'Single curator lookup by ID (returns name, description, logo, website, visibility). ' +
+      'Use after `list_curators` to drill into one curator. ' +
+      'Performance: ~80 tokens. Cache: 15 minutes.',
+    schema: getCuratorInputSchema,
+    executorFactory: createExecuteGetCurator,
+  },
+  {
+    name: 'get_asset',
+    description:
+      'Single ERC20 asset metadata lookup by address + chainId (symbol, decimals, current USD price, chain). ' +
+      'Useful when the asset is referenced outside a vault context. ' +
+      'Inside vault queries the asset is already nested, so prefer `get_vault_data` there. ' +
+      'Performance: ~120 tokens. Cache: 5 minutes (priceUsd ticks with the market).',
+    schema: getAssetInputSchema,
+    executorFactory: createExecuteGetAsset,
+  },
+  {
+    name: 'get_historical_state',
+    description:
+      'Vault state at a specific Unix timestamp via `Vault.stateAt(timestamp)`. ' +
+      'Returns the HistoricalVaultState (price-per-share, fees, totalAssets, roles, guardrails, ' +
+      'pause/lock flags) AS OF the requested time. Far simpler than reconstructing state from ' +
+      'TotalAssetsUpdated/RatesUpdated event streams. ' +
+      'Use cases: "what was PPS on Jan 1?", "were fees lower at inception?", "was the vault paused during incident X?". ' +
+      'Some fields may be null on vaults predating that configuration. ' +
+      'Performance: ~300-500 tokens. Cache: 60 minutes (historical state is immutable once past).',
+    schema: getHistoricalStateInputSchema,
+    executorFactory: createExecuteGetHistoricalState,
   },
 ];
 

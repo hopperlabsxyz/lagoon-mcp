@@ -49,6 +49,13 @@ These caused real shipped bugs (commits `5b7a201`, `3a87f0b`, `774ea16`). Each i
 ### 1. Fees are basis points, not percentages
 GraphQL returns `state.managementFee` / `performanceFee` / `protocolFee` as uint16 **basis points**
 (`2000` = 20%). Divide by 100 before displaying or using in a percentage calculation.
+- **v0.6+ adds three more basis-point fields**: `entryRate` (capped 200 BPS = 2%), `exitRate`
+  (capped 200 BPS), `haircutRate` (capped 2000 BPS = 20%) — exposed on `VaultState`. Plus the
+  staged-rate fields `upcomingManagementFee` / `upcomingPerformanceFee` (nullable; activate at
+  `newRatesTimestamp` after `feeRatesCooldown` seconds). All the same basis-point rule applies.
+- **Single source of truth**: use `src/utils/fee-formatting.ts`
+  (`basisPointsToPercent`, `formatBasisPointsAsPercent`, `normalizeFeesToPercent`) — do NOT
+  re-inline `/ 100` in new code.
 - Display/calculation paths: `src/services/analytics/risk.service.ts`, `src/tools/compare-vaults.ts`,
   `src/tools/predict-yield.ts`.
 - **Exception:** the SDK simulator (`@lagoon-protocol/v0-computation`) expects uint16 basis points —
@@ -92,6 +99,38 @@ out across vaults — `compare_vaults`, `analyze_risks`, `get_user_portfolio`,
 `predict_yield` regression breaks on <7 days of data or extreme-APR outliers (fixed in `774ea16`). Keep
 the guard: check the data-point count before regressing and fall back to EMA for short/volatile periods.
 See `src/utils/yield-prediction.ts`.
+
+### 8. `vaultComposition(walletAddress)` is retired — `Vault.composition` is the source
+`get_vault_composition` now uses the typed `Vault.composition: CompositionData` field, NOT the
+deprecated `vaultComposition(walletAddress)` JSONObject query. Same for the composition fetch in
+`get_user_portfolio`, `compare_vaults`, and `analyze_risk` (the risk service).
+- New args: `address: Address!, chainId: Int!` (was `walletAddress: Address!` — the deprecated
+  query merged chains silently, see gotcha #2).
+- New shape: `{ compositions: [ProtocolComposition!]!, tokenCompositions: [TokenComposition!]!, totalValueInUsd: Float }`.
+  `ProtocolComposition` exposes `protocol`, `valueInUsd`, `repartition` (0-100, pre-computed),
+  and an optional `details` array for the "Other" grouped bucket. **No "Wallet" entry** — the
+  typed API doesn't surface idle assets. The HHI walk is therefore over every row; no
+  client-side filtering or recalculation needed.
+- **What's gone vs the old Octav shape**: `idleAssetsPercent` (no Wallet entry — `safeAssetBalanceUsd / totalAssetsUsd`
+  is a related but different metric you can read from `VaultState` directly), `positionTypes`
+  (LENDING / YIELD / DEPOSIT / SPOT categorization isn't exposed), per-chain protocol drill-down,
+  Octav bundle-URL parsing/merging in the risk service.
+- **`tokenCompositions` data is weak in production**: `contract` and `chainKey` come back as
+  empty strings; `symbol`/`name` are display strings (`"Spark - reth"`), not real ERC20s. Useful
+  for display, NOT for programmatic cross-referencing.
+
+### 9. Discovery tools (Tier 2) for thin metadata
+Thin tools wrap small backend metadata endpoints so callers don't have to drop into `query_graphql`:
+- `get_global_tvl` → `getGlobalTVL` (5 min cache).
+- `get_indexing_status` → `_meta(chainIds)` (60s cache). **Use this BEFORE `predict_yield` /
+  `analyze_risk` to detect stale chain data** — the indexer can trail head by minutes/hours on quiet
+  chains, which silently corrupts USD time-series.
+- `list_chains` → `chains(…)` (24h cache).
+- `list_curators`, `get_curator` → `curators(…)` / `curator(id)` (15 min cache).
+- `get_asset` → `assetByAddress(address, chainId)` (5 min cache; `priceUsd` ticks with the market).
+- `get_historical_state` → `Vault.stateAt(timestamp)` (60 min cache). Returns the full
+  `HistoricalVaultState` shape — far simpler than reconstructing state from event streams.
+- All wired through `executeToolWithCache` and registered in `src/tools/registry.ts`.
 
 ---
 

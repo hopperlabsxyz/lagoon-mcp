@@ -22,11 +22,12 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetUserPortfolioInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
+import { VaultData, CompositionData } from '../graphql/fragments/index.js';
 import {
-  VaultData,
-  VaultCompositionFullResponse,
-  ProtocolCompositionData,
-} from '../graphql/fragments/index.js';
+  calculateHHI,
+  getDiversificationLevel,
+  type DiversificationLevel,
+} from '../utils/composition-metrics.js';
 import {
   createGetUserPortfolioQuery,
   SINGLE_VAULT_COMPOSITION_QUERY,
@@ -105,17 +106,17 @@ interface AccidentalConcentration {
 }
 
 /**
- * Portfolio composition summary with diversification metrics
- * Uses protocol-based composition from Octav API's assetByProtocols
+ * Portfolio composition summary derived from typed Vault.composition
+ * (v0.6+). Backend pre-computes repartition and pre-sorts; we just
+ * aggregate per-protocol exposure across the user's vaults and run HHI
+ * against the totals.
  */
 interface PortfolioCompositionSummary {
   protocolExposure: ProtocolExposure[];
   portfolioHHI: number;
-  diversificationLevel: 'High' | 'Medium' | 'Low';
+  diversificationLevel: DiversificationLevel; // 'High' | 'Medium' | 'Low' | 'Unknown'
   topProtocol: string | null;
   topProtocolPercent: number | null;
-  /** Percentage of assets in "wallet" (idle, not deployed in DeFi) */
-  idleAssetsPercent: number;
   accidentalConcentration: AccidentalConcentration[];
 }
 
@@ -160,47 +161,32 @@ interface VaultCompositionEntry {
 }
 
 /**
- * Response type for single vault composition query
- * Note: Backend returns JSONObject with full response structure
+ * Response type for single vault composition query (v0.6+ typed shape).
  */
 interface SingleVaultCompositionResponse {
-  vaultComposition: VaultCompositionFullResponse | null;
+  vaultByAddress: {
+    address: string;
+    composition: CompositionData | null;
+  } | null;
 }
 
 /**
- * Transform raw composition data to processed protocol summaries
- * Uses assetByProtocols field for protocol-level breakdown
+ * Transform typed CompositionData into the portfolio-aggregation
+ * ProcessedProtocolSummary shape. Backend already provides repartition
+ * (percentage) and sorts by it desc — no client-side normalization needed.
  */
-function transformRawCompositionToProtocols(
-  raw: VaultCompositionFullResponse | null
+function transformCompositionToProtocols(
+  composition: CompositionData | null
 ): ProcessedProtocolSummary[] {
-  if (!raw || !raw.assetByProtocols || Object.keys(raw.assetByProtocols).length === 0) {
-    return [];
-  }
-
-  // Filter and transform to protocol summaries
-  const protocols: ProcessedProtocolSummary[] = Object.entries(raw.assetByProtocols)
-    .filter(([, protocol]: [string, ProtocolCompositionData]) => {
-      const value = parseFloat(protocol.value);
-      return !isNaN(value) && value > 0;
-    })
-    .map(([key, protocol]: [string, ProtocolCompositionData]) => ({
-      protocolKey: key,
-      protocolName: protocol.name,
-      valueUsd: parseFloat(protocol.value),
-      percentage: 0, // Calculate after total
+  if (!composition || composition.compositions.length === 0) return [];
+  return composition.compositions
+    .filter((p) => p.valueInUsd > 0)
+    .map((p) => ({
+      protocolKey: p.protocol,
+      protocolName: p.protocol,
+      valueUsd: p.valueInUsd,
+      percentage: p.repartition,
     }));
-
-  // Calculate percentages
-  const totalValue = protocols.reduce((sum, p) => sum + p.valueUsd, 0);
-  protocols.forEach((p) => {
-    p.percentage = totalValue > 0 ? (p.valueUsd / totalValue) * 100 : 0;
-  });
-
-  // Sort by value descending
-  protocols.sort((a, b) => b.valueUsd - a.valueUsd);
-
-  return protocols;
 }
 
 /**
@@ -259,36 +245,13 @@ function aggregatePortfolioComposition(
     }))
     .sort((a, b) => b.repartition - a.repartition);
 
-  // Separate wallet (idle assets) from DeFi protocols for HHI calculation
-  const walletExposure = allExposures.find((e) => e.protocolKey === 'wallet');
-  const defiExposures = allExposures.filter((e) => e.protocolKey !== 'wallet');
-
-  // Recalculate percentages for DeFi-only (for HHI)
-  const defiTotalValue = defiExposures.reduce((sum, e) => sum + e.valueUsd, 0);
-  const defiExposuresForHHI = defiExposures.map((e) => ({
-    ...e,
-    repartition: defiTotalValue > 0 ? (e.valueUsd / defiTotalValue) * 100 : 0,
-  }));
-
-  // Calculate portfolio-level HHI (excluding wallet)
-  const portfolioHHI = defiExposuresForHHI.reduce(
-    (sum, e) => sum + Math.pow(e.repartition / 100, 2),
-    0
-  );
-
-  // Determine diversification level
-  const diversificationLevel: 'High' | 'Medium' | 'Low' =
-    portfolioHHI < 0.15 ? 'High' : portfolioHHI < 0.25 ? 'Medium' : 'Low';
-
-  // Calculate idle assets percentage
-  const idleAssetsPercent = walletExposure?.repartition || 0;
+  // The v0.6+ typed CompositionData doesn't surface a "Wallet" / idle-assets
+  // entry — see docs/agent-notes.md gotcha #8. HHI walks every entry.
+  const portfolioHHI = calculateHHI(allExposures.map((e) => e.repartition));
 
   // Detect accidental concentration (same protocol in 3+ vaults with >20% total exposure)
   const accidentalConcentration: AccidentalConcentration[] = [];
   for (const [protocolKey, data] of protocolExposureMap.entries()) {
-    // Skip wallet for concentration warnings
-    if (protocolKey === 'wallet') continue;
-
     const totalExposure = totalPortfolioValue > 0 ? (data.valueUsd / totalPortfolioValue) * 100 : 0;
     if (data.vaultAddresses.length >= 3 && totalExposure >= 20) {
       accidentalConcentration.push({
@@ -302,12 +265,11 @@ function aggregatePortfolioComposition(
   }
 
   return {
-    protocolExposure: allExposures.slice(0, 10), // Top 10 protocols (including wallet for transparency)
-    portfolioHHI: parseFloat(portfolioHHI.toFixed(4)),
-    diversificationLevel,
-    topProtocol: defiExposures[0]?.protocolName || null, // Top DeFi protocol (not wallet)
-    topProtocolPercent: defiExposures[0]?.repartition || null,
-    idleAssetsPercent: parseFloat(idleAssetsPercent.toFixed(2)),
+    protocolExposure: allExposures.slice(0, 10),
+    portfolioHHI,
+    diversificationLevel: getDiversificationLevel(portfolioHHI, allExposures.length === 0),
+    topProtocol: allExposures[0]?.protocolName || null,
+    topProtocolPercent: allExposures[0]?.repartition || null,
     accidentalConcentration,
   };
 }
@@ -408,7 +370,10 @@ export function createExecuteGetUserPortfolio(
         const hasData = !!(data.users.items && data.users.items.length > 0);
         return {
           valid: hasData,
-          message: hasData ? undefined : `No portfolio data found for user: ${String(data)}`,
+          // Echo the validated user address (not the response object, which
+          // stringifies to "[object Object]" — pre-existing bug surfaced by
+          // the smoke harness).
+          message: hasData ? undefined : `No portfolio data found for user: ${input.userAddress}`,
           isError: !hasData,
         };
       },
@@ -461,10 +426,15 @@ export function createExecuteGetUserPortfolio(
                 const compResponse =
                   await container.graphqlClient.request<SingleVaultCompositionResponse>(
                     SINGLE_VAULT_COMPOSITION_QUERY,
-                    { walletAddress: position.vaultAddress }
+                    {
+                      address: position.vaultAddress,
+                      chainId: Number(position.vault.chain?.id ?? 0),
+                    }
                   );
 
-                const protocols = transformRawCompositionToProtocols(compResponse.vaultComposition);
+                const protocols = transformCompositionToProtocols(
+                  compResponse.vaultByAddress?.composition ?? null
+                );
                 if (protocols.length > 0) {
                   return {
                     vaultAddress: position.vaultAddress,

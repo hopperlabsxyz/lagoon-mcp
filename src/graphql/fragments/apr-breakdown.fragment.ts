@@ -13,6 +13,11 @@
 export interface APRBreakdown {
   linearNetApr: number;
   linearNetAprWithoutExtraYields: number;
+  // Time-weighted variants (per-period). Optional: backend returns Maybe<Float>;
+  // older snapshots may omit these entirely.
+  twrrNetApr?: number | null;
+  twrrNetAprWithoutExtraYields?: number | null;
+  twrrGrossAprWithoutExtraYields?: number | null;
   airdrops: Array<{
     name: string;
     apr: number;
@@ -66,6 +71,9 @@ export const APR_BREAKDOWN_FRAGMENT = `
   fragment APRBreakdownFragment on APRs {
     linearNetApr
     linearNetAprWithoutExtraYields
+    twrrNetApr
+    twrrNetAprWithoutExtraYields
+    twrrGrossAprWithoutExtraYields
     airdrops {
       name
       apr

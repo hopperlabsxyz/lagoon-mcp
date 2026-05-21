@@ -17,6 +17,13 @@ export interface VaultComparisonData {
   chainId: number;
   tvl: number;
   apr: number;
+  // APR variants for sustainable-yield analysis
+  // sustainableNetApr excludes airdrops/incentives (= linearNetAprWithoutExtraYields).
+  // incentiveContribution = max(0, apr - sustainableNetApr).
+  // twrrNetApr is the time-weighted variant when available (more honest for volatile vaults).
+  sustainableNetApr?: number;
+  incentiveContribution?: number;
+  twrrNetApr?: number | null;
   totalShares?: string;
   totalAssets?: string;
   // Track record fields
@@ -41,12 +48,24 @@ export interface NormalizedVault extends VaultComparisonData {
   rank: number;
   tvlPercentile: number;
   aprPercentile: number;
+  // Percentile/delta against the *sustainable* APR (linearNetAprWithoutExtraYields).
+  // Populated only when sustainableNetApr was provided on any vault.
+  sustainableAprPercentile?: number;
+  sustainableAprDelta?: number;
   riskPercentile?: number; // Percentile ranking for risk (lower risk = higher percentile)
   aprDelta: number; // Delta from average APR
   tvlDelta: number; // Delta from average TVL
   riskDelta?: number; // Delta from average risk
   overallScore: number; // Weighted score (0-100)
 }
+
+/**
+ * Ranking strategy for normalizeAndRankVaults.
+ * - 'totalApr' (default): rank by total net APR (including airdrops/incentives).
+ * - 'sustainableApr': rank by APR excluding extra yields — gives a fair
+ *   comparison when some vaults are incentive-heavy.
+ */
+export type RankBy = 'totalApr' | 'sustainableApr';
 
 /**
  * Comparison summary statistics
@@ -169,22 +188,33 @@ export function calculateOverallScore(
  * @param vaults Array of vault data
  * @returns Array of normalized vaults with rankings
  */
-export function normalizeAndRankVaults(vaults: VaultComparisonData[]): NormalizedVault[] {
+export function normalizeAndRankVaults(
+  vaults: VaultComparisonData[],
+  rankBy: RankBy = 'totalApr'
+): NormalizedVault[] {
   if (vaults.length === 0) return [];
 
   // Extract metrics
   const tvls = vaults.map((v) => v.tvl);
   const aprs = vaults.map((v) => v.apr);
+  const sustainableAprs = vaults
+    .map((v) => v.sustainableNetApr)
+    .filter((a): a is number => typeof a === 'number');
   const risks = vaults.map((v) => v.riskScore).filter((r): r is number => r !== undefined);
 
   // Calculate averages
   const avgTvl = tvls.reduce((sum, val) => sum + val, 0) / tvls.length;
   const avgApr = aprs.reduce((sum, val) => sum + val, 0) / aprs.length;
+  const avgSustainableApr =
+    sustainableAprs.length > 0
+      ? sustainableAprs.reduce((sum, val) => sum + val, 0) / sustainableAprs.length
+      : undefined;
   const avgRisk =
     risks.length > 0 ? risks.reduce((sum, val) => sum + val, 0) / risks.length : undefined;
 
   // Check if we have risk data
   const hasRiskData = risks.length > 0;
+  const hasSustainableData = sustainableAprs.length > 0;
 
   // Normalize each vault
   const normalized: NormalizedVault[] = vaults.map((vault) => ({
@@ -192,11 +222,19 @@ export function normalizeAndRankVaults(vaults: VaultComparisonData[]): Normalize
     rank: 0, // Will be set below
     tvlPercentile: calculatePercentile(vault.tvl, tvls),
     aprPercentile: calculatePercentile(vault.apr, aprs),
+    sustainableAprPercentile:
+      hasSustainableData && typeof vault.sustainableNetApr === 'number'
+        ? calculatePercentile(vault.sustainableNetApr, sustainableAprs)
+        : undefined,
     riskPercentile:
       hasRiskData && vault.riskScore !== undefined
         ? 100 - calculatePercentile(vault.riskScore, risks) // Invert: lower risk = higher percentile
         : undefined,
     aprDelta: calculateDelta(vault.apr, avgApr),
+    sustainableAprDelta:
+      avgSustainableApr !== undefined && typeof vault.sustainableNetApr === 'number'
+        ? calculateDelta(vault.sustainableNetApr, avgSustainableApr)
+        : undefined,
     tvlDelta: calculateDelta(vault.tvl, avgTvl),
     riskDelta:
       avgRisk !== undefined && vault.riskScore !== undefined
@@ -205,16 +243,29 @@ export function normalizeAndRankVaults(vaults: VaultComparisonData[]): Normalize
     overallScore: 0, // Will be set below
   }));
 
-  // Calculate overall scores (now includes risk if available)
+  // Calculate overall scores. When rankBy = 'sustainableApr', use the
+  // sustainable percentile for ranking — but ONLY when EVERY vault has the
+  // data. Mixing sustainable percentile for some vaults with total-APR
+  // percentile for others produces unstable cross-vault rankings (the two
+  // percentiles are computed against different datasets). Per Copilot
+  // review #3: if any vault is missing sustainable data, fall back to
+  // total-APR ranking for the entire pass so all vaults are scored on the
+  // same metric.
+  const allHaveSustainable = sustainableAprs.length === vaults.length;
+  const useSustainable = rankBy === 'sustainableApr' && allHaveSustainable;
   normalized.forEach((vault) => {
+    const aprPctForRanking = useSustainable
+      ? (vault.sustainableAprPercentile ?? vault.aprPercentile)
+      : vault.aprPercentile;
+
     if (hasRiskData && vault.riskPercentile !== undefined) {
       // Include risk in scoring: 40% APR, 30% TVL, 30% Safety (inverted risk)
       vault.overallScore =
-        calculateOverallScore(vault.aprPercentile, vault.tvlPercentile, { apr: 0.4, tvl: 0.3 }) +
+        calculateOverallScore(aprPctForRanking, vault.tvlPercentile, { apr: 0.4, tvl: 0.3 }) +
         vault.riskPercentile * 0.3;
     } else {
       // Fallback to original weighting if no risk data
-      vault.overallScore = calculateOverallScore(vault.aprPercentile, vault.tvlPercentile);
+      vault.overallScore = calculateOverallScore(aprPctForRanking, vault.tvlPercentile);
     }
   });
 
