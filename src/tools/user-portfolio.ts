@@ -370,7 +370,10 @@ export function createExecuteGetUserPortfolio(
         const hasData = !!(data.users.items && data.users.items.length > 0);
         return {
           valid: hasData,
-          message: hasData ? undefined : `No portfolio data found for user: ${String(data)}`,
+          // Echo the validated user address (not the response object, which
+          // stringifies to "[object Object]" — pre-existing bug surfaced by
+          // the smoke harness).
+          message: hasData ? undefined : `No portfolio data found for user: ${input.userAddress}`,
           isError: !hasData,
         };
       },

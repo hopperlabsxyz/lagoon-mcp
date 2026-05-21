@@ -35,7 +35,8 @@
     "coverage/",
     "node_modules/",
     "*.config.ts",
-    "src/types/generated.ts"
+    "src/types/generated.ts",
+    "scripts/"
   ],
   "overrides": [
     {
