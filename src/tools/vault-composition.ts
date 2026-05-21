@@ -214,7 +214,12 @@ export function createExecuteGetVaultComposition(
 
     if (cachedComposition) {
       const filtered = filterByFormat(cachedComposition, responseFormat);
-      return createSuccessResponse(filtered);
+      const result = createSuccessResponse(filtered);
+      // Disclaimer parity with the cache-miss path below (Copilot review #1).
+      if (result.content[0]?.type === 'text') {
+        result.content[0].text = result.content[0].text + getToolDisclaimer('vault_composition');
+      }
+      return result;
     }
 
     const executor = executeToolWithCache<

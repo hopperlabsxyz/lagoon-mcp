@@ -243,14 +243,20 @@ export function normalizeAndRankVaults(
     overallScore: 0, // Will be set below
   }));
 
-  // Calculate overall scores. When rankBy = 'sustainableApr' and we have the
-  // data, use sustainableAprPercentile in place of aprPercentile so the
-  // ranking favors organic yield over incentive-heavy vaults.
+  // Calculate overall scores. When rankBy = 'sustainableApr', use the
+  // sustainable percentile for ranking — but ONLY when EVERY vault has the
+  // data. Mixing sustainable percentile for some vaults with total-APR
+  // percentile for others produces unstable cross-vault rankings (the two
+  // percentiles are computed against different datasets). Per Copilot
+  // review #3: if any vault is missing sustainable data, fall back to
+  // total-APR ranking for the entire pass so all vaults are scored on the
+  // same metric.
+  const allHaveSustainable = sustainableAprs.length === vaults.length;
+  const useSustainable = rankBy === 'sustainableApr' && allHaveSustainable;
   normalized.forEach((vault) => {
-    const aprPctForRanking =
-      rankBy === 'sustainableApr' && vault.sustainableAprPercentile !== undefined
-        ? vault.sustainableAprPercentile
-        : vault.aprPercentile;
+    const aprPctForRanking = useSustainable
+      ? (vault.sustainableAprPercentile ?? vault.aprPercentile)
+      : vault.aprPercentile;
 
     if (hasRiskData && vault.riskPercentile !== undefined) {
       // Include risk in scoring: 40% APR, 30% TVL, 30% Safety (inverted risk)

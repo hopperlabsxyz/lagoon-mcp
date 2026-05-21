@@ -1485,5 +1485,41 @@ describe('compare_vaults Tool', () => {
       // Falls back gracefully: High still wins because no sustainable data to flip on.
       expect(byName.get('High')).toBe(1);
     });
+
+    it('falls back to total-APR when sustainable data is INCOMPLETE (mixed) — Copilot review #3', async () => {
+      // Vault A has higher total APR (20) but lower sustainable (4).
+      // Vault B has higher total AND sustainable (40 / 30) AND is the only
+      // one with sustainable data; including only A's percentile would mix
+      // measures. The fix: if ANY vault lacks sustainable data, fall back
+      // to total APR for the whole pass.
+      const { normalizeAndRankVaults } = await import('../../src/utils/comparison-metrics');
+      const ranked = normalizeAndRankVaults(
+        [
+          {
+            address: '0xa',
+            name: 'Incentivized',
+            symbol: 'INC',
+            chainId: 1,
+            tvl: 1,
+            apr: 20,
+            sustainableNetApr: 4, // has sustainable
+          },
+          {
+            address: '0xb',
+            name: 'Higher Total',
+            symbol: 'HT',
+            chainId: 1,
+            tvl: 1,
+            apr: 40, // no sustainable — would force fallback
+          },
+        ],
+        'sustainableApr'
+      );
+      const byName = new Map(ranked.map((v) => [v.name, v.rank]));
+      // Fallback engaged: highest TOTAL APR (Higher Total = 40) wins because
+      // we ranked by total APR rather than mixing sustainable + total.
+      expect(byName.get('Higher Total')).toBe(1);
+      expect(byName.get('Incentivized')).toBe(2);
+    });
   });
 });

@@ -28,6 +28,23 @@ function jsonResponse(data: unknown, toolName: string): CallToolResult {
   };
 }
 
+/**
+ * Build a non-error "not found" / informational response with the standard
+ * disclaimer appended (Copilot review #2 — disclaimer parity across all
+ * non-error response paths in this tool).
+ */
+function infoResponse(message: string, toolName: string): CallToolResult {
+  return {
+    content: [
+      {
+        type: 'text',
+        text: message + getToolDisclaimer(toolName),
+      },
+    ],
+    isError: false,
+  };
+}
+
 interface CuratorResponse {
   curator: {
     id: string;
@@ -72,20 +89,14 @@ export function createExecuteGetCurator(
       if (!data.curator) {
         // Defensive: also handle the case where the backend returns null
         // instead of throwing (different schema versions, future changes).
-        return {
-          content: [{ type: 'text', text: `Curator not found: ${input.curatorId}` }],
-          isError: false,
-        };
+        return infoResponse(`Curator not found: ${input.curatorId}`, 'get_curator');
       }
 
       container.cache.set(cacheKey, data, cacheTTL.vaultData);
       return jsonResponse(data, 'get_curator');
     } catch (err) {
       if (isCuratorNotFoundError(err)) {
-        return {
-          content: [{ type: 'text', text: `Curator not found: ${input.curatorId}` }],
-          isError: false,
-        };
+        return infoResponse(`Curator not found: ${input.curatorId}`, 'get_curator');
       }
       return handleToolError(err, 'get_curator');
     }
