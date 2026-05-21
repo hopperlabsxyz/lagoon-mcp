@@ -288,17 +288,15 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
   {
     name: 'get_vault_composition',
     description:
-      'Fetch vault DeFi protocol composition with diversification analysis from Octav API. ' +
-      'Returns breakdown by protocol (e.g., Spark, Morpho, Yield Basis, Lagoon) with USD values. ' +
-      'Calculates HHI (Herfindahl-Hirschman Index) for protocol diversification scoring. ' +
-      '"wallet" protocol represents idle assets not deployed in DeFi (excluded from HHI, tracked as idleAssetsPercent). ' +
+      'Typed DeFi protocol composition via Vault.composition (v0.6+, replaces the retired ' +
+      'vaultComposition query). Requires vaultAddress + chainId — the deprecated query merged ' +
+      'chains silently, this is now chain-safe. ' +
+      'Returns protocol breakdown (morphoblue, spark, yieldbasis, ...) with USD value and pre-computed repartition %. ' +
+      'Calculates HHI (Herfindahl-Hirschman Index) over every entry — backend groups the long tail into a single ' +
+      '"Other" bucket, no "Wallet"/idle entry exists in the typed shape. ' +
       'Diversification levels: High (HHI < 0.15), Medium (0.15-0.25), Low (> 0.25). ' +
-      'Supports 3 response formats for token optimization: ' +
-      'summary (totals + top 5 protocols ~100 tokens), ' +
-      'protocols (all non-zero protocols ~200-500 tokens), ' +
-      'full (all data including raw ~1000+ tokens). ' +
-      'Best for: understanding DeFi protocol exposure, identifying concentration risks, capital efficiency analysis. ' +
-      'Default: summary for token efficiency. ' +
+      'Response formats: summary (top 5 + analysis ~100 tokens), protocols (all entries ~200-500 tokens), ' +
+      'full (adds tokenCompositions + totalValueInUsd ~600-1000 tokens). ' +
       'Features 15-minute caching (backend caches Octav API data for 6 hours).',
     schema: getVaultCompositionInputSchema,
     executorFactory: createExecuteGetVaultComposition,

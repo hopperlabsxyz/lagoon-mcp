@@ -6,11 +6,7 @@
  */
 
 import { BaseService } from '../base.service.js';
-import {
-  VaultData,
-  VaultCompositionFullResponse,
-  ProtocolCompositionData,
-} from '../../graphql/fragments/index.js';
+import { VaultData, CompositionData } from '../../graphql/fragments/index.js';
 import {
   RISK_ANALYSIS_QUERY,
   BATCH_RISK_ANALYSIS_QUERY,
@@ -38,8 +34,10 @@ export interface RiskAnalysisData {
   allVaults: { items: Array<{ state: { totalAssetsUsd: number } }> };
   curatorVaults: { items: Array<{ address: string; state: { totalAssetsUsd: number } }> };
   priceHistory: Array<{ timestamp: number; pricePerShareUsd: number }>;
-  // Note: Backend API returns full response with assetByProtocols for protocol analysis
-  composition: VaultCompositionFullResponse | null;
+  // Typed `Vault.composition` (v0.6+). null when Octav hasn't been queried
+  // yet for this vault. compositions[] is pre-sorted desc by repartition
+  // and pre-normalized to sum to ~100%.
+  composition: CompositionData | null;
 }
 
 interface RawRiskAnalysisResponse extends Pick<RiskAnalysisData, 'allVaults' | 'curatorVaults'> {
@@ -406,55 +404,19 @@ export class RiskService extends BaseService {
       maxCapacity,
     };
 
-    // Extract composition data for protocol diversification risk
-    // Uses assetByProtocols from VaultCompositionFullResponse for DeFi protocol analysis
-    // "wallet" protocol (idle assets) is excluded from diversification calculation
+    // Extract composition data for protocol diversification risk.
+    // Backend's typed CompositionData (v0.6+) provides `repartition` already
+    // computed and pre-sorted desc — no client-side filter/sort/recalc needed.
+    // The "Wallet" / idle-assets entry doesn't exist in this API, so we walk
+    // every entry (compositions sums to ~100% across DeFi protocols only).
     let compositionData:
       | { compositions: Array<{ repartition: number }>; topProtocolPercent: number | null }
       | undefined;
-    if (
-      data.composition &&
-      data.composition.assetByProtocols &&
-      Object.keys(data.composition.assetByProtocols).length > 0
-    ) {
-      // Filter active protocols (value > 0) and transform to risk format
-      const allProtocols = Object.entries(data.composition.assetByProtocols)
-        .filter(([, protocol]: [string, ProtocolCompositionData]) => {
-          const value = parseFloat(protocol.value);
-          return !isNaN(value) && value > 0;
-        })
-        .map(([key, protocol]: [string, ProtocolCompositionData]) => ({
-          key,
-          value: parseFloat(protocol.value),
-          repartition: 0, // Will calculate after total
-        }));
-
-      // Calculate total value (including wallet)
-      const totalValue = allProtocols.reduce((sum, p) => sum + p.value, 0);
-
-      // Calculate repartition (percentage) for each protocol
-      allProtocols.forEach((p) => {
-        p.repartition = totalValue > 0 ? (p.value / totalValue) * 100 : 0;
-      });
-
-      // Exclude wallet (idle assets) from diversification analysis
-      // Wallet represents undeployed capital, not DeFi protocol concentration
-      const defiProtocols = allProtocols.filter((p) => p.key !== 'wallet');
-
-      // Recalculate percentages for DeFi-only (for HHI calculation)
-      const defiTotalValue = defiProtocols.reduce((sum, p) => sum + p.value, 0);
-      defiProtocols.forEach((p) => {
-        p.repartition = defiTotalValue > 0 ? (p.value / defiTotalValue) * 100 : 0;
-      });
-
-      // Sort by value descending to get top protocol
-      defiProtocols.sort((a, b) => b.value - a.value);
-
-      const topProtocolPercent = defiProtocols[0]?.repartition ?? null;
-
+    if (data.composition && data.composition.compositions.length > 0) {
+      const entries = data.composition.compositions.filter((p) => p.valueInUsd > 0);
       compositionData = {
-        compositions: defiProtocols.map((p) => ({ repartition: p.repartition })),
-        topProtocolPercent,
+        compositions: entries.map((p) => ({ repartition: p.repartition })),
+        topProtocolPercent: entries[0]?.repartition ?? null,
       };
     }
 
@@ -482,112 +444,26 @@ export class RiskService extends BaseService {
   }
 
   /**
-   * Extract addresses from Octav bundle URL
-   * Example: https://pro.octav.fi/?addresses=0x123,0x456
+   * Fetch the typed `Vault.composition` for a single (address, chainId)
+   * pair. Returns null on backend error so callers can degrade gracefully
+   * without composition-derived risk factors.
+   *
+   * The old Octav-bundle-URL parsing and multi-composition merging are
+   * gone — `Vault.composition` is a single direct call per vault.
    */
-  private extractAddressesFromOctavUrl(url: string): string[] {
-    try {
-      const urlObj = new URL(url);
-      const addresses = urlObj.searchParams.get('addresses');
-      if (!addresses) return [];
-      return addresses
-        .split(',')
-        .map((addr) => addr.trim())
-        .filter(Boolean);
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * Fetch composition for a single address
-   */
-  private async fetchSingleComposition(
-    address: string
-  ): Promise<VaultCompositionFullResponse | null> {
+  private async fetchCompositionForVault(vault: VaultData): Promise<CompositionData | null> {
     try {
       const result = await this.client.request<{
-        vaultComposition: VaultCompositionFullResponse | null;
-      }>(GET_VAULT_COMPOSITION_QUERY, { walletAddress: address });
-      return result.vaultComposition;
+        vaultByAddress: { composition: CompositionData | null } | null;
+      }>(GET_VAULT_COMPOSITION_QUERY, {
+        address: vault.address,
+        chainId: vault.chain?.id ?? 0,
+      });
+      return result.vaultByAddress?.composition ?? null;
     } catch (error) {
-      // Graceful degradation - log warning and continue without composition
-      console.warn(`Failed to fetch composition for ${address}: ${String(error)}`);
+      console.warn(`Failed to fetch composition for ${vault.address}: ${String(error)}`);
       return null;
     }
-  }
-
-  /**
-   * Fetch composition using correct addresses from bundles.octav URL
-   * - Parses octav URL to get addresses
-   * - Fetches composition for each address
-   * - Merges if multiple addresses (bundle)
-   */
-  private async fetchCompositionForVault(
-    vault: VaultData
-  ): Promise<VaultCompositionFullResponse | null> {
-    // Get addresses from bundles.octav URL if available
-    let addresses: string[] = [];
-    if (vault.bundles?.octav) {
-      addresses = this.extractAddressesFromOctavUrl(vault.bundles.octav);
-    }
-
-    // Fallback to vault address if no bundle addresses
-    if (addresses.length === 0) {
-      addresses = [vault.address];
-    }
-
-    // Single address - direct fetch
-    if (addresses.length === 1) {
-      return this.fetchSingleComposition(addresses[0]);
-    }
-
-    // Multiple addresses (bundle) - fetch all and merge
-    const compositions = await Promise.all(
-      addresses.map((addr) => this.fetchSingleComposition(addr))
-    );
-
-    // Filter out nulls and merge
-    const validCompositions = compositions.filter(
-      (c): c is VaultCompositionFullResponse => c !== null
-    );
-    if (validCompositions.length === 0) return null;
-    if (validCompositions.length === 1) return validCompositions[0];
-
-    return this.mergeCompositions(validCompositions);
-  }
-
-  /**
-   * Merge multiple compositions (for bundle vaults)
-   * Aggregates assetByProtocols values across all compositions
-   */
-  private mergeCompositions(
-    compositions: VaultCompositionFullResponse[]
-  ): VaultCompositionFullResponse {
-    // Aggregate assetByProtocols values
-    const protocolMap = new Map<string, ProtocolCompositionData>();
-    let totalNetworth = 0;
-
-    for (const comp of compositions) {
-      totalNetworth += parseFloat(comp.networth || '0');
-      for (const [key, protocol] of Object.entries(comp.assetByProtocols || {})) {
-        const existing = protocolMap.get(key);
-        if (existing) {
-          // Add values together
-          existing.value = String(parseFloat(existing.value) + parseFloat(protocol.value));
-        } else {
-          // Clone the protocol data
-          protocolMap.set(key, { ...protocol });
-        }
-      }
-    }
-
-    return {
-      address: compositions[0].address,
-      networth: String(totalNetworth),
-      assetByProtocols: Object.fromEntries(protocolMap),
-      chains: compositions[0].chains, // Use first composition's chains as base
-    };
   }
 
   /**
@@ -1143,7 +1019,7 @@ ${detailedDataQualitySection}`;
     vault: VaultData,
     chainId: number,
     allVaultsContext: { items: Array<{ state: { totalAssetsUsd: number } }> },
-    composition: VaultCompositionFullResponse | null = null
+    composition: CompositionData | null = null
   ): BatchVaultRiskResult | null {
     // Build minimal RiskAnalysisData for calculation
     // For batch, we skip per-vault curator/price queries for efficiency

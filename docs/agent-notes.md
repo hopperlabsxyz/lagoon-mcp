@@ -100,16 +100,24 @@ out across vaults — `compare_vaults`, `analyze_risks`, `get_user_portfolio`,
 the guard: check the data-point count before regressing and fall back to EMA for short/volatile periods.
 See `src/utils/yield-prediction.ts`.
 
-### 8. `vaultComposition(walletAddress)` is deprecated (still works)
-Backend schema marks this query as `@deprecated` with the message *"Use the `composition` field on
-`Vault` instead. This query returns untyped raw JSON and will be removed in a future release."*
-- The MCP `get_vault_composition` tool still uses it today (works fine; migration tracked separately).
-- The replacement (`Vault.composition: CompositionData` with typed
-  `{ compositions: [ProtocolComposition!]!, tokenCompositions: [TokenComposition!]!, totalValueInUsd: Float }`)
-  has a **different shape** from the current Octav `assetByProtocols` JSONObject. A migration must
-  rewrite `transformRawComposition`, `extractPositionTypes`, the HHI calc, and the test mocks in one
-  shot — it's not a query swap.
-- If you add a NEW composition consumer, prefer the typed `Vault.composition` field from the start.
+### 8. `vaultComposition(walletAddress)` is retired — `Vault.composition` is the source
+`get_vault_composition` now uses the typed `Vault.composition: CompositionData` field, NOT the
+deprecated `vaultComposition(walletAddress)` JSONObject query. Same for the composition fetch in
+`get_user_portfolio`, `compare_vaults`, and `analyze_risk` (the risk service).
+- New args: `address: Address!, chainId: Int!` (was `walletAddress: Address!` — the deprecated
+  query merged chains silently, see gotcha #2).
+- New shape: `{ compositions: [ProtocolComposition!]!, tokenCompositions: [TokenComposition!]!, totalValueInUsd: Float }`.
+  `ProtocolComposition` exposes `protocol`, `valueInUsd`, `repartition` (0-100, pre-computed),
+  and an optional `details` array for the "Other" grouped bucket. **No "Wallet" entry** — the
+  typed API doesn't surface idle assets. The HHI walk is therefore over every row; no
+  client-side filtering or recalculation needed.
+- **What's gone vs the old Octav shape**: `idleAssetsPercent` (no Wallet entry — `safeAssetBalanceUsd / totalAssetsUsd`
+  is a related but different metric you can read from `VaultState` directly), `positionTypes`
+  (LENDING / YIELD / DEPOSIT / SPOT categorization isn't exposed), per-chain protocol drill-down,
+  Octav bundle-URL parsing/merging in the risk service.
+- **`tokenCompositions` data is weak in production**: `contract` and `chainKey` come back as
+  empty strings; `symbol`/`name` are display strings (`"Spark - reth"`), not real ERC20s. Useful
+  for display, NOT for programmatic cross-referencing.
 
 ### 9. Discovery tools (Tier 2) for thin metadata
 Thin tools wrap small backend metadata endpoints so callers don't have to drop into `query_graphql`:

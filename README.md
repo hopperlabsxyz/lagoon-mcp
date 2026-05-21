@@ -298,7 +298,7 @@ Complete tool documentation available in [docs/tools/](./docs/tools/).
 | **predict_yield** | ML-based yield forecasting with confidence intervals | [→ Details](./docs/tools/predict-yield.md) |
 | **optimize_portfolio** | Modern Portfolio Theory optimization with yield sustainability warnings | [→ Details](./docs/tools/optimize-portfolio.md) |
 | **simulate_vault** | Simulate vault behavior under different parameters for scenario analysis | [→ Details](./docs/tools/simulate-vault.md) |
-| **get_vault_composition** | DeFi protocol composition with HHI diversification scoring (via Octav) | — |
+| **get_vault_composition** | Typed DeFi protocol composition (Vault.composition) with HHI diversification scoring. Chain-aware (requires chainId). | — |
 | **get_global_tvl** | Live total value locked across all Lagoon vaults & chains (USD) | — |
 | **get_indexing_status** | Last indexed block per chain — call BEFORE analytics to detect stale data | — |
 | **list_chains** | Lagoon-supported chains with chainId, factory address, wrapped native token | — |

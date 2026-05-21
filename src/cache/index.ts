@@ -108,7 +108,8 @@ export const cacheKeys = {
   priceHistory: (address: string, chainId: number, range: string): string =>
     `price_history:${address}:${chainId}:${range}`,
 
-  composition: (address: string): string => `composition:${address.toLowerCase()}`,
+  composition: (address: string, chainId: number): string =>
+    `composition:${address.toLowerCase()}:${chainId}`,
 };
 
 /**

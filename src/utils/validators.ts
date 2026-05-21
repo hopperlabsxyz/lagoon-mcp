@@ -381,13 +381,15 @@ export const optimizePortfolioInputSchema = z.object({
 });
 
 // get_vault_composition input
+// chainId required (the deprecated query merged chains silently — see gotcha #2).
 export const getVaultCompositionInputSchema = z.object({
   vaultAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
   responseFormat: z
     .enum(['summary', 'protocols', 'full'])
     .default('summary')
     .describe(
-      'Response detail level: summary (totals + top protocols ~100 tokens), protocols (non-zero protocols only ~200-500 tokens), full (all protocol data ~1000+ tokens). Default: summary'
+      'Response detail level: summary (totals + top protocols ~100 tokens), protocols (non-zero protocols only ~200-500 tokens), full (all protocol data including tokenCompositions ~600-1000 tokens). Default: summary'
     ),
 });
 

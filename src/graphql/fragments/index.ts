@@ -25,19 +25,13 @@ export { VAULT_FRAGMENT, type VaultData } from './vault.fragment.js';
 export { VAULT_LIST_FRAGMENT, type VaultListData } from './vault-list.fragment.js';
 export { VAULT_SUMMARY_FRAGMENT, type VaultSummaryData } from './vault-summary.fragment.js';
 
-// Composition Fragment - protocol and chain-based types
+// Composition Fragment — typed Vault.composition (v0.6+). The legacy
+// Octav-shaped types (VaultCompositionFullResponse, ProtocolCompositionData,
+// etc.) were retired with the migration off the deprecated
+// vaultComposition(walletAddress) query.
 export {
-  // Protocol-based types (NEW - preferred for analysis)
-  type ProtocolPositionCategory,
-  type ProtocolChainData,
-  type ProtocolCompositionData,
-  type VaultCompositionFullResponse,
-  // Chain-based types
-  type ChainComposition,
-  type RawVaultComposition,
-  // Legacy types (deprecated - kept for backward compatibility)
   COMPOSITION_FRAGMENT,
+  type CompositionData,
   type ProtocolComposition,
   type TokenComposition,
-  type CompositionData,
 } from './composition.fragment.js';

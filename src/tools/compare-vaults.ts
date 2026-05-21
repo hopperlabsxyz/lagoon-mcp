@@ -26,11 +26,7 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { CompareVaultsInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
-import {
-  VaultData,
-  VaultCompositionFullResponse,
-  ProtocolCompositionData,
-} from '../graphql/fragments/index.js';
+import { VaultData, CompositionData } from '../graphql/fragments/index.js';
 import {
   COMPARE_VAULTS_QUERY,
   BATCH_VAULT_FIRST_TRANSACTIONS_QUERY,
@@ -70,11 +66,13 @@ interface CompareVaultsVariables {
 }
 
 /**
- * Response type for single vault composition query
- * Note: Backend returns full response with assetByProtocols
+ * Response type for single vault composition query (v0.6+ typed shape).
  */
 interface SingleVaultCompositionResponse {
-  vaultComposition: VaultCompositionFullResponse | null;
+  vaultByAddress: {
+    address: string;
+    composition: CompositionData | null;
+  } | null;
 }
 
 /**
@@ -515,88 +513,33 @@ function normalizeRiskLevel(
 }
 
 /**
- * Calculate composition metrics from raw composition data
- * Note: Backend API changed from protocol-based to chain-based composition
- */
-/**
- * Calculate composition metrics from protocol-based data
- *
- * Uses assetByProtocols from Octav API for DeFi protocol analysis.
- * "wallet" protocol (idle assets) is excluded from HHI calculation
- * but tracked separately as idlePercent for capital efficiency analysis.
- *
- * @param rawComposition - Full vault composition response from Octav API
- * @returns Composition metrics with protocol-based diversification
+ * Calculate composition metrics from typed Vault.composition (v0.6+).
+ * Backend provides `repartition` (percentage) sorted desc — no client
+ * recalculation. The typed API has no "Wallet" entry, so HHI walks every
+ * row (see docs/agent-notes.md gotcha #8). `idlePercent` is preserved on
+ * the output for backward compat but is always 0.
  */
 function calculateCompositionMetrics(
-  rawComposition: VaultCompositionFullResponse | null
+  composition: CompositionData | null
 ): VaultCompositionMetrics | undefined {
-  if (
-    !rawComposition ||
-    !rawComposition.assetByProtocols ||
-    Object.keys(rawComposition.assetByProtocols).length === 0
-  ) {
+  if (!composition || composition.compositions.length === 0) {
     return undefined;
   }
 
-  // Filter and transform to protocol data with values
-  const allProtocols = Object.entries(rawComposition.assetByProtocols)
-    .filter(([, protocol]: [string, ProtocolCompositionData]) => {
-      const value = parseFloat(protocol.value);
-      return !isNaN(value) && value > 0;
-    })
-    .map(([key, protocol]: [string, ProtocolCompositionData]) => ({
-      protocolKey: key,
-      protocolName: protocol.name,
-      valueUsd: parseFloat(protocol.value),
-      percentage: 0, // Calculate after total
-    }));
+  const entries = composition.compositions.filter((p) => p.valueInUsd > 0);
+  if (entries.length === 0) return undefined;
 
-  if (allProtocols.length === 0) {
-    return undefined;
-  }
-
-  // Calculate total and percentages (including wallet)
-  const totalValue = allProtocols.reduce((sum, p) => sum + p.valueUsd, 0);
-  allProtocols.forEach((p) => {
-    p.percentage = totalValue > 0 ? (p.valueUsd / totalValue) * 100 : 0;
-  });
-
-  // Sort by value descending
-  allProtocols.sort((a, b) => b.valueUsd - a.valueUsd);
-
-  // Separate wallet (idle assets) from DeFi protocols for HHI calculation
-  const walletProtocol = allProtocols.find((p) => p.protocolKey === 'wallet');
-  const defiProtocols = allProtocols.filter((p) => p.protocolKey !== 'wallet');
-
-  // Recalculate percentages for DeFi-only (for HHI)
-  const defiTotalValue = defiProtocols.reduce((sum, p) => sum + p.valueUsd, 0);
-  const defiProtocolsForHHI = defiProtocols.map((p) => ({
-    ...p,
-    percentage: defiTotalValue > 0 ? (p.valueUsd / defiTotalValue) * 100 : 0,
-  }));
-
-  // Calculate HHI (Herfindahl-Hirschman Index) - excluding wallet
-  const hhi = defiProtocolsForHHI.reduce((sum, p) => sum + Math.pow(p.percentage / 100, 2), 0);
-
-  // Determine diversification level
+  const hhi = entries.reduce((sum, p) => sum + Math.pow(p.repartition / 100, 2), 0);
   const diversificationLevel: 'High' | 'Medium' | 'Low' =
     hhi < 0.15 ? 'High' : hhi < 0.25 ? 'Medium' : 'Low';
-
-  // Get top DeFi protocol (not wallet)
-  const topProtocol = defiProtocols[0]?.protocolName || null;
-  const topProtocolPercent = defiProtocols[0]?.percentage || null;
-
-  // Calculate idle assets percentage
-  const idlePercent = walletProtocol?.percentage || 0;
 
   return {
     hhi: parseFloat(hhi.toFixed(4)),
     diversificationLevel,
-    topProtocol,
-    topProtocolPercent: topProtocolPercent ? parseFloat(topProtocolPercent.toFixed(2)) : null,
-    protocolCount: defiProtocols.length,
-    idlePercent: parseFloat(idlePercent.toFixed(2)),
+    topProtocol: entries[0]?.protocol ?? null,
+    topProtocolPercent: entries[0] ? parseFloat(entries[0].repartition.toFixed(2)) : null,
+    protocolCount: entries.length,
+    idlePercent: 0,
   };
 }
 
@@ -733,8 +676,8 @@ export function createExecuteCompareVaults(
       );
 
       // Fetch composition data for each vault with rate limiting (cached path)
-      // Uses rateLimitedMap to prevent 429 rate limit errors from Octav API
-      // Note: Backend API uses walletAddress parameter
+      // Uses rateLimitedMap to prevent 429 rate limit errors from Octav API.
+      // v0.6+ typed query — needs (address, chainId), no longer just walletAddress.
       const compositionResults = await rateLimitedMap(
         structuredVaults,
         async (vault) => {
@@ -742,11 +685,13 @@ export function createExecuteCompareVaults(
             const compResponse =
               await container.graphqlClient.request<SingleVaultCompositionResponse>(
                 SINGLE_VAULT_COMPOSITION_QUERY,
-                { walletAddress: vault.address }
+                { address: vault.address, chainId: vault.chainId }
               );
             return {
               address: vault.address,
-              metrics: calculateCompositionMetrics(compResponse.vaultComposition),
+              metrics: calculateCompositionMetrics(
+                compResponse.vaultByAddress?.composition ?? null
+              ),
             };
           } catch {
             return { address: vault.address, metrics: undefined };
@@ -845,10 +790,8 @@ ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
       try {
         const output = JSON.parse(result.content[0].text) as CompareVaultsOutput;
 
-        // Fetch composition data for each vault with rate limiting
-        // Uses rateLimitedMap to prevent 429 rate limit errors from Octav API
-        // This enables diversification comparison between vaults
-        // Note: Backend API uses walletAddress parameter
+        // Fetch composition data for each vault with rate limiting.
+        // v0.6+ typed query — needs (address, chainId).
         const compositionResults = await rateLimitedMap(
           output.vaults,
           async (vault) => {
@@ -856,11 +799,13 @@ ${JSON.stringify({ vaults: structuredVaults }, null, 2)}
               const compResponse =
                 await container.graphqlClient.request<SingleVaultCompositionResponse>(
                   SINGLE_VAULT_COMPOSITION_QUERY,
-                  { walletAddress: vault.address }
+                  { address: vault.address, chainId: vault.chainId }
                 );
               return {
                 address: vault.address,
-                metrics: calculateCompositionMetrics(compResponse.vaultComposition),
+                metrics: calculateCompositionMetrics(
+                  compResponse.vaultByAddress?.composition ?? null
+                ),
               };
             } catch {
               // If composition fetch fails, skip it

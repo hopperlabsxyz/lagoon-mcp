@@ -1,34 +1,44 @@
 /**
  * get_vault_composition Tool
  *
- * Fetch vault protocol composition data from Octav API with diversification analysis.
- * Data is sourced from the backend's vaultComposition endpoint which aggregates
- * positions across DeFi protocols (Spark, Morpho, Yield Basis, etc.).
+ * Fetch a vault's DeFi protocol composition with diversification analysis.
+ * Backed by the typed `Vault.composition: CompositionData` field — v0.6+
+ * replacement for the retired `vaultComposition(walletAddress)` JSONObject
+ * query.
  *
  * Use cases:
  * - Understanding vault DeFi protocol exposure
  * - Analyzing diversification levels via HHI score
  * - Identifying concentration risks across protocols
- * - Tracking idle assets (wallet protocol)
  * - Portfolio composition visualization
  *
+ * Migration notes (vs. the deprecated query):
+ * - Now requires `chainId` (the deprecated query merged chains silently,
+ *   producing wrong totals for the same address on multiple chains).
+ * - `repartition` is pre-computed by the backend — no client-side
+ *   percentage calculation.
+ * - The "Wallet" / `idleAssetsPercent` field is GONE — the typed API doesn't
+ *   surface idle assets. See docs/agent-notes.md gotcha #8.
+ * - `positionTypes` is GONE — per-chain protocol-position categorization
+ *   isn't exposed in the typed shape.
+ *
  * Response formats (for token optimization):
- * - summary: Totals + top protocols + analysis (~100 tokens)
- * - protocols: Non-zero protocols only + analysis (~200-500 tokens)
- * - full: All protocol data including raw response (~1000+ tokens)
+ * - summary: Top protocols + analysis (~100 tokens)
+ * - protocols: All non-zero protocols + analysis (~200-500 tokens)
+ * - full: All data including tokenCompositions (~600-1000 tokens)
  *
  * Cache strategy:
  * - 15-minute TTL aligned with vault data freshness
- * - Cache key: composition:{address}
- * - Full data cached, format filtering applied at response time
+ * - Cache key: composition:{address}:{chainId}
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { GetVaultCompositionInput } from '../utils/validators.js';
 import { getToolDisclaimer } from '../utils/disclaimers.js';
 import {
-  VaultCompositionFullResponse,
-  ProtocolCompositionData,
+  CompositionData,
+  ProtocolComposition,
+  TokenComposition,
 } from '../graphql/fragments/index.js';
 import { GET_VAULT_COMPOSITION_QUERY } from '../graphql/queries/index.js';
 import { executeToolWithCache } from '../utils/execute-tool-with-cache.js';
@@ -37,133 +47,90 @@ import { CacheTag } from '../core/cache-invalidation.js';
 import { cacheKeys, cacheTTL } from '../cache/index.js';
 import { createSuccessResponse } from '../utils/tool-response.js';
 
-/**
- * Response format type for composition queries
- * - summary: Totals + top protocols (~100 tokens)
- * - protocols: Non-zero protocols only (~200-500 tokens)
- * - full: All protocol data (~1000+ tokens)
- */
 type CompositionResponseFormat = 'summary' | 'protocols' | 'full';
 
-/**
- * GraphQL response type for composition query
- * Note: Backend returns JSONObject, typed as VaultCompositionFullResponse
- */
 interface VaultCompositionResponse {
-  vaultComposition: VaultCompositionFullResponse | null;
+  vaultByAddress: {
+    address: string;
+    composition: CompositionData | null;
+  } | null;
 }
 
-/**
- * GraphQL variables type for composition query
- * Note: Backend uses walletAddress parameter (the vault's address)
- */
 interface GetVaultCompositionVariables {
-  walletAddress: string;
+  address: string;
+  chainId: number;
 }
 
 /**
- * Processed protocol summary with calculated percentages
+ * One row in the analyst-friendly response shape. Largely just the
+ * backend's `ProtocolComposition` re-keyed for clarity.
  */
 interface ProtocolSummary {
-  /** Protocol key/identifier (e.g., "spark", "morphoblue") */
-  protocolKey: string;
-  /** Protocol display name (e.g., "Spark", "Morpho") */
-  protocolName: string;
-  /** Total USD value in this protocol */
+  protocol: string;
   valueUsd: number;
-  /** Percentage of total portfolio */
+  /** Percentage of total vault value (0–100). */
   percentage: number;
-  /** Position types in this protocol (e.g., ["LENDING", "YIELD"]) */
-  positionTypes: string[];
-  /** Number of chains this protocol is deployed on */
-  chainCount: number;
+  logoUrl: string | null;
 }
 
-/**
- * Composition analysis metrics (protocol-based)
- */
 interface CompositionAnalysis {
-  /** Total portfolio value in USD */
+  /** Total portfolio value in USD (from backend `totalValueInUsd`). 0 when null. */
   totalValueUsd: number;
-  /** Number of active DeFi protocols (excluding wallet) */
-  activeProtocolCount: number;
-  /** Top protocol by value */
+  /** Number of distinct protocol allocations (including the "Other" bucket). */
+  protocolCount: number;
+  /** Highest-allocated protocol, or null when composition is empty. */
   topProtocol: ProtocolSummary | null;
-  /** HHI score for protocol concentration (0-1, lower = more diversified) */
+  /** Herfindahl-Hirschman Index for protocol concentration (0–1, lower = more diversified). */
   hhi: number;
-  /** Diversification level based on HHI */
+  /** Diversification level derived from HHI. */
   diversificationLevel: 'High' | 'Medium' | 'Low';
-  /** Percentage of assets in "wallet" (idle, not deployed in DeFi) */
-  idleAssetsPercent: number;
 }
 
-/**
- * Full composition data (cached internally, filtered for responses)
- */
 interface FullCompositionData {
   vaultAddress: string;
-  networth: string;
-  rawData: VaultCompositionFullResponse;
+  totalValueInUsd: number;
   protocols: ProtocolSummary[];
+  tokenCompositions: TokenComposition[];
   analysis: CompositionAnalysis;
 }
 
-/**
- * Summary response format (~100 tokens)
- */
 interface SummaryResponse {
   vaultAddress: string;
   analysis: CompositionAnalysis;
   topProtocols: ProtocolSummary[];
 }
 
-/**
- * Protocols response format (~200-500 tokens)
- */
 interface ProtocolsResponse {
   vaultAddress: string;
   protocols: ProtocolSummary[];
   analysis: CompositionAnalysis;
 }
 
-/**
- * Full response format (~1000+ tokens)
- */
 interface FullResponse {
   vaultAddress: string;
-  networth: string;
-  rawData: VaultCompositionFullResponse;
+  totalValueInUsd: number;
   protocols: ProtocolSummary[];
+  tokenCompositions: TokenComposition[];
   analysis: CompositionAnalysis;
 }
 
 type CompositionOutput = SummaryResponse | ProtocolsResponse | FullResponse;
 
 /**
- * HHI (Herfindahl-Hirschman Index) calculation for diversification analysis
- * Lower HHI = more diversified, Higher HHI = more concentrated
+ * Herfindahl-Hirschman Index over backend-provided repartition percentages.
+ * Walks every entry (no Wallet to filter — concept doesn't exist in the
+ * typed API). Range: 0 → 1; lower = more diversified.
  *
- * HHI ranges (using market concentration thresholds):
- * - < 0.15: High diversification (well-diversified)
- * - 0.15 - 0.25: Moderate concentration
+ * Thresholds (DeFi-tuned, not antitrust standards):
+ * - < 0.15: High diversification
+ * - 0.15–0.25: Medium concentration
  * - > 0.25: High concentration
- *
- * Note: "wallet" protocol (idle assets) is EXCLUDED from HHI calculation
- * as it represents undeployed capital, not DeFi protocol concentration.
- *
- * @param protocols - Array of protocol summaries with percentage values (excluding wallet)
- * @returns HHI score between 0 and 1
  */
-function calculateHHI(protocols: ProtocolSummary[]): number {
+function calculateHHI(protocols: ProtocolComposition[]): number {
   if (protocols.length === 0) return 0;
-
-  // HHI = sum of squared market shares (percentage/100 to get decimal)
-  return protocols.reduce((sum, p) => sum + Math.pow(p.percentage / 100, 2), 0);
+  return protocols.reduce((sum, p) => sum + Math.pow(p.repartition / 100, 2), 0);
 }
 
-/**
- * Get diversification level label based on HHI score
- */
 function getDiversificationLevel(hhi: number): 'High' | 'Medium' | 'Low' {
   if (hhi < 0.15) return 'High';
   if (hhi < 0.25) return 'Medium';
@@ -171,125 +138,54 @@ function getDiversificationLevel(hhi: number): 'High' | 'Medium' | 'Low' {
 }
 
 /**
- * Extract position types from a protocol's chain data
- *
- * @param protocol - Protocol composition data
- * @returns Array of unique position type names (e.g., ["LENDING", "YIELD"])
+ * Transform the typed `Vault.composition` payload into the analyst-friendly
+ * `FullCompositionData` shape. No-op for empty / null composition.
  */
-function extractPositionTypes(protocol: ProtocolCompositionData): string[] {
-  const positionTypes = new Set<string>();
-
-  for (const chainData of Object.values(protocol.chains)) {
-    if (chainData.protocolPositions) {
-      for (const positionKey of Object.keys(chainData.protocolPositions)) {
-        positionTypes.add(positionKey);
-      }
-    }
-  }
-
-  return Array.from(positionTypes);
-}
-
-/**
- * Transform raw Octav API response into structured protocol composition data
- *
- * @param raw - Raw VaultCompositionFullResponse with assetByProtocols
- * @param vaultAddress - Vault address for reference
- * @returns Full composition data with protocol-based analysis
- */
-function transformRawComposition(
-  raw: VaultCompositionFullResponse | null,
+function transformTypedComposition(
+  composition: CompositionData | null,
   vaultAddress: string
 ): FullCompositionData {
-  // Handle null/empty response
-  if (!raw || !raw.assetByProtocols || Object.keys(raw.assetByProtocols).length === 0) {
+  if (!composition || composition.compositions.length === 0) {
     return {
       vaultAddress,
-      networth: '0',
-      rawData: raw || { address: vaultAddress, networth: '0', assetByProtocols: {}, chains: {} },
+      totalValueInUsd: composition?.totalValueInUsd ?? 0,
       protocols: [],
+      tokenCompositions: composition?.tokenCompositions ?? [],
       analysis: {
-        totalValueUsd: 0,
-        activeProtocolCount: 0,
+        totalValueUsd: composition?.totalValueInUsd ?? 0,
+        protocolCount: 0,
         topProtocol: null,
         hhi: 0,
         diversificationLevel: 'High',
-        idleAssetsPercent: 0,
       },
     };
   }
 
-  // 1. Filter out protocols with value "0" or empty and transform to ProtocolSummary
-  const allProtocols: ProtocolSummary[] = Object.entries(raw.assetByProtocols)
-    .filter(([, protocol]: [string, ProtocolCompositionData]) => {
-      const value = parseFloat(protocol.value);
-      return !isNaN(value) && value > 0;
-    })
-    .map(([key, protocol]: [string, ProtocolCompositionData]) => ({
-      protocolKey: key,
-      protocolName: protocol.name,
-      valueUsd: parseFloat(protocol.value),
-      percentage: 0, // Calculate after total
-      positionTypes: extractPositionTypes(protocol),
-      chainCount: Object.keys(protocol.chains).length,
-    }));
-
-  // 2. Calculate total value (including wallet)
-  const totalValueUsd = allProtocols.reduce((sum, p) => sum + p.valueUsd, 0);
-
-  // 3. Calculate percentages for all protocols
-  allProtocols.forEach((p) => {
-    p.percentage = totalValueUsd > 0 ? (p.valueUsd / totalValueUsd) * 100 : 0;
-  });
-
-  // 4. Sort by value descending
-  allProtocols.sort((a, b) => b.valueUsd - a.valueUsd);
-
-  // 5. Separate wallet (idle assets) from DeFi protocols for HHI calculation
-  const walletProtocol = allProtocols.find((p) => p.protocolKey === 'wallet');
-  const defiProtocols = allProtocols.filter((p) => p.protocolKey !== 'wallet');
-
-  // 6. Recalculate percentages for DeFi protocols only (for HHI)
-  const defiTotalValue = defiProtocols.reduce((sum, p) => sum + p.valueUsd, 0);
-  const defiProtocolsForHHI = defiProtocols.map((p) => ({
-    ...p,
-    // Recalculate percentage based on DeFi-only total for HHI
-    percentage: defiTotalValue > 0 ? (p.valueUsd / defiTotalValue) * 100 : 0,
+  // Backend returns entries sorted by repartition desc — preserve that order.
+  const protocols: ProtocolSummary[] = composition.compositions.map((p) => ({
+    protocol: p.protocol,
+    valueUsd: p.valueInUsd,
+    percentage: p.repartition,
+    logoUrl: p.logoUrl ?? null,
   }));
 
-  // 7. Calculate HHI (excluding wallet)
-  const hhi = calculateHHI(defiProtocolsForHHI);
-
-  // 8. Calculate idle assets percentage
-  const idleAssetsPercent = walletProtocol
-    ? totalValueUsd > 0
-      ? (walletProtocol.valueUsd / totalValueUsd) * 100
-      : 0
-    : 0;
+  const hhi = calculateHHI(composition.compositions);
 
   return {
     vaultAddress,
-    networth: raw.networth || totalValueUsd.toFixed(2),
-    rawData: raw,
-    protocols: allProtocols, // Include all protocols (wallet included for transparency)
+    totalValueInUsd: composition.totalValueInUsd ?? 0,
+    protocols,
+    tokenCompositions: composition.tokenCompositions,
     analysis: {
-      totalValueUsd: parseFloat(totalValueUsd.toFixed(2)),
-      activeProtocolCount: defiProtocols.length, // DeFi protocols only
-      topProtocol: defiProtocols[0] || null, // Top DeFi protocol (not wallet)
-      hhi: parseFloat(hhi.toFixed(4)),
+      totalValueUsd: composition.totalValueInUsd ?? 0,
+      protocolCount: protocols.length,
+      topProtocol: protocols[0] ?? null,
+      hhi: Math.round(hhi * 10000) / 10000,
       diversificationLevel: getDiversificationLevel(hhi),
-      idleAssetsPercent: parseFloat(idleAssetsPercent.toFixed(2)),
     },
   };
 }
 
-/**
- * Filter full data based on requested response format
- *
- * @param data - Full composition data
- * @param format - Requested response format
- * @returns Filtered response based on format
- */
 function filterByFormat(
   data: FullCompositionData,
   format: CompositionResponseFormat
@@ -299,52 +195,42 @@ function filterByFormat(
       return {
         vaultAddress: data.vaultAddress,
         analysis: data.analysis,
-        topProtocols: data.protocols.slice(0, 5), // Top 5 protocols for summary
-      } as SummaryResponse;
-
+        topProtocols: data.protocols.slice(0, 5),
+      };
     case 'protocols':
       return {
         vaultAddress: data.vaultAddress,
-        protocols: data.protocols, // Only non-zero protocols (already filtered)
+        protocols: data.protocols,
         analysis: data.analysis,
-      } as ProtocolsResponse;
-
+      };
     case 'full':
     default:
       return {
         vaultAddress: data.vaultAddress,
-        networth: data.networth,
-        rawData: data.rawData,
+        totalValueInUsd: data.totalValueInUsd,
         protocols: data.protocols,
+        tokenCompositions: data.tokenCompositions,
         analysis: data.analysis,
-      } as FullResponse;
+      };
   }
 }
 
-/**
- * Create the executeGetVaultComposition function with DI container
- *
- * @param container - Service container with dependencies
- * @returns Configured tool executor function
- */
 export function createExecuteGetVaultComposition(
   container: ServiceContainer
 ): (input: GetVaultCompositionInput) => Promise<CallToolResult> {
   return async (input: GetVaultCompositionInput): Promise<CallToolResult> => {
     const responseFormat = (input.responseFormat ?? 'summary') as CompositionResponseFormat;
     const vaultAddress = input.vaultAddress;
+    const chainId = input.chainId;
 
-    // Check fragment-level cache first (always cache full data)
-    const fragmentCacheKey = cacheKeys.composition(vaultAddress);
+    const fragmentCacheKey = cacheKeys.composition(vaultAddress, chainId);
     const cachedComposition = container.cache.get<FullCompositionData>(fragmentCacheKey);
 
     if (cachedComposition) {
-      // Apply format filtering to cached data
-      const filteredResponse = filterByFormat(cachedComposition, responseFormat);
-      return createSuccessResponse(filteredResponse);
+      const filtered = filterByFormat(cachedComposition, responseFormat);
+      return createSuccessResponse(filtered);
     }
 
-    // Cache miss - execute GraphQL query with standard caching
     const executor = executeToolWithCache<
       GetVaultCompositionInput,
       VaultCompositionResponse,
@@ -355,39 +241,41 @@ export function createExecuteGetVaultComposition(
       cacheKey: () => fragmentCacheKey,
       cacheTTL: cacheTTL.composition,
       query: GET_VAULT_COMPOSITION_QUERY,
-      variables: () => ({
-        walletAddress: vaultAddress,
-      }),
+      variables: () => ({ address: vaultAddress, chainId }),
       validateResult: (data) => {
-        // Composition might be null if vault doesn't have data yet - that's okay
+        if (!data.vaultByAddress) {
+          return {
+            valid: false,
+            message: `Vault not found at ${vaultAddress} on chain ${chainId}`,
+            isError: false,
+          };
+        }
         return {
           valid: true,
-          message: data.vaultComposition
+          message: data.vaultByAddress.composition
             ? undefined
-            : 'No composition data available for this vault',
-          isError: false,
+            : 'No composition data available for this vault (Octav has not been queried yet)',
         };
       },
-      transformResult: (data) => transformRawComposition(data.vaultComposition, vaultAddress),
+      transformResult: (data) =>
+        transformTypedComposition(data.vaultByAddress?.composition ?? null, vaultAddress),
       toolName: 'get_vault_composition',
     });
 
-    // Register cache tags for invalidation
     container.cacheInvalidator.register(fragmentCacheKey, [CacheTag.VAULT]);
 
     const result = await executor(input);
 
-    // If successful, apply format filtering to the response
     if (!result.isError && result.content[0]?.type === 'text') {
       try {
         const fullData = JSON.parse(result.content[0].text) as FullCompositionData;
-        const filteredResponse = filterByFormat(fullData, responseFormat);
-        result.content[0].text = JSON.stringify(filteredResponse, null, 2);
+        const filtered = filterByFormat(fullData, responseFormat);
+        result.content[0].text = JSON.stringify(filtered, null, 2);
       } catch {
-        // If parsing fails, leave original response
+        // If parsing fails (e.g., "not found" message), leave the response
+        // text as-is so the user still sees the validation message.
       }
 
-      // Add legal disclaimer to output
       result.content[0].text = result.content[0].text + getToolDisclaimer('vault_composition');
     }
 

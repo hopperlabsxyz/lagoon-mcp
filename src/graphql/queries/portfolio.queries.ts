@@ -5,7 +5,12 @@
  * Includes user portfolio data and portfolio optimization queries.
  */
 
-import { VAULT_FRAGMENT, VAULT_LIST_FRAGMENT, VAULT_SUMMARY_FRAGMENT } from '../fragments/index.js';
+import {
+  VAULT_FRAGMENT,
+  VAULT_LIST_FRAGMENT,
+  VAULT_SUMMARY_FRAGMENT,
+  COMPOSITION_FRAGMENT,
+} from '../fragments/index.js';
 
 /**
  * Response format type for user portfolio query
@@ -161,7 +166,13 @@ export const SINGLE_VAULT_OPTIMIZATION_QUERY = `
  * ```
  */
 export const SINGLE_VAULT_COMPOSITION_QUERY = `
-  query SingleVaultComposition($walletAddress: Address!) {
-    vaultComposition(walletAddress: $walletAddress)
+  query SingleVaultComposition($address: Address!, $chainId: Int!) {
+    vaultByAddress(address: $address, chainId: $chainId) {
+      address
+      composition {
+        ...CompositionFragment
+      }
+    }
   }
+  ${COMPOSITION_FRAGMENT}
 `;
