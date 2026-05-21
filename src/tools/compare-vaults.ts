@@ -319,6 +319,24 @@ function convertToComparisonData(
   // Get actual vault age (already computed above for risk scoring)
   const actualAge = vaultAgeMap?.get(vault.address.toLowerCase());
 
+  // Sustainable APR (excludes airdrops/incentives). Same period selection as
+  // `apr` above — prefer weekly, fall back to monthly. Total - sustainable
+  // gives the incentive contribution; clamp to 0 since the gap can be slightly
+  // negative due to how the backend nets extra-yield removal.
+  const weeklySustainable = vault.state?.weeklyApr?.linearNetAprWithoutExtraYields;
+  const monthlySustainable = vault.state?.monthlyApr?.linearNetAprWithoutExtraYields;
+  const sustainableNetApr =
+    typeof weeklySustainable === 'number'
+      ? weeklySustainable
+      : typeof monthlySustainable === 'number'
+        ? monthlySustainable
+        : undefined;
+  const incentiveContribution =
+    typeof sustainableNetApr === 'number' ? Math.max(0, apr - sustainableNetApr) : undefined;
+  // TWRR variant is more honest for volatile vaults; surface alongside.
+  const twrrNetApr =
+    vault.state?.weeklyApr?.twrrNetApr ?? vault.state?.monthlyApr?.twrrNetApr ?? null;
+
   return {
     address: vault.address,
     name: vault.name || 'Unknown Vault',
@@ -326,6 +344,9 @@ function convertToComparisonData(
     chainId: chainId,
     tvl: typeof tvl === 'number' ? tvl : 0,
     apr: apr,
+    sustainableNetApr,
+    incentiveContribution,
+    twrrNetApr,
     totalShares: vault.state?.totalSupply,
     totalAssets: vault.state?.totalAssets,
     // Track record fields
@@ -633,8 +654,9 @@ function createTransformComparisonData(
       convertToComparisonData(vault, data.vaults.items, vaultAgeMap)
     );
 
-    // Normalize and rank vaults
-    const normalizedVaults = normalizeAndRankVaults(comparisonData);
+    // Normalize and rank vaults (rankBy: 'totalApr' by default, 'sustainableApr'
+    // when caller asked to exclude airdrops/incentives from the ranking).
+    const normalizedVaults = normalizeAndRankVaults(comparisonData, input.rankBy);
 
     // Generate summary statistics
     const summary = generateComparisonSummary(comparisonData);
@@ -699,7 +721,7 @@ export function createExecuteCompareVaults(
       const comparisonData: VaultComparisonData[] = cachedVaults.map((vault) =>
         convertToComparisonData(vault, cachedVaults, vaultAgeMap)
       );
-      const normalizedVaults = normalizeAndRankVaults(comparisonData);
+      const normalizedVaults = normalizeAndRankVaults(comparisonData, input.rankBy);
       const summary = generateComparisonSummary(comparisonData);
       const table = formatComparisonTable(normalizedVaults);
 

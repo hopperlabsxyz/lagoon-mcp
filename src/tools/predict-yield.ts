@@ -95,10 +95,72 @@ interface YieldPredictionVariables {
 }
 
 /**
- * Prediction output with markdown
+ * Yield-source breakdown surfaced alongside the prediction so the LLM can flag
+ * incentive-heavy yields. Derived purely from already-fetched APR fields —
+ * the regression itself runs on price-per-share history (correct foundation;
+ * PPS already nets every yield source).
+ *
+ * `incentiveContributionPct = (total - sustainable) / total * 100`, clamped
+ * to ≥ 0. A warning is emitted when this exceeds INCENTIVE_WARNING_THRESHOLD_PCT.
+ */
+interface YieldBreakdown {
+  currentTotalApr: number;
+  currentSustainableApr: number | null;
+  incentiveContributionPct: number;
+  sourceCounts: {
+    airdrops: number;
+    nativeYields: number;
+    incentives: number;
+  };
+  warning: string | null;
+}
+
+/**
+ * Hardcoded by design: opinionated risk-flag, not a tool input. Above 25%,
+ * the headline prediction depends meaningfully on temporary subsidies.
+ */
+const INCENTIVE_WARNING_THRESHOLD_PCT = 25;
+
+/**
+ * Build the yield breakdown from a vault's weeklyApr (preferred, more recent)
+ * with monthlyApr as fallback. Returns null source counts but a clean shape
+ * when no APR data is available.
+ */
+function buildYieldBreakdown(vault: VaultData): YieldBreakdown {
+  const aprSource = vault.state?.weeklyApr ?? vault.state?.monthlyApr;
+  const totalApr = aprSource?.linearNetApr ?? 0;
+  const sustainable = aprSource?.linearNetAprWithoutExtraYields;
+  const sustainableApr = typeof sustainable === 'number' ? sustainable : null;
+  const incentiveAbsolute = sustainableApr === null ? 0 : Math.max(0, totalApr - sustainableApr);
+  const incentiveContributionPct =
+    totalApr > 0 ? Math.round((incentiveAbsolute / totalApr) * 1000) / 10 : 0;
+
+  const sourceCounts = {
+    airdrops: aprSource?.airdrops?.length ?? 0,
+    nativeYields: aprSource?.nativeYields?.length ?? 0,
+    incentives: aprSource?.incentives?.length ?? 0,
+  };
+
+  const warning =
+    incentiveContributionPct > INCENTIVE_WARNING_THRESHOLD_PCT
+      ? `${incentiveContributionPct.toFixed(1)}% of headline APR comes from temporary incentives (airdrops/rewards) — the predicted APR may decline materially if they expire.`
+      : null;
+
+  return {
+    currentTotalApr: totalApr,
+    currentSustainableApr: sustainableApr,
+    incentiveContributionPct,
+    sourceCounts,
+    warning,
+  };
+}
+
+/**
+ * Prediction output with markdown and a structured yield-breakdown block.
  */
 interface YieldPredictionOutput {
   markdown: string;
+  yieldBreakdown: YieldBreakdown;
 }
 
 /**
@@ -340,14 +402,58 @@ function createTransformYieldPredictionData(input: PredictYieldInput, timestampT
     );
 
     // Format prediction as markdown
-    const markdown = formatYieldPrediction(
+    let markdown = formatYieldPrediction(
       prediction,
       data.vault.name || 'Unknown Vault',
       input.timeRange
     );
 
-    return { markdown };
+    // Build the yield-source breakdown and append to markdown for the LLM.
+    // The structured field is also returned so UIs can render it without parsing.
+    const yieldBreakdown = buildYieldBreakdown(data.vault);
+    markdown += formatYieldBreakdownSection(yieldBreakdown);
+
+    return { markdown, yieldBreakdown };
   };
+}
+
+/**
+ * Markdown section for the yield breakdown, appended after the existing
+ * prediction output. Always emitted (even when no incentives) so the LLM
+ * can see the "100% sustainable" signal too.
+ */
+function formatYieldBreakdownSection(b: YieldBreakdown): string {
+  const sustainableLine =
+    b.currentSustainableApr === null
+      ? 'unavailable for this vault'
+      : `${b.currentSustainableApr.toFixed(2)}%`;
+  const sources: string[] = [];
+  if (b.sourceCounts.nativeYields > 0)
+    sources.push(
+      `${b.sourceCounts.nativeYields} native yield${b.sourceCounts.nativeYields > 1 ? 's' : ''}`
+    );
+  if (b.sourceCounts.airdrops > 0)
+    sources.push(`${b.sourceCounts.airdrops} airdrop${b.sourceCounts.airdrops > 1 ? 's' : ''}`);
+  if (b.sourceCounts.incentives > 0)
+    sources.push(
+      `${b.sourceCounts.incentives} incentive${b.sourceCounts.incentives > 1 ? 's' : ''}`
+    );
+  const sourcesLine = sources.length > 0 ? sources.join(', ') : 'none reported';
+
+  let md = `
+---
+
+### Yield Breakdown
+
+- **Total net APR**: ${b.currentTotalApr.toFixed(2)}%
+- **Sustainable APR** (ex-airdrops/incentives): ${sustainableLine}
+- **Incentive contribution**: ${b.incentiveContributionPct.toFixed(1)}% of total APR
+- **Yield sources**: ${sourcesLine}
+`;
+  if (b.warning) {
+    md += `\n> ⚠️ ${b.warning}\n`;
+  }
+  return md;
 }
 
 /**

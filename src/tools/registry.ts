@@ -179,6 +179,8 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Calculates deltas from averages and identifies best/worst performers automatically. ' +
       'Returns formatted comparison table with summary statistics and individual vault rankings. ' +
       'Best for: evaluating investment opportunities, identifying top performers, risk-adjusted return analysis, portfolio construction. ' +
+      'New: each vault output includes sustainableNetApr (linearNetAprWithoutExtraYields), incentiveContribution, and twrrNetApr. ' +
+      'Set rankBy="sustainableApr" to rank by organic yield (excluding airdrops/incentives) — fair comparison when some vaults are incentive-heavy. ' +
       'Performance: ~300 tokens per vault. ' +
       'Features 15-minute caching based on vault address and chain combinations.',
     schema: compareVaultsInputSchema,

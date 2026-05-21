@@ -246,6 +246,12 @@ export const compareVaultsInputSchema = z
       .describe(
         'Response detail level: summary (~170 tokens/vault), full (~600 tokens/vault). Default: summary'
       ),
+    rankBy: z
+      .enum(['totalApr', 'sustainableApr'])
+      .default('totalApr')
+      .describe(
+        'Ranking strategy. "totalApr" (default) ranks by net APR including airdrops/incentives; "sustainableApr" ranks by APR excluding extra yields — fair comparison when some vaults are incentive-heavy.'
+      ),
   })
   .refine((data) => data.chainId !== undefined || (data.chainIds && data.chainIds.length > 0), {
     message: 'Either chainId or chainIds must be provided',

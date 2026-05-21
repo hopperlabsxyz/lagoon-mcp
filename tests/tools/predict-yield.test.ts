@@ -946,4 +946,143 @@ describe('predict_yield Tool', () => {
       expect(text).not.toContain('outlier APR clamped');
     });
   });
+
+  // ==========================================
+  // Yield Breakdown (sustainable vs total APR)
+  // ==========================================
+
+  describe('Yield Breakdown', () => {
+    /**
+     * Build a vault mock with a weeklyApr containing the supplied APR fields
+     * and source arrays. Keeps the rest of the vault state minimal.
+     */
+    function vaultWithWeeklyApr(opts: {
+      linearNetApr: number;
+      linearNetAprWithoutExtraYields?: number;
+      airdrops?: number;
+      nativeYields?: number;
+      incentives?: number;
+    }): unknown {
+      const make = (n: number): unknown[] =>
+        Array.from({ length: n }, (_, i) => ({ name: `src-${i}`, apr: 0 }));
+      return {
+        address: '0x1234567890123456789012345678901234567890',
+        name: 'Yield Breakdown Vault',
+        symbol: 'YB',
+        decimals: 18,
+        asset: { address: '0xasset', symbol: 'USDC', decimals: 6 },
+        state: {
+          totalAssets: '1000000000000',
+          totalSupply: '900000000000',
+          totalAssetsUsd: 1_000_000,
+          pricePerShare: '1050000',
+          pricePerShareUsd: 1.05,
+          highWaterMark: '1000000',
+          managementFee: 200,
+          performanceFee: 1000,
+          weeklyApr: {
+            linearNetApr: opts.linearNetApr,
+            linearNetAprWithoutExtraYields: opts.linearNetAprWithoutExtraYields,
+            airdrops: make(opts.airdrops ?? 0),
+            nativeYields: make(opts.nativeYields ?? 0),
+            incentives: make(opts.incentives ?? 0),
+          },
+        },
+      };
+    }
+
+    function flatPerfHistory(): unknown {
+      const now = Math.floor(Date.now() / 1000);
+      const day = 24 * 60 * 60;
+      const points = [];
+      for (let i = 0; i < 30; i++) {
+        points.push({
+          timestamp: now - (29 - i) * day,
+          apr: 5,
+          tvl: 1_000_000,
+        });
+      }
+      return createMockPerformanceHistory(points);
+    }
+
+    it('emits an incentive-heavy warning when subsidies exceed 25% of headline APR', async () => {
+      const mockData = {
+        vault: vaultWithWeeklyApr({
+          linearNetApr: 20,
+          linearNetAprWithoutExtraYields: 4,
+          airdrops: 1,
+          nativeYields: 1,
+          incentives: 0,
+        }),
+        performanceHistory: flatPerfHistory(),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'quick',
+      });
+
+      expect(result.isError).toBe(false);
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('Yield Breakdown');
+      expect(text).toContain('Total net APR**: 20.00%');
+      expect(text).toContain('Sustainable APR');
+      expect(text).toContain('4.00%');
+      expect(text).toContain('80.0% of total APR');
+      expect(text).toMatch(/⚠️.*80\.0% of headline APR comes from temporary incentives/);
+    });
+
+    it('omits the warning when sustainable yield dominates', async () => {
+      const mockData = {
+        vault: vaultWithWeeklyApr({
+          linearNetApr: 5,
+          linearNetAprWithoutExtraYields: 4.5,
+          nativeYields: 2,
+        }),
+        performanceHistory: flatPerfHistory(),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'quick',
+      });
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('Yield Breakdown');
+      // 10% incentive contribution — under the 25% threshold
+      expect(text).toContain('10.0% of total APR');
+      // The tool disclaimer contains "⚠️" so we check for the specific warning string.
+      expect(text).not.toContain('comes from temporary incentives');
+    });
+
+    it('marks sustainable APR as unavailable when the field is missing', async () => {
+      const mockData = {
+        vault: vaultWithWeeklyApr({ linearNetApr: 4, nativeYields: 1 }),
+        performanceHistory: flatPerfHistory(),
+        tvlHistory: { items: [] },
+      };
+      vi.spyOn(graphqlClient, 'request').mockResolvedValue(mockData);
+
+      const result = await executePredictYield({
+        vaultAddress: '0x1234567890123456789012345678901234567890',
+        chainId: 1,
+        timeRange: '30d',
+        responseFormat: 'quick',
+      });
+
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('Sustainable APR');
+      expect(text).toContain('unavailable for this vault');
+      // No incentive-warning emitted when sustainable APR is unavailable.
+      expect(text).not.toContain('comes from temporary incentives');
+    });
+  });
 });
