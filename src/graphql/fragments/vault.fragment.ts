@@ -31,6 +31,12 @@ export interface VaultData {
   // Unix timestamp (seconds, fractional from Float) of vault initialization onchain.
   creationDate: number;
 
+  // Unix timestamp (seconds) of the inception date used for APR computation.
+  // Defaults to the first PeriodSummary timestamp; can be overridden by the
+  // curator. PeriodSummaries older than this value are excluded from APR.
+  // Optional: may be null for vaults without an explicit inception override.
+  inception?: number | null;
+
   // Chain information
   chain: {
     id: number;
@@ -116,12 +122,52 @@ export interface VaultData {
       whitelistManager: string;
       safe: string;
       feeReceiver: string;
+      // v0.6+ roles (optional for backward compat with older snapshots)
+      securityCouncil?: string;
+      superOperator?: string;
     };
 
-    // Fees
+    // Fees — legacy model (basis points; divide by 100 for %)
     managementFee: number;
     performanceFee: number;
     protocolFee: number;
+
+    // Fees — v0.6+ model (basis points; divide by 100 for %)
+    // Optional: returned by current backends; older snapshots may omit.
+    entryRate?: number;
+    exitRate?: number;
+    haircutRate?: number;
+    upcomingManagementFee?: number | null;
+    upcomingPerformanceFee?: number | null;
+    feeRatesCooldown?: string;
+    newRatesTimestamp?: string;
+
+    // Sync / async lifecycle
+    syncMode?: 'Both' | 'SyncDeposit' | 'SyncRedeem' | 'None';
+    isAsyncOnly?: boolean;
+    isPaused?: boolean;
+
+    // Access control
+    accessMode?: 'Whitelist' | 'Blacklist' | null;
+    blacklist?: string[] | null;
+    externalSanctionsList?: string;
+
+    // Capacity & staleness guards
+    maxCap?: string | null;
+    totalAssetsExpiration?: string;
+    totalAssetsLifespan?: string | null;
+
+    // Immutability / lock flags (v0.6+)
+    safeLocked?: boolean;
+    superOperatorLocked?: boolean | null;
+    allowHighWaterMarkReset?: boolean;
+
+    // Guardrails (price-per-share evolution limits)
+    guardrails?: {
+      activated: boolean;
+      lowerRate?: string;
+      upperRate?: string;
+    };
 
     // Whitelist configuration
     isWhitelistActivated: boolean;
@@ -196,6 +242,7 @@ export const VAULT_FRAGMENT = `
     averageSettlement
     isVisible
     creationDate
+    inception
     asset {
       ...AssetInfoFragment
     }
@@ -204,8 +251,21 @@ export const VAULT_FRAGMENT = `
     }
     state {
       state
+      version
+      syncMode
+      isAsyncOnly
+      isPaused
+      safeLocked
+      superOperatorLocked
+      allowHighWaterMarkReset
+      accessMode
+      blacklist
+      externalSanctionsList
+      maxCap
       totalAssets
       totalAssetsUsd
+      totalAssetsExpiration
+      totalAssetsLifespan
       totalSupply
       pricePerShare
       pricePerShareUsd
@@ -222,10 +282,24 @@ export const VAULT_FRAGMENT = `
         whitelistManager
         safe
         feeReceiver
+        securityCouncil
+        superOperator
       }
       managementFee
       performanceFee
       protocolFee
+      entryRate
+      exitRate
+      haircutRate
+      upcomingManagementFee
+      upcomingPerformanceFee
+      feeRatesCooldown
+      newRatesTimestamp
+      guardrails {
+        activated
+        lowerRate
+        upperRate
+      }
       isWhitelistActivated
       whitelist
       pendingSettlement {

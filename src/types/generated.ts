@@ -31,6 +31,12 @@ export type ApRs = {
   linearNetAprWithoutExtraYields?: Maybe<Scalars['Float']['output']>;
   /** List of native yields with their respective APR contributions for the corresponding period */
   nativeYields: Array<NativeYield>;
+  /** Time-weighted gross APR before fees and excluding airdrops, computed from per-period total assets/supply (uses pre-fee gross supply) */
+  twrrGrossAprWithoutExtraYields?: Maybe<Scalars['Float']['output']>;
+  /** Time-weighted net APR including all rewards and after fees, computed from per-period total assets/supply */
+  twrrNetApr?: Maybe<Scalars['Float']['output']>;
+  /** Time-weighted net APR excluding airdrops after fees, computed from per-period total assets/supply */
+  twrrNetAprWithoutExtraYields?: Maybe<Scalars['Float']['output']>;
 };
 
 /** Determines whether the vault enforces a whitelist (deny-by-default) or a blacklist (allow-by-default). */
@@ -95,6 +101,19 @@ export type AirdropWithApr = {
   ppsIncrease: Scalars['Float']['output'];
   /** Start timestamp of the yield */
   startTimestamp: Scalars['Float']['output'];
+};
+
+/** ERC-20 Approval event on the vault share token. */
+export type Approval = {
+  __typename?: 'Approval';
+  /** Address that owns the shares and authorizes the allowance. */
+  owner: Scalars['Address']['output'];
+  /** Address authorized to spend the owner shares. */
+  spender: Scalars['Address']['output'];
+  /** Allowance amount, in share units. */
+  value: Scalars['BigInt']['output'];
+  /** The vault whose share token allowance was updated. */
+  vault: Vault;
 };
 
 /** A vault asset */
@@ -176,6 +195,19 @@ export type Balances = {
   shares: Scalars['BigInt']['output'];
   /** USD amount of shares */
   sharesUsd?: Maybe<Scalars['Float']['output']>;
+};
+
+/** Emitted when a factory deploys a new beacon proxy vault. */
+export type BeaconProxyDeployed = {
+  __typename?: 'BeaconProxyDeployed';
+  /** Address that triggered the deployment. */
+  deployer: Scalars['Address']['output'];
+  /** Address of the factory contract that emitted the event. */
+  factoryAddress: Scalars['Address']['output'];
+  /** Address of the newly deployed beacon proxy vault. */
+  proxy: Scalars['Address']['output'];
+  /** The newly deployed vault. */
+  vault: Vault;
 };
 
 /** A timestamped BigInt value. */
@@ -315,6 +347,41 @@ export type CuratorPage = {
   pageInfo: PageInfo;
 };
 
+/** Emitted by the FeeRegistry when a per-vault protocol-rate override is set or activated. */
+export type CustomRateUpdated = {
+  __typename?: 'CustomRateUpdated';
+  /** Whether the custom rate is currently activated for the target vault. When false, the registry default rate applies instead. */
+  isActivated: Scalars['Boolean']['output'];
+  /** The protocol registry that emitted this override. */
+  protocolRegistry: ProtocolRegistry;
+  /** Custom protocol rate applied to the target vault, in basis points (1 BPS = 0.01%). */
+  rate: Scalars['Int']['output'];
+  /** The target vault whose protocol rate is being overridden. */
+  targetVault: Vault;
+};
+
+/** Emitted when the FeeRegistry default implementation contract is changed. */
+export type DefaultLogicUpdated = {
+  __typename?: 'DefaultLogicUpdated';
+  /** New default logic implementation address. */
+  newLogic: Scalars['Address']['output'];
+  /** Previous default logic implementation address. */
+  previousLogic: Scalars['Address']['output'];
+  /** The protocol registry whose default logic was updated. */
+  protocolRegistry: ProtocolRegistry;
+};
+
+/** Emitted when the FeeRegistry default protocol rate is changed. */
+export type DefaultRateUpdated = {
+  __typename?: 'DefaultRateUpdated';
+  /** New default protocol rate, in basis points (1 BPS = 0.01%). */
+  newRate: Scalars['BigInt']['output'];
+  /** Previous default protocol rate, in basis points (1 BPS = 0.01%). */
+  oldRate: Scalars['BigInt']['output'];
+  /** The protocol registry whose default rate changed. */
+  protocolRegistry: ProtocolRegistry;
+};
+
 /** Defi integration */
 export type DefiIntegration = {
   __typename?: 'DefiIntegration';
@@ -405,6 +472,45 @@ export type DepositSync = {
   vault: Vault;
 };
 
+/** A registered external sanctions list contract that vaults can opt into. The list contract gates access on-chain alongside any per-vault whitelist or blacklist. */
+export type ExternalSanctionsList = {
+  __typename?: 'ExternalSanctionsList';
+  /** Address of the external sanctions list contract */
+  address: Scalars['Address']['output'];
+  /** EVM chain ID where the sanctions list contract is deployed */
+  chainId: Scalars['Int']['output'];
+  /** Whether the entry is shown to end users in the frontend selector. Public queries always filter to true; non-visible rows are not exposed. */
+  isVisible: Scalars['Boolean']['output'];
+  /** Human-readable name of the provider (e.g., "Chainalysis") */
+  name: Scalars['String']['output'];
+};
+
+/** Filter input for ExternalSanctionsList */
+export type ExternalSanctionsListFilterInput = {
+  /** Filter by chainId equal to value */
+  chainId_eq?: InputMaybe<Scalars['Int']['input']>;
+  /** Filter by chainId in array of values */
+  chainId_in?: InputMaybe<Array<Scalars['Int']['input']>>;
+};
+
+/** Available fields to order ExternalSanctionsList by */
+export type ExternalSanctionsListOrderBy =
+  /** Order by chainId */
+  | 'chainId'
+  /** Order by id */
+  | 'id'
+  /** Order by name */
+  | 'name';
+
+/** The ExternalSanctionsList paginated response */
+export type ExternalSanctionsListPage = {
+  __typename?: 'ExternalSanctionsListPage';
+  /** The list of items for the current page */
+  items: Array<ExternalSanctionsList>;
+  /** Pagination information */
+  pageInfo: PageInfo;
+};
+
 /** Emitted when the whitelist manager updates the external sanctions list oracle. The zero address means no external check is performed. */
 export type ExternalSanctionsListUpdated = {
   __typename?: 'ExternalSanctionsListUpdated';
@@ -413,6 +519,17 @@ export type ExternalSanctionsListUpdated = {
   /** Previous external sanctions list address. */
   oldExternalSanctionList: Scalars['Address']['output'];
   /** The vault whose sanctions list was updated. */
+  vault: Vault;
+};
+
+/** Emitted when the owner rotates the fee-receiver address. */
+export type FeeReceiverUpdated = {
+  __typename?: 'FeeReceiverUpdated';
+  /** New fee-receiver address. */
+  newReceiver: Scalars['Address']['output'];
+  /** Previous fee-receiver address. */
+  oldReceiver: Scalars['Address']['output'];
+  /** The vault whose fee receiver was updated. */
   vault: Vault;
 };
 
@@ -495,11 +612,22 @@ export type HaircutTaken = {
   __typename?: 'HaircutTaken';
   /** Address whose shares were haircut. */
   owner: Scalars['Address']['output'];
-  /** Haircut rate applied, expressed in basis points (1 BPS = 0.01%, max 2000 BPS). */
+  /** Haircut rate applied, expressed in basis points (1 BPS = 0.01%). Capped at 2000 BPS (20%). */
   rate: Scalars['Int']['output'];
   /** Amount of shares burned as haircut. */
   shares: Scalars['BigInt']['output'];
   /** The vault associated with this haircut. */
+  vault: Vault;
+};
+
+/** Emitted when the high-water mark (used for performance fee accounting) is updated. */
+export type HighWaterMarkUpdated = {
+  __typename?: 'HighWaterMarkUpdated';
+  /** New high-water mark value. */
+  newHighWaterMark: Scalars['BigInt']['output'];
+  /** Previous high-water mark value. */
+  oldHighWaterMark: Scalars['BigInt']['output'];
+  /** The vault whose high-water mark changed. */
   vault: Vault;
 };
 
@@ -508,9 +636,11 @@ export type HistoricalVaultState = {
   __typename?: 'HistoricalVaultState';
   /** Access control mode at `asOfTimestamp` (Whitelist / Blacklist). Pre-v0.6.0 history rows report Blacklist (contract default) as there is no reliable signal in the config row to distinguish legacy from explicitly-configured Blacklist. */
   accessMode?: Maybe<AccessMode>;
-  /** Entry fee rate in basis points at `asOfTimestamp` (max 200 BPS). Applied on deposits — immediately on syncDeposit, at claim time for async. Paid to the fee receiver. */
+  /** Whether the vault allows resetting the high water mark. Immutable, set at deploy time. Defaults to false for vaults deployed before the on-chain flag existed. */
+  allowHighWaterMarkReset: Scalars['Boolean']['output'];
+  /** Entry fee rate in basis points at `asOfTimestamp`. Capped at 200 BPS (2%). Applied on deposits — immediately on syncDeposit, at claim time for async. Paid to the fee receiver. */
   entryRate: Scalars['Float']['output'];
-  /** Exit fee rate in basis points at `asOfTimestamp` (max 200 BPS). Applied on redeems — immediately on syncRedeem, at claim time for async, at withdraw time for closed vaults. Paid to the fee receiver. */
+  /** Exit fee rate in basis points at `asOfTimestamp`. Capped at 200 BPS (2%). Applied on redeems — immediately on syncRedeem, at claim time for async, at withdraw time for closed vaults. Paid to the fee receiver. */
   exitRate: Scalars['Float']['output'];
   /** Address of the external sanctions list oracle configured at `asOfTimestamp`. Defaults to the zero address when unset. */
   externalSanctionsList: Scalars['String']['output'];
@@ -518,7 +648,7 @@ export type HistoricalVaultState = {
   feeRatesCooldown?: Maybe<Scalars['BigInt']['output']>;
   /** Price-per-share guardrails configuration and activation at `asOfTimestamp`. */
   guardrails: Guardrails;
-  /** Haircut fee rate in basis points at `asOfTimestamp` (max 2000 BPS). Applied on syncRedeem after the exit fee, on the shares remaining after exit-fee deduction. Unlike entry/exit fees, the haircut is not paid to the fee receiver — the corresponding asset value is retained by the vault. Price-per-share is unchanged at the moment of the redeem, and the retained value accrues to remaining shareholders at the next valuation update. */
+  /** Haircut fee rate in basis points at `asOfTimestamp`. Capped at 2000 BPS (20%). Applied on syncRedeem after the exit fee, on the shares remaining after exit-fee deduction. Unlike entry/exit fees, the haircut is not paid to the fee receiver — the corresponding asset value is retained by the vault. Price-per-share is unchanged at the moment of the redeem, and the retained value accrues to remaining shareholders at the next valuation update. */
   haircutRate: Scalars['Float']['output'];
   /** Highest price per share ever reached as of `asOfTimestamp`. */
   highWaterMark?: Maybe<Scalars['BigInt']['output']>;
@@ -550,8 +680,12 @@ export type HistoricalVaultState = {
   protocolFee?: Maybe<Scalars['Float']['output']>;
   /** Vault access control roles at `asOfTimestamp`. */
   roles: Roles;
+  /** Whether updates to the safe address had been irreversibly locked at `asOfTimestamp`. Once true, the safe address can no longer be changed. Pre-v0.6.0 vaults had no mechanism to change the safe address either, so they are reported as locked (true). */
+  safeLocked: Scalars['Boolean']['output'];
   /** Vault lifecycle state (Open/Closing/Closed) at `asOfTimestamp`. */
   state?: Maybe<State>;
+  /** Whether updates to the super operator role had been irreversibly locked at `asOfTimestamp`. Null when not applicable — the super operator role did not exist on pre-v0.6.0 vaults. Once true, the super operator can no longer be changed. */
+  superOperatorLocked?: Maybe<Scalars['Boolean']['output']>;
   /** Which synchronous operations were allowed at `asOfTimestamp` (Both, SyncDeposit, SyncRedeem, None). */
   syncMode: SyncMode;
   /** Total assets under management in the vault at `asOfTimestamp`. */
@@ -625,6 +759,15 @@ export type IndexedBlock = {
   parentHash: Scalars['HexString']['output'];
 };
 
+/** Emitted on proxy initialization. Carries the contract version number used at initialization time — useful for audit and to correlate with implementation upgrades. */
+export type Initialized = {
+  __typename?: 'Initialized';
+  /** The vault that was initialized. */
+  vault: Vault;
+  /** Contract version number at the moment of initialization. */
+  version: Scalars['BigInt']['output'];
+};
+
 /** A integrator entity that manages vault assets */
 export type Integrator = {
   __typename?: 'Integrator';
@@ -688,6 +831,24 @@ export type Logic = {
   isVisible: Scalars['Boolean']['output'];
   /** Lagoon version of this logic implementation (e.g. "v0.5.0"). Derived from the SDK address catalog. Null if the address does not match a known release. */
   version?: Maybe<Scalars['String']['output']>;
+};
+
+/** Emitted when a new implementation contract is whitelisted in the FeeRegistry. */
+export type LogicAdded = {
+  __typename?: 'LogicAdded';
+  /** Address of the logic implementation that was whitelisted. */
+  logic: Scalars['Address']['output'];
+  /** The protocol registry that emitted the event. */
+  protocolRegistry: ProtocolRegistry;
+};
+
+/** Emitted when an implementation contract is removed from the FeeRegistry whitelist. */
+export type LogicRemoved = {
+  __typename?: 'LogicRemoved';
+  /** Address of the logic implementation removed from the registry whitelist. */
+  logic: Scalars['Address']['output'];
+  /** The protocol registry that emitted the event. */
+  protocolRegistry: ProtocolRegistry;
 };
 
 /** Emitted when the safe updates the maximum total assets the vault can hold. Enforced on syncDeposit and requestDeposit. */
@@ -768,6 +929,19 @@ export type NewTotalAssetsUpdated = {
   vault: Vault;
 };
 
+/** ERC-7540 event: a controller authorizes or revokes an operator to act on its behalf. */
+export type OperatorSet = {
+  __typename?: 'OperatorSet';
+  /** Whether the operator is approved (true) or revoked (false) by the controller. */
+  approved: Scalars['Boolean']['output'];
+  /** The controller delegating execution authority (i.e. the principal granting or revoking the operator). */
+  controller: Scalars['Address']['output'];
+  /** The operator address being granted or revoked authorization to act on behalf of the controller. */
+  operator: Scalars['Address']['output'];
+  /** The vault on which the operator authorization was set. */
+  vault: Vault;
+};
+
 /** Vault Proxy */
 export type OptinProxy = {
   __typename?: 'OptinProxy';
@@ -814,6 +988,28 @@ export type Owner = {
   url?: Maybe<Scalars['String']['output']>;
 };
 
+/** Emitted when ownership transfer is initiated (pending acceptance — 2-step Ownable2Step pattern). */
+export type OwnershipTransferStarted = {
+  __typename?: 'OwnershipTransferStarted';
+  /** New owner address pending acceptance of ownership. */
+  newOwner: Scalars['Address']['output'];
+  /** Previous owner address (current owner initiating the transfer). */
+  previousOwner: Scalars['Address']['output'];
+  /** The vault whose ownership transfer was started. */
+  vault: Vault;
+};
+
+/** Emitted when ownership transfer is finalized (the pending owner has accepted). */
+export type OwnershipTransferred = {
+  __typename?: 'OwnershipTransferred';
+  /** New vault owner address. */
+  newOwner: Scalars['Address']['output'];
+  /** Previous vault owner address. */
+  previousOwner: Scalars['Address']['output'];
+  /** The vault whose ownership was transferred. */
+  vault: Vault;
+};
+
 /** Pagination information for paginated query results */
 export type PageInfo = {
   __typename?: 'PageInfo';
@@ -829,6 +1025,26 @@ export type PageInfo = {
   skip: Scalars['Int']['output'];
   /** Total number of items matching the filters (across all pages) */
   totalCount: Scalars['Int']['output'];
+};
+
+/** Emitted when the vault is paused (no deposits/redemptions allowed). */
+export type Paused = {
+  __typename?: 'Paused';
+  /** Account that triggered the pause. */
+  account: Scalars['Address']['output'];
+  /** The vault that was paused. */
+  vault: Vault;
+};
+
+/** A user's pending redeem request awaiting settlement, with whether the user can still cancel it */
+export type PendingRedeemRequest = {
+  __typename?: 'PendingRedeemRequest';
+  /** Amount denominated in assets */
+  assets: Scalars['BigInt']['output'];
+  /** True when the user can still cancel this redeem request. Always false on pre-v0.6.0 vaults (cancelRedeemRequest entrypoint did not exist). The frontend should not re-derive this rule. */
+  isCancelable: Scalars['Boolean']['output'];
+  /** Amount denominated in shares */
+  shares: Scalars['BigInt']['output'];
 };
 
 /** Period summaries are not events but are piece of data that summaries key vault metrics evolution. A period being a portion of time between two updates of TotalAssets. */
@@ -879,12 +1095,25 @@ export type ProtocolComposition = {
   __typename?: 'ProtocolComposition';
   /** Detail breakdown for grouped items (e.g., "Other" category contains small allocations) */
   details?: Maybe<Array<ProtocolComposition>>;
+  /** Protocol logo URL (from Octav) */
+  logoUrl?: Maybe<Scalars['String']['output']>;
   /** Name of the protocol (e.g., "Aave", "Compound", "Morpho") */
   protocol: Scalars['String']['output'];
   /** Percentage of total vault value (0-100) */
   repartition: Scalars['Float']['output'];
   /** Value deployed to this protocol in USD */
   valueInUsd: Scalars['Float']['output'];
+};
+
+/** Emitted when the FeeRegistry protocol-fee receiver is rotated. */
+export type ProtocolFeeReceiverUpdated = {
+  __typename?: 'ProtocolFeeReceiverUpdated';
+  /** New protocol-fee receiver address. */
+  newReceiver: Scalars['Address']['output'];
+  /** Previous protocol-fee receiver address. */
+  oldReceiver: Scalars['Address']['output'];
+  /** The protocol registry whose fee receiver was rotated. */
+  protocolRegistry: ProtocolRegistry;
 };
 
 /** A Lagoon protocol registry. Exposes the current onchain state derived from registry events (default logic, available logics, default rate, protocol fee receiver). */
@@ -933,6 +1162,8 @@ export type Query = {
   curator: Curator;
   /** Retrieve paginated list of Curator entities with optional filtering and sorting */
   curators: CuratorPage;
+  /** Retrieve paginated list of ExternalSanctionsList entities with optional filtering and sorting */
+  externalSanctionsLists: ExternalSanctionsListPage;
   /** Get the global TVL for all Lagoon vaults from DeFiLlama */
   getGlobalTVL: Scalars['Float']['output'];
   /** Find a single Integrator entity by its unique identifier */
@@ -1009,6 +1240,15 @@ export type QueryCuratorsArgs = {
 };
 
 
+export type QueryExternalSanctionsListsArgs = {
+  first?: Scalars['Int']['input'];
+  orderBy?: ExternalSanctionsListOrderBy;
+  orderDirection?: InputMaybe<OrderDirection>;
+  skip?: Scalars['Int']['input'];
+  where?: InputMaybe<ExternalSanctionsListFilterInput>;
+};
+
+
 export type QueryIntegratorArgs = {
   id: Scalars['ID']['input'];
 };
@@ -1081,11 +1321,11 @@ export type QueryVaultsArgs = {
 /** Fee rates for the vault, all expressed in basis points (1 BPS = 0.01%). Management and performance rates are staged via newRatesTimestamp/feeRatesCooldown; entry, exit, and haircut rates are applied immediately with no cooldown. */
 export type Rates = {
   __typename?: 'Rates';
-  /** Entry fee rate in basis points (max 200 BPS). Applied to shares on deposit — immediately on syncDeposit, at claim time for async deposits. Can only decrease after first initialization. */
+  /** Entry fee rate in basis points. Capped at 200 BPS (2%). Applied to shares on deposit — immediately on syncDeposit, at claim time for async deposits. Can only decrease after first initialization. */
   entryRate: Scalars['Float']['output'];
-  /** Exit fee rate in basis points (max 200 BPS). Applied to shares on redeem — immediately on syncRedeem, at claim time for async redeems, at withdraw time for closed vaults. Can only decrease after first initialization. */
+  /** Exit fee rate in basis points. Capped at 200 BPS (2%). Applied to shares on redeem — immediately on syncRedeem, at claim time for async redeems, at withdraw time for closed vaults. Can only decrease after first initialization. */
   exitRate: Scalars['Float']['output'];
-  /** Haircut fee rate in basis points (max 2000 BPS). Applied only on syncRedeem, after the exit fee. Haircut shares are burned (not sent to the fee receiver), redistributing value to remaining shareholders. */
+  /** Haircut fee rate in basis points. Capped at 2000 BPS (20%). Applied only on syncRedeem, after the exit fee. Haircut shares are burned (not sent to the fee receiver), redistributing value to remaining shareholders. */
   haircutRate: Scalars['Float']['output'];
   /** Management fee rate in basis points. */
   managementRate: Scalars['Float']['output'];
@@ -1151,6 +1391,21 @@ export type Referral = {
   visible: Scalars['Boolean']['output'];
 };
 
+/** Emitted when a deposit request is tagged with a referrer address. */
+export type ReferralEvent = {
+  __typename?: 'ReferralEvent';
+  /** The amount of assets associated with the referred deposit request. */
+  assets: Scalars['BigInt']['output'];
+  /** The owner of the deposit request that is being referred. */
+  owner: Scalars['Address']['output'];
+  /** The referrer address credited for the deposit request. */
+  referral: Scalars['Address']['output'];
+  /** The id of the deposit request that the referral is attached to. */
+  requestId: Scalars['BigInt']['output'];
+  /** The vault associated with this referral event. */
+  vault: Vault;
+};
+
 /** Vault Roles */
 export type Roles = {
   __typename?: 'Roles';
@@ -1168,6 +1423,15 @@ export type Roles = {
   valuationManager: Scalars['String']['output'];
   /** The address responsible for managing the whitelist of permissioned vaults */
   whitelistManager: Scalars['String']['output'];
+};
+
+/** Emitted when the safe address is irreversibly locked — it can never be rotated again. */
+export type SafeLocked = {
+  __typename?: 'SafeLocked';
+  /** The safe address that is now permanently locked. */
+  safe: Scalars['Address']['output'];
+  /** The vault whose safe was locked. */
+  vault: Vault;
 };
 
 /** Emitted when the safe (fund custody address) is rotated. */
@@ -1268,6 +1532,15 @@ export type StateUpdated = {
   vault: Vault;
 };
 
+/** Emitted when the super operator address is irreversibly locked. */
+export type SuperOperatorLocked = {
+  __typename?: 'SuperOperatorLocked';
+  /** The super operator address that was irreversibly locked. */
+  superOperator: Scalars['Address']['output'];
+  /** The vault whose super operator was locked. */
+  vault: Vault;
+};
+
 /** Emitted when the owner assigns or rotates the super operator. The zero address means no super operator is configured. */
 export type SuperOperatorUpdated = {
   __typename?: 'SuperOperatorUpdated';
@@ -1329,6 +1602,8 @@ export type TokenComposition = {
   contract: Scalars['String']['output'];
   /** Detail breakdown for grouped items (e.g., "Wallet" or "Other" categories) */
   details?: Maybe<Array<TokenComposition>>;
+  /** Logo URL. For positions this is the protocol logo; for wallet tokens this is the token logo. */
+  logoUrl?: Maybe<Scalars['String']['output']>;
   /** Full name of the token or position */
   name: Scalars['String']['output'];
   /** Percentage of total vault value (0-100) */
@@ -1347,6 +1622,17 @@ export type TotalAssetsExpirationUpdated = {
   /** Previous expiration unix timestamp. */
   oldExpiration: Scalars['BigInt']['output'];
   /** The vault whose totalAssets expiration changed. */
+  vault: Vault;
+};
+
+/** Legacy pre-v0.6.0 event for the totalAssets lifespan parameter (superseded by TotalAssetsExpirationUpdated). */
+export type TotalAssetsLifespanUpdated = {
+  __typename?: 'TotalAssetsLifespanUpdated';
+  /** New totalAssets lifespan (in seconds). */
+  newLifespan: Scalars['BigInt']['output'];
+  /** Previous totalAssets lifespan (in seconds). */
+  oldLifespan: Scalars['BigInt']['output'];
+  /** The vault whose totalAssets lifespan changed. */
   vault: Vault;
 };
 
@@ -1383,7 +1669,7 @@ export type Transaction = {
 };
 
 /** Union type representing different types of transaction that can occur, including real on-chain events and virtual ones like PeriodSummaries */
-export type TransactionData = AccessModeUpdated | AsyncOnlyActivated | BlacklistUpdated | Deposit | DepositRequest | DepositRequestCanceled | DepositSync | ExternalSanctionsListUpdated | FeeTaken | GuardrailsStatusUpdated | GuardrailsUpdated | HaircutTaken | MaxCapUpdated | NameUpdated | NewTotalAssetsUpdated | PeriodSummary | PreMint | ProxyDeployed | RatesUpdated | RedeemRequest | RedeemRequestCanceled | SafeUpdated | SecurityCouncilUpdated | SettleDeposit | SettleRedeem | StateUpdated | SuperOperatorUpdated | SymbolUpdated | SyncModeUpdated | TotalAssetsExpirationUpdated | TotalAssetsUpdated | WhitelistUpdated | Withdraw | WithdrawSync;
+export type TransactionData = AccessModeUpdated | Approval | AsyncOnlyActivated | BeaconProxyDeployed | BlacklistUpdated | CustomRateUpdated | DefaultLogicUpdated | DefaultRateUpdated | Deposit | DepositRequest | DepositRequestCanceled | DepositSync | ExternalSanctionsListUpdated | FeeReceiverUpdated | FeeTaken | GuardrailsStatusUpdated | GuardrailsUpdated | HaircutTaken | HighWaterMarkUpdated | Initialized | LogicAdded | LogicRemoved | MaxCapUpdated | NameUpdated | NewTotalAssetsUpdated | OperatorSet | OwnershipTransferStarted | OwnershipTransferred | Paused | PeriodSummary | PreMint | ProtocolFeeReceiverUpdated | ProxyDeployed | RatesUpdated | RedeemRequest | RedeemRequestCanceled | ReferralEvent | SafeLocked | SafeUpdated | SecurityCouncilUpdated | SettleDeposit | SettleRedeem | StateUpdated | SuperOperatorLocked | SuperOperatorUpdated | SymbolUpdated | SyncModeUpdated | TotalAssetsExpirationUpdated | TotalAssetsLifespanUpdated | TotalAssetsUpdated | Transfer | Unpaused | Upgraded | ValuationManagerUpdated | WhitelistDisabled | WhitelistManagerUpdated | WhitelistUpdated | Withdraw | WithdrawSync;
 
 /** Filter input for Transaction */
 export type TransactionFilterInput = {
@@ -1447,10 +1733,20 @@ export type TransactionPage = {
 export type TransactionType =
   /** Emitted when the owner switches the vault between whitelist and blacklist access modes. */
   | 'AccessModeUpdated'
+  /** ERC-20 Approval event on the vault share token. */
+  | 'Approval'
   /** Marker emitted once when the owner irreversibly switches the vault to async-only mode. */
   | 'AsyncOnlyActivated'
+  /** Emitted when a factory deploys a new beacon proxy vault. */
+  | 'BeaconProxyDeployed'
   /** Emitted when the whitelist manager adds or removes an address from the blacklist. */
   | 'BlacklistUpdated'
+  /** Emitted by the FeeRegistry when a per-vault protocol-rate override is set or activated. */
+  | 'CustomRateUpdated'
+  /** Emitted when the FeeRegistry default implementation contract is changed. */
+  | 'DefaultLogicUpdated'
+  /** Emitted when the FeeRegistry default protocol rate is changed. */
+  | 'DefaultRateUpdated'
   /** Emitted when a user claims a previously requested and settled deposit in the ERC7540 async flow — the pending assets are converted at the settled rate and shares are minted to the owner. */
   | 'Deposit'
   /** Emitted when a deposit request happens. */
@@ -1461,6 +1757,8 @@ export type TransactionType =
   | 'DepositSync'
   /** Emitted when the whitelist manager updates the external sanctions list oracle. */
   | 'ExternalSanctionsListUpdated'
+  /** Emitted when the owner rotates the fee-receiver address. */
+  | 'FeeReceiverUpdated'
   /** Emitted every time the vault takes a fee (management, performance, entry, or exit). */
   | 'FeeTaken'
   /** Emitted when the security council enables or disables guardrails enforcement. */
@@ -1469,16 +1767,34 @@ export type TransactionType =
   | 'GuardrailsUpdated'
   /** Emitted on syncRedeem when a haircut is applied and burned to protect remaining shareholders. */
   | 'HaircutTaken'
+  /** Emitted when the high-water mark (used for performance fee accounting) is updated. */
+  | 'HighWaterMarkUpdated'
+  /** Emitted on proxy initialization. Carries the contract version number used at initialization time. */
+  | 'Initialized'
+  /** Emitted when a new implementation contract is whitelisted in the FeeRegistry. */
+  | 'LogicAdded'
+  /** Emitted when an implementation contract is removed from the FeeRegistry whitelist. */
+  | 'LogicRemoved'
   /** Emitted when the safe updates the maximum total assets the vault can hold. */
   | 'MaxCapUpdated'
   /** Emitted when the owner updates the ERC-20 token name. */
   | 'NameUpdated'
   /** Emitted when the newTotalAssets variable is updated. */
   | 'NewTotalAssetsUpdated'
+  /** ERC-7540 event: a controller authorizes or revokes an operator to act on its behalf. */
+  | 'OperatorSet'
+  /** Emitted when ownership transfer is initiated (pending acceptance — 2-step Ownable2Step pattern). */
+  | 'OwnershipTransferStarted'
+  /** Emitted when ownership transfer is finalized (the pending owner has accepted). */
+  | 'OwnershipTransferred'
+  /** Emitted when the vault is paused (no deposits/redemptions allowed). */
+  | 'Paused'
   /** Period summaries are not events but are piece of data that summaries key vault metrics evolution. A period being a portion of time between two updates of TotalAssets. */
   | 'PeriodSummary'
   /** Emitted at vault initialization when pre-minted shares are sent to the safe in exchange for seed assets. */
   | 'PreMint'
+  /** Emitted when the FeeRegistry protocol-fee receiver is rotated. */
+  | 'ProtocolFeeReceiverUpdated'
   /** Emitted when a factory deploys a new vault proxy. */
   | 'ProxyDeployed'
   /** Emitted when vault fee rates get updated */
@@ -1487,6 +1803,10 @@ export type TransactionType =
   | 'RedeemRequest'
   /** Emitted when a redemption request is canceled. */
   | 'RedeemRequestCanceled'
+  /** Emitted when a deposit request is tagged with a referrer address. */
+  | 'ReferralEvent'
+  /** Emitted when the safe address is irreversibly locked — it can never be rotated again. */
+  | 'SafeLocked'
   /** Emitted when the safe (fund custody address) is rotated. */
   | 'SafeUpdated'
   /** Emitted when the owner assigns or rotates the security council. */
@@ -1497,6 +1817,8 @@ export type TransactionType =
   | 'SettleRedeem'
   /** Emitted when vault state changes from Open -> Closing -> Close */
   | 'StateUpdated'
+  /** Emitted when the super operator address is irreversibly locked. */
+  | 'SuperOperatorLocked'
   /** Emitted when the owner assigns or rotates the super operator. */
   | 'SuperOperatorUpdated'
   /** Emitted when the owner updates the ERC-20 token symbol. */
@@ -1505,16 +1827,52 @@ export type TransactionType =
   | 'SyncModeUpdated'
   /** Emitted when the timestamp after which totalAssets is considered stale changes. */
   | 'TotalAssetsExpirationUpdated'
+  /** Legacy pre-v0.6.0 event for the totalAssets lifespan parameter (superseded by TotalAssetsExpirationUpdated). */
+  | 'TotalAssetsLifespanUpdated'
   /** Emitted when the totalAssets variable is updated. */
   | 'TotalAssetsUpdated'
+  /** ERC-20 Transfer event on the vault share token. Emitted on every share movement (mint, burn, P2P transfer). */
+  | 'Transfer'
+  /** Emitted when the vault is resumed from a paused state. */
+  | 'Unpaused'
+  /** EIP-1967 proxy upgrade event — the implementation contract has been swapped. */
+  | 'Upgraded'
+  /** Emitted when the owner rotates the valuation manager. */
+  | 'ValuationManagerUpdated'
   /** Vault states are not events but it maintains key event states. */
   | 'VaultState'
+  /** Legacy pre-v0.6.0 event marking the disabling of whitelist enforcement (superseded by AccessMode). */
+  | 'WhitelistDisabled'
+  /** Emitted when the owner rotates the whitelist manager. */
+  | 'WhitelistManagerUpdated'
   /** Emitted when a whitelist entry is updated */
   | 'WhitelistUpdated'
   /** Emitted when a user claims a previously requested and settled redemption in the ERC7540 async flow — pending shares are burned at the settled rate and the corresponding assets are transferred to the receiver. */
   | 'Withdraw'
   /** ERC-4626 Withdraw mirror emitted on syncRedeem (after exit fee and haircut deduction). */
   | 'WithdrawSync';
+
+/** ERC-20 Transfer event on the vault share token. Emitted on every share movement (mint, burn, P2P transfer). */
+export type Transfer = {
+  __typename?: 'Transfer';
+  /** Address shares are transferred from. The zero address indicates a mint. */
+  from: Scalars['Address']['output'];
+  /** Address shares are transferred to. The zero address indicates a burn. */
+  to: Scalars['Address']['output'];
+  /** Amount of shares transferred, in share units. */
+  value: Scalars['BigInt']['output'];
+  /** The vault whose share token was transferred. */
+  vault: Vault;
+};
+
+/** Emitted when the vault is resumed from a paused state. */
+export type Unpaused = {
+  __typename?: 'Unpaused';
+  /** Account that triggered the unpause. */
+  account: Scalars['Address']['output'];
+  /** The vault that was unpaused. */
+  vault: Vault;
+};
 
 /** Input for updating off-chain vault metadata */
 export type UpdateVaultMetadataInput = {
@@ -1528,6 +1886,15 @@ export type UpdateVaultMetadataInput = {
   shortDescription?: InputMaybe<Scalars['String']['input']>;
   /** URL to transparency report or dashboard */
   transparencyUrl?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** EIP-1967 proxy upgrade event — the implementation contract has been swapped. */
+export type Upgraded = {
+  __typename?: 'Upgraded';
+  /** Address of the new implementation contract. */
+  implementation: Scalars['Address']['output'];
+  /** The vault whose proxy was upgraded. */
+  vault: Vault;
 };
 
 /** User entity representing a vault user */
@@ -1580,6 +1947,17 @@ export type UserState = {
   __typename?: 'UserState';
   /** The total values of all user's vault shares */
   totalSharesUsd: Scalars['Float']['output'];
+};
+
+/** Emitted when the owner rotates the valuation manager. */
+export type ValuationManagerUpdated = {
+  __typename?: 'ValuationManagerUpdated';
+  /** New valuation manager address. */
+  newManager: Scalars['Address']['output'];
+  /** Previous valuation manager address. */
+  oldManager: Scalars['Address']['output'];
+  /** The vault whose valuation manager was rotated. */
+  vault: Vault;
 };
 
 /** A vault entity that represents a Lagoon vault contract */
@@ -1748,6 +2126,8 @@ export type VaultPosition = {
   __typename?: 'VaultPosition';
   /** Vault position id */
   id: Scalars['ID']['output'];
+  /** Unix timestamp (seconds) of the earliest indexed onchain event involving the user in this vault — deposit requests, redeem requests, sync deposits, share transfers (in or out), or withdrawals. Null when no indexed history exists for the pair. */
+  since?: Maybe<Scalars['Float']['output']>;
   /** Current operational state and metrics of the vault position */
   state: VaultPositionState;
   /** Vault associated with this user */
@@ -1767,8 +2147,8 @@ export type VaultPositionState = {
   claimableRedeem: VaultRequest;
   /** Pending deposit request awaiting settlement, in both asset and share units */
   pendingDeposit: VaultRequest;
-  /** Pending redeem request awaiting settlement, in both asset and share units */
-  pendingRedeem: VaultRequest;
+  /** Pending redeem request awaiting settlement. Carries `isCancelable` so the frontend can render the Cancel button without re-deriving the rule. */
+  pendingRedeem: PendingRedeemRequest;
   /** The user's position in shares. Takes into account the user's balance, pending and claimable deposit requests, and pending and claimable redeem requests. */
   shares: Scalars['BigInt']['output'];
   /**
@@ -1794,11 +2174,15 @@ export type VaultState = {
   __typename?: 'VaultState';
   /** Access control mode. Determines whether the vault enforces a whitelist (deny-by-default) or a blacklist (allow-by-default). Null when not applicable. */
   accessMode?: Maybe<AccessMode>;
+  /** Whether the vault allows resetting the high water mark. Immutable, set at deploy time. Defaults to false for vaults deployed before the on-chain flag existed. */
+  allowHighWaterMarkReset: Scalars['Boolean']['output'];
+  /** Blacklisted addresses. Null for pre-v0.6 vaults (no blacklist concept). v0.6+: always returns the indexed blacklist regardless of accessMode. */
+  blacklist?: Maybe<Array<Scalars['Address']['output']>>;
   /** List of curators associated with this vault */
   curators?: Maybe<Array<Curator>>;
-  /** Entry fee rate in basis points (max 200 BPS). Applied on deposits — immediately on syncDeposit, at claim time for async. */
+  /** Entry fee rate in basis points. Capped at 200 BPS (2%). Applied on deposits — immediately on syncDeposit, at claim time for async. */
   entryRate: Scalars['Float']['output'];
-  /** Exit fee rate in basis points (max 200 BPS). Applied on redeems — immediately on syncRedeem, at claim time for async, at withdraw time for closed vaults. */
+  /** Exit fee rate in basis points. Capped at 200 BPS (2%). Applied on redeems — immediately on syncRedeem, at claim time for async, at withdraw time for closed vaults. */
   exitRate: Scalars['Float']['output'];
   /** Address of an optional external sanctions list oracle consulted by the access control check. Defaults to the zero address when unset. */
   externalSanctionsList: Scalars['String']['output'];
@@ -1806,7 +2190,7 @@ export type VaultState = {
   feeRatesCooldown: Scalars['BigInt']['output'];
   /** Price-per-share evolution limits and their activation state. */
   guardrails: Guardrails;
-  /** Haircut fee rate in basis points (max 2000 BPS). Applied only on syncRedeem, after the exit fee. Haircut shares are burned, redistributing value to remaining shareholders. */
+  /** Haircut fee rate in basis points. Capped at 2000 BPS (20%). Applied only on syncRedeem, after the exit fee. Haircut shares are burned, redistributing value to remaining shareholders. */
   haircutRate: Scalars['Float']['output'];
   /** The highest price per share ever reached, performance fees are taken when the price per share is above this value */
   highWaterMark: Scalars['BigInt']['output'];
@@ -1814,7 +2198,9 @@ export type VaultState = {
   inceptionApr: ApRs;
   /** Whether the vault has been irreversibly switched to async-only mode. When true, SyncMode is forced to None and cannot be re-enabled. */
   isAsyncOnly: Scalars['Boolean']['output'];
-  /** Wether the whitelist is activated or not */
+  /** Whether the vault is currently paused. Defaults to false when no pause history exists. */
+  isPaused: Scalars['Boolean']['output'];
+  /** Whether the whitelist is activated or not */
   isWhitelistActivated: Scalars['Boolean']['output'];
   /** The timestamp of the last fee calculation, used to compute management fees */
   lastFeeTime: Scalars['BigInt']['output'];
@@ -1848,14 +2234,20 @@ export type VaultState = {
   safeAssetBalance: Scalars['BigInt']['output'];
   /** The USD asset amounts currently in the vault custody */
   safeAssetBalanceUsd?: Maybe<Scalars['Float']['output']>;
+  /** Whether updates to the safe address have been irreversibly locked. Once true, the safe address can no longer be changed. Pre-v0.6.0 vaults had no mechanism to change the safe address either, so they are reported as locked (true). */
+  safeLocked: Scalars['Boolean']['output'];
   /** The status of the vault, open, closed, or closing */
   state: State;
+  /** Whether updates to the super operator role have been irreversibly locked. Null when not applicable — the super operator role did not exist on pre-v0.6.0 vaults. Once true, the super operator can no longer be changed. */
+  superOperatorLocked?: Maybe<Scalars['Boolean']['output']>;
   /** Which synchronous operations are currently allowed (Both, SyncDeposit, SyncRedeem, None). Orthogonal to async. */
   syncMode: SyncMode;
   /** Total assets under management in the vault */
   totalAssets: Scalars['BigInt']['output'];
   /** Unix timestamp after which totalAssets is considered stale and synchronous operations are disabled until the next valuation update. */
   totalAssetsExpiration: Scalars['BigInt']['output'];
+  /** Duration in seconds that a totalAssets valuation stays valid before expiring (how long the vault stays in synchronous mode). Derived from the latest TotalAssetsLifespanUpdated event; null when never configured. */
+  totalAssetsLifespan?: Maybe<Scalars['BigInt']['output']>;
   /** Total assets value in USD */
   totalAssetsUsd?: Maybe<Scalars['Float']['output']>;
   /** Total supply of vault shares */
@@ -1868,7 +2260,7 @@ export type VaultState = {
   version: Scalars['String']['output'];
   /** Weekly annualized percentage returns */
   weeklyApr: ApRs;
-  /** Whitelisted addresses, null if not applicable */
+  /** Whitelisted addresses. Pre-v0.6: null when isWhitelistActivated is false. v0.6+: always returns the indexed whitelist regardless of accessMode (mode only gates deposits). */
   whitelist?: Maybe<Array<Scalars['Address']['output']>>;
   /** Yearly annualized percentage returns */
   yearlyApr: ApRs;
@@ -1997,6 +2389,24 @@ export type VaultStateHistoryUpcomingManagementFeeArgs = {
 /** Historical event stream for vault state and fee configuration. Each field exposes an ascending time series of the underlying value, one point per onchain change within the requested range. Capped at 1000 most recent events per underlying table. */
 export type VaultStateHistoryUpcomingPerformanceFeeArgs = {
   options?: InputMaybe<TimeRangeOptions>;
+};
+
+/** Legacy pre-v0.6.0 event marking the disabling of whitelist enforcement (superseded by AccessMode). */
+export type WhitelistDisabled = {
+  __typename?: 'WhitelistDisabled';
+  /** The vault whose whitelist enforcement was disabled. */
+  vault: Vault;
+};
+
+/** Emitted when the owner rotates the whitelist manager. */
+export type WhitelistManagerUpdated = {
+  __typename?: 'WhitelistManagerUpdated';
+  /** New whitelist manager address. */
+  newManager: Scalars['Address']['output'];
+  /** Previous whitelist manager address. */
+  oldManager: Scalars['Address']['output'];
+  /** The vault whose whitelist manager was rotated. */
+  vault: Vault;
 };
 
 /** Emitted when a whitelist entry is updated. */

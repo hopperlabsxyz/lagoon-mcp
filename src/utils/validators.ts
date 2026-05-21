@@ -385,6 +385,62 @@ export const getVaultCompositionInputSchema = z.object({
     ),
 });
 
+// get_global_tvl input — no args
+export const getGlobalTvlInputSchema = z.object({});
+
+// get_indexing_status input — optional chainIds filter
+export const getIndexingStatusInputSchema = z.object({
+  chainIds: z
+    .array(chainIdSchema)
+    .optional()
+    .describe('Optional list of chain IDs to filter; omit to return all chains.'),
+});
+
+// list_chains input
+export const listChainsInputSchema = z.object({
+  isVisible: z
+    .boolean()
+    .optional()
+    .describe('If true, only return chains visible in the Lagoon frontend.'),
+  pagination: z.object({ first: paginationFirstSchema, skip: paginationSkipSchema }).optional(),
+});
+
+// list_curators input
+export const listCuratorsInputSchema = z.object({
+  isVisible: z
+    .boolean()
+    .optional()
+    .describe('If true, only return curators visible in the Lagoon frontend.'),
+  pagination: z.object({ first: paginationFirstSchema, skip: paginationSkipSchema }).optional(),
+});
+
+// get_curator input
+export const getCuratorInputSchema = z.object({
+  curatorId: z
+    .string()
+    .trim()
+    .min(1, 'curatorId is required')
+    .max(128, 'curatorId too long')
+    .describe('Curator ID as exposed by the backend (e.g. "steakhouse").'),
+});
+
+// get_asset input
+export const getAssetInputSchema = z.object({
+  assetAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
+});
+
+// get_historical_state input — wraps Vault.stateAt(timestamp)
+export const getHistoricalStateInputSchema = z.object({
+  vaultAddress: ethereumAddressSchema,
+  chainId: chainIdSchema,
+  timestamp: z
+    .number()
+    .int()
+    .positive('timestamp must be a positive Unix epoch in seconds')
+    .describe('Unix timestamp (seconds) at which to read the vault state.'),
+});
+
 /**
  * Type inference helpers
  */
@@ -403,3 +459,10 @@ export type AnalyzeRisksInput = z.infer<typeof analyzeRisksInputSchema>;
 export type PredictYieldInput = z.infer<typeof predictYieldInputSchema>;
 export type OptimizePortfolioInput = z.infer<typeof optimizePortfolioInputSchema>;
 export type GetVaultCompositionInput = z.infer<typeof getVaultCompositionInputSchema>;
+export type GetGlobalTvlInput = z.infer<typeof getGlobalTvlInputSchema>;
+export type GetIndexingStatusInput = z.infer<typeof getIndexingStatusInputSchema>;
+export type ListChainsInput = z.infer<typeof listChainsInputSchema>;
+export type ListCuratorsInput = z.infer<typeof listCuratorsInputSchema>;
+export type GetCuratorInput = z.infer<typeof getCuratorInputSchema>;
+export type GetAssetInput = z.infer<typeof getAssetInputSchema>;
+export type GetHistoricalStateInput = z.infer<typeof getHistoricalStateInputSchema>;
