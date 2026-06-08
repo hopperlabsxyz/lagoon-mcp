@@ -7,6 +7,10 @@
  */
 
 import { loadAndValidateEnv } from './utils/config-loader.js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const packageJson = require('../package.json') as { version: string };
 
 // Validate environment variables at startup (fails fast if misconfigured)
 const env = loadAndValidateEnv();
@@ -35,7 +39,7 @@ export const config = {
   // Server
   server: {
     name: 'lagoon-mcp',
-    version: '0.6.0',
+    version: packageJson.version,
   },
 
   // Environment flags

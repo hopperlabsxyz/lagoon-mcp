@@ -10,7 +10,38 @@
  * and other MCP clients.
  */
 
-import { runServer } from './server.js';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const packageJson = require('../package.json') as { version: string };
+const PACKAGE_VERSION = packageJson.version;
+
+function printHelp(): void {
+  console.log(`lagoon-mcp ${PACKAGE_VERSION}
+
+Lagoon DeFi vault analytics MCP server.
+
+Usage:
+  lagoon-mcp [options]
+
+Options:
+  -h, --help       Show this help message
+  -v, --version    Show package version`);
+}
+
+function handleCliMetadataFlags(args: string[]): boolean {
+  if (args.includes('--version') || args.includes('-v')) {
+    console.log(PACKAGE_VERSION);
+    return true;
+  }
+
+  if (args.includes('--help') || args.includes('-h')) {
+    printHelp();
+    return true;
+  }
+
+  return false;
+}
 
 // Handle uncaught errors gracefully
 process.on('uncaughtException', (error) => {
@@ -26,6 +57,11 @@ process.on('unhandledRejection', (reason, promise) => {
 // Start the MCP server
 async function main(): Promise<void> {
   try {
+    if (handleCliMetadataFlags(process.argv.slice(2))) {
+      return;
+    }
+
+    const { runServer } = await import('./server.js');
     const { transport } = await runServer();
 
     // Graceful shutdown: close transport before exiting
