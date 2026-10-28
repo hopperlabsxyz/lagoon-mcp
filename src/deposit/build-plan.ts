@@ -99,13 +99,17 @@ export function buildPlan(
       code: 'VAULT_FROM_LAGOON_FACTORY',
       target,
       passed: vault.isLagoon,
-      observed: { factories: chain.factories.join(','), isInstance: String(vault.isLagoon) },
+      observed: {
+        factories: chain.factories.join(','),
+        knownToLagoon: String(vault.isLagoon),
+        note: 'created by a Lagoon factory, or a listed legacy Lagoon vault',
+      },
       source: 'onchain',
     });
     if (!vault.isLagoon) {
       fail(
         'NOT_A_LAGOON_VAULT',
-        `${target.address} was not created by a Lagoon factory on ${chain.name}`
+        `${target.address} is not a Lagoon vault (no Lagoon factory created it and it is not a known legacy vault) on ${chain.name}`
       );
       return;
     }

@@ -16,6 +16,8 @@ export interface DepositChainConfig {
   usdcIsGas: boolean;
   /** Lagoon vault factories: `isInstance(vault)` on any of them proves a vault is Lagoon's */
   factories: Address[];
+  /** Lagoon vaults deployed before the factories, with their own beacon (the indexer's `customVaults`) */
+  legacyVaults: Address[];
   multicall3: Address;
   explorerUrl: string;
 }
@@ -25,7 +27,8 @@ const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11';
 /**
  * Chains with Lagoon v0.6.0 vaults whose native USDC address is already
  * trusted in this codebase (the dapp's CCTP config). Factories come from
- * @lagoon-protocol/v0-core addresses (beaconProxyFactory, optinFactory).
+ * @lagoon-protocol/v0-core addresses (beaconProxyFactory, optinFactory);
+ * legacy vaults from the indexer's `customVaults` (infrastructure shovun.config.ts).
  */
 export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
   1: {
@@ -38,6 +41,16 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
       '0x09C8803f7Dc251f9FaAE5f56E3B91f8A6d0b70ee',
       '0x8D6f5479B14348186faE9BC7E636e947c260f9B1',
     ],
+    legacyVaults: [
+      '0x07ed467acd4ffd13023046968b0859781cb90d9b',
+      '0x03d1ec0d01b659b89a87eabb56e4af5cb6e14bfc',
+      '0xb09f761cb13baca8ec087ac476647361b6314f98',
+      '0x66dcb62da5430d800a1c807822c25be17138fda8',
+      '0x71652d4898de9a7dd35e472a5fe4577ec69d82f2',
+      '0x8092ca384d44260ea4feaf7457b629b8dc6f88f0',
+      '0x8245fd9ae99a482dfe76576dd4298f799c041d61',
+      '0xc5a7884709967a51f67d2daca7451fe3b820e2e9',
+    ],
     multicall3: MULTICALL3,
     explorerUrl: 'https://etherscan.io',
   },
@@ -48,6 +61,7 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
     usdcDecimals: 6,
     usdcIsGas: false,
     factories: ['0xA8E0684887b9475f8942DF6a89bEBa5B25219632'],
+    legacyVaults: [],
     multicall3: MULTICALL3,
     explorerUrl: 'https://optimistic.etherscan.io',
   },
@@ -58,6 +72,7 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
     usdcDecimals: 6,
     usdcIsGas: false,
     factories: ['0x0C0E287f6e4de685f4b44A5282A3ad4A29D05a91'],
+    legacyVaults: [],
     multicall3: MULTICALL3,
     explorerUrl: 'https://polygonscan.com',
   },
@@ -68,6 +83,7 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
     usdcDecimals: 6,
     usdcIsGas: false,
     factories: ['0x90beB507A1BA7D64633540cbce615B574224CD84'],
+    legacyVaults: [],
     multicall3: MULTICALL3,
     explorerUrl: 'https://hyperevmscan.io',
   },
@@ -78,6 +94,7 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
     usdcDecimals: 6,
     usdcIsGas: true,
     factories: ['0xf185b0083fd2446d3742FE3f4C3175B7e306752b'],
+    legacyVaults: [],
     multicall3: MULTICALL3,
     explorerUrl: 'https://explorer.arc.io',
   },
@@ -90,6 +107,12 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
     factories: [
       '0xC953Fd298FdfA8Ed0D38ee73772D3e21Bf19c61b',
       '0x6FC0F2320483fa03FBFdF626DDbAE2CC4B112b51',
+    ],
+    legacyVaults: [
+      '0xfce2064b4221c54651b21c868064a23695e78f09',
+      '0x8092ca384d44260ea4feaf7457b629b8dc6f88f0',
+      '0xdc3c7b473fb67739074e3d5483a9e381d3337ac5',
+      '0xb09f761cb13baca8ec087ac476647361b6314f98',
     ],
     multicall3: MULTICALL3,
     explorerUrl: 'https://basescan.org',
@@ -104,6 +127,11 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
       '0x29f3dba953C57814A5579e08462724B9C760333e',
       '0x9De724B0efEe0FbA07FE21a16B9Bf9bBb5204Fb4',
     ],
+    legacyVaults: [
+      '0x99cd0b8b32b15922f0754fddc21323b5278c5261',
+      '0x5864672c5e37e4e58c261014f8e94ee31f575d47',
+      '0x7cf8cf276450bd568187fdc0b0959d30ec599853',
+    ],
     multicall3: MULTICALL3,
     explorerUrl: 'https://arbiscan.io',
   },
@@ -117,6 +145,7 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
       '0x5e231c6d030a5c0f51fa7d0f891d3f50a928c685',
       '0xC094C224ce0406BC338E00837B96aD2e265F7287',
     ],
+    legacyVaults: ['0xab4ac28d10a4bc279ad073b1d74bfa0e385c010c'],
     multicall3: MULTICALL3,
     explorerUrl: 'https://snowtrace.io',
   },

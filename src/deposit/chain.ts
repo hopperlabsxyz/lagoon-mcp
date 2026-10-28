@@ -96,9 +96,9 @@ export async function readChainState(
 
   const vaults: VaultReading[] = vaultAddresses.map((address, v) => {
     const at = (field: number) => v * FIELDS + field;
-    const isLagoon = chain.factories.some(
-      (_, f) => instances[v * chain.factories.length + f]?.result === true
-    );
+    const isLagoon =
+      chain.factories.some((_, f) => instances[v * chain.factories.length + f]?.result === true) ||
+      chain.legacyVaults.some((a) => a.toLowerCase() === address.toLowerCase());
     const fees = value<{ entryRate: number }>(at(10));
     return {
       address: getAddress(address),
