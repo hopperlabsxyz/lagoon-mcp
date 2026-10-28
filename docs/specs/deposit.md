@@ -115,10 +115,11 @@ Validation rules (all reported together, D1):
 ## 5. Runtime and trust rules
 
 **R1 — RPC.** The MCP reads chains through viem with one RPC URL per chain, from an environment
-variable (`LAGOON_RPC_URLS`, JSON map `{ "5042": "https://…" }`). In the backend it is filled with
-Lagoon's private provider. Where a chain has a public RPC, it is the default for people running the
-MCP themselves. **Arc has none**, so an external user without an Arc RPC gets
-`STATE_UNAVAILABLE` with a setup hint. (See §11.)
+variable (`LAGOON_RPC_URLS`, JSON map `{ "5042": "https://…" }`). There is no public fallback: **a
+chain is supported only if its RPC URL is configured.** Otherwise every vault on it returns
+`UNSUPPORTED_CHAIN` (`details.reason = "rpcNotConfigured"`). In the backend the variable is filled
+with Lagoon's private provider. People running the MCP themselves must provide their own (e.g. an
+Alchemy URL with their API key) — Arc has no public RPC.
 
 **R2 — One block.** All state for a plan is read at a single block number (`stateAt`), batched
 through Multicall3. Never mix reads from different blocks.
@@ -415,12 +416,8 @@ Later:
 - **Dependency:** lagoon-mcp pins `@lagoon-protocol/v0-core` 0.9.0, which has neither Arc nor the
   v0.6.0 ABI. Bump to the current release (0.19.x in `sdk-v0`) before implementing.
 
-## 11. Open points
+## 11. Known limitations (accepted)
 
-- **External MCP users on Arc (R1).** Arc has no public RPC, so "public RPC by default" doesn't work
-  there. Options: require users to set their own Arc RPC (e.g. a free Alchemy key), or serve reads
-  through a Lagoon proxy.
 - **Attribution without referral (D10).** In-app chat deposits are attributable through the backend.
-  Deposits prepared by an external MCP client (Claude, Cursor) leave no trace with Lagoon unless the
-  MCP reports prepared plans to Lagoon (telemetry, to be described in LAG-483 docs) — otherwise they
-  cannot be counted in the grant report.
+  Deposits prepared by an external MCP client (Claude, Cursor) leave no trace with Lagoon and are not
+  counted in the grant report. Out of scope for now; revisit with telemetry or a referral address.
