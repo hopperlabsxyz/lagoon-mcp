@@ -130,7 +130,8 @@ export interface Plan {
   checks: Check[];
   warnings: Issue[];
   summary: string;
-  simulation: PlanSimulation;
+  /** One per chain of the plan */
+  simulations: PlanSimulation[];
 }
 
 export interface PlanExports {

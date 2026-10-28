@@ -495,6 +495,11 @@ const chainRefSchema = z.object({
   address: ethereumAddressSchema,
 });
 
+const totalSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('amount'), value: decimalAmountSchema }),
+  z.object({ kind: z.literal('max'), keepForGas: decimalAmountSchema.optional() }),
+]);
+
 const allocationSchema = z.discriminatedUnion('kind', [
   z.object({ vault: chainRefSchema, kind: z.literal('amount'), value: decimalAmountSchema }),
   z.object({
@@ -510,18 +515,21 @@ export const prepareDepositInputSchema = z.object({
     address: ethereumAddressSchema,
     type: z.enum(['eoa', 'safe', 'smartAccount']).optional(),
   }),
+  // Each vault is funded from the wallet on its own chain (no bridging).
+  // chainId, when set, restricts the plan to that chain.
   source: z.object({
     kind: z.literal('wallet'),
-    chainId: chainIdSchema,
+    chainId: chainIdSchema.optional(),
     asset: z.literal('USDC'),
   }),
-  total: z
-    .discriminatedUnion('kind', [
-      z.object({ kind: z.literal('amount'), value: decimalAmountSchema }),
-      z.object({ kind: z.literal('max'), keepForGas: decimalAmountSchema.optional() }),
-    ])
+  // Total to deploy on a single-chain plan; bps allocations are shares of it
+  total: totalSchema.optional(),
+  // Total per chain, for bps allocations on a multi-chain plan
+  totals: z
+    .array(z.intersection(z.object({ chainId: chainIdSchema }), totalSchema))
+    .max(20)
     .optional(),
-  allocations: z.array(allocationSchema).min(1).max(10),
+  allocations: z.array(allocationSchema).min(1).max(30),
   options: z
     .object({
       depositMode: z.enum(['auto', 'async']).optional(),

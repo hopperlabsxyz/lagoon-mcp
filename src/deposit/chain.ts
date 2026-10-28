@@ -47,7 +47,6 @@ export async function readChainState(
 
   const perVault = (vault: Address) =>
     [
-      { address: chain.factory, abi: factoryAbi, functionName: 'isInstance', args: [vault] },
       { address: vault, abi: vaultAbi, functionName: 'name' },
       { address: vault, abi: vaultAbi, functionName: 'version' },
       { address: vault, abi: vaultAbi, functionName: 'asset' },
@@ -62,9 +61,9 @@ export async function readChainState(
       { address: vault, abi: vaultAbi, functionName: 'pendingDepositRequest', args: [0n, account] },
       { address: chain.usdc, abi: erc20Abi, functionName: 'allowance', args: [account, vault] },
     ] as const;
-  const FIELDS = 14;
+  const FIELDS = 13;
 
-  const [balance, results] = await Promise.all([
+  const [balance, results, instances] = await Promise.all([
     client.readContract({
       address: chain.usdc,
       abi: erc20Abi,
@@ -77,6 +76,19 @@ export async function readChainState(
       allowFailure: true,
       contracts: vaultAddresses.flatMap(perVault),
     }),
+    // isInstance(vault) on every Lagoon factory of the chain
+    client.multicall({
+      blockNumber,
+      allowFailure: true,
+      contracts: vaultAddresses.flatMap((vault) =>
+        chain.factories.map((factory) => ({
+          address: factory,
+          abi: factoryAbi,
+          functionName: 'isInstance' as const,
+          args: [vault] as const,
+        }))
+      ),
+    }),
   ]);
 
   const value = <T>(index: number): T | undefined =>
@@ -84,24 +96,26 @@ export async function readChainState(
 
   const vaults: VaultReading[] = vaultAddresses.map((address, v) => {
     const at = (field: number) => v * FIELDS + field;
-    const isLagoon = value<boolean>(at(0)) === true;
-    const fees = value<{ entryRate: number }>(at(11));
+    const isLagoon = chain.factories.some(
+      (_, f) => instances[v * chain.factories.length + f]?.result === true
+    );
+    const fees = value<{ entryRate: number }>(at(10));
     return {
       address: getAddress(address),
       isLagoon,
-      name: value<string>(at(1)),
-      decimals: value<number>(at(4)),
-      version: value<string>(at(2)),
-      asset: value<Address>(at(3)),
-      paused: value<boolean>(at(5)),
-      isAllowed: value<boolean>(at(6)),
-      maxCap: value<bigint>(at(7)),
-      totalAssets: value<bigint>(at(8)),
-      syncMode: value<number>(at(9)),
-      navValid: value<boolean>(at(10)),
+      name: value<string>(at(0)),
+      decimals: value<number>(at(3)),
+      version: value<string>(at(1)),
+      asset: value<Address>(at(2)),
+      paused: value<boolean>(at(4)),
+      isAllowed: value<boolean>(at(5)),
+      maxCap: value<bigint>(at(6)),
+      totalAssets: value<bigint>(at(7)),
+      syncMode: value<number>(at(8)),
+      navValid: value<boolean>(at(9)),
       entryRateBps: fees?.entryRate,
-      pendingDeposit: value<bigint>(at(12)),
-      allowance: value<bigint>(at(13)) ?? 0n,
+      pendingDeposit: value<bigint>(at(11)),
+      allowance: value<bigint>(at(12)) ?? 0n,
     };
   });
 

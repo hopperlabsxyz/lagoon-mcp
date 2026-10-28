@@ -41,10 +41,10 @@ export interface ChainReading {
   vaults: VaultReading[];
 }
 
-export type DraftPlan = Omit<Plan, 'simulation'>;
+export type DraftPlan = Omit<Plan, 'simulations'>;
 
 export type BuildResult =
-  | { ok: true; plan: DraftPlan; exports?: PlanExports }
+  | { ok: true; plan: DraftPlan }
   | { ok: false; issues: Issue[]; checks: Check[] };
 
 const SYMBOL = 'USDC';
@@ -99,13 +99,13 @@ export function buildPlan(
       code: 'VAULT_FROM_LAGOON_FACTORY',
       target,
       passed: vault.isLagoon,
-      observed: { factory: chain.factory, isInstance: String(vault.isLagoon) },
+      observed: { factories: chain.factories.join(','), isInstance: String(vault.isLagoon) },
       source: 'onchain',
     });
     if (!vault.isLagoon) {
       fail(
         'NOT_A_LAGOON_VAULT',
-        `${target.address} was not created by Lagoon's factory on ${chain.name}`
+        `${target.address} was not created by a Lagoon factory on ${chain.name}`
       );
       return;
     }
@@ -217,28 +217,33 @@ export function buildPlan(
       severity: 'error',
       message: `You have ${amount(reading.balance).formatted} USDC on ${chain.name}, the plan needs ${amount(needed).formatted} USDC`,
       details: {
+        chainId: String(chain.chainId),
         balance: amount(reading.balance).formatted,
         missing: amount(needed - reading.balance).formatted,
       },
     });
   }
-  const left = reading.balance - needed;
-  const gasOk = left >= context.gasReserve;
-  checks.push({
-    code: 'GAS_RESERVE',
-    passed: gasOk,
-    observed: {
-      leftAfterPlan: amount(left > 0n ? left : 0n).formatted,
-      recommended: amount(context.gasReserve).formatted,
-    },
-    source: 'onchain',
-  });
-  if (enough && !gasOk) {
-    warnings.push({
-      code: 'LOW_GAS_RESERVE',
-      severity: 'warning',
-      message: `Only ${amount(left).formatted} USDC would be left to pay transaction fees on ${chain.name}`,
+  // Only where USDC also pays the fees (Arc)
+  if (chain.usdcIsGas) {
+    const left = reading.balance - needed;
+    const gasOk = left >= context.gasReserve;
+    checks.push({
+      code: 'GAS_RESERVE',
+      passed: gasOk,
+      observed: {
+        leftAfterPlan: amount(left > 0n ? left : 0n).formatted,
+        recommended: amount(context.gasReserve).formatted,
+      },
+      source: 'onchain',
     });
+    if (enough && !gasOk) {
+      warnings.push({
+        code: 'LOW_GAS_RESERVE',
+        severity: 'warning',
+        message: `Only ${amount(left).formatted} USDC would be left to pay transaction fees on ${chain.name}`,
+        details: { chainId: String(chain.chainId) },
+      });
+    }
   }
 
   if (issues.some((issue) => issue.severity === 'error')) {
@@ -462,45 +467,46 @@ export function buildPlan(
     summary,
   };
 
-  return { ok: true, plan, exports: buildExports(input, chain, plan) };
+  return { ok: true, plan };
 }
 
-function buildExports(
+/** Wallet payloads for a (possibly multi-chain) plan: one batch per chain */
+export function buildExports(
   input: PrepareDepositInput,
-  chain: DepositChainConfig,
-  plan: DraftPlan
+  plan: Pick<Plan, 'planId' | 'createdAt' | 'summary' | 'steps'>
 ): PlanExports | undefined {
   const wanted = new Set(input.options?.exports ?? []);
   if (input.account.type === 'safe') wanted.add('safeTxBuilder');
   if (wanted.size === 0) return undefined;
 
+  const chainIds = [...new Set(plan.steps.map((s) => s.chainId))];
+  const stepsOn = (chainId: number) => plan.steps.filter((s) => s.chainId === chainId);
   const exports: PlanExports = {};
   if (wanted.has('eip5792')) {
-    exports.eip5792 = [
-      {
-        chainId: toHex(chain.chainId),
-        calls: plan.steps.map((s) => ({
-          to: s.execution.to,
-          data: s.execution.data,
-          value: '0x0' as const,
-        })),
-      },
-    ];
+    exports.eip5792 = chainIds.map((chainId) => ({
+      chainId: toHex(chainId),
+      calls: stepsOn(chainId).map((s) => ({
+        to: s.execution.to,
+        data: s.execution.data,
+        value: '0x0' as const,
+      })),
+    }));
   }
   if (wanted.has('safeTxBuilder')) {
-    exports.safeTxBuilder = {
+    // The Safe Transaction Builder imports one file per chain
+    exports.safeTxBuilder = chainIds.map((chainId) => ({
       version: '1.0',
-      chainId: String(chain.chainId),
+      chainId: String(chainId),
       createdAt: new Date(plan.createdAt).getTime(),
       meta: { name: `Lagoon deposit plan ${plan.planId}`, description: plan.summary },
-      transactions: plan.steps.map((s) => ({
+      transactions: stepsOn(chainId).map((s) => ({
         to: s.execution.to,
         value: s.execution.value,
         data: s.execution.data,
         contractMethod: null,
         contractInputsValues: null,
       })),
-    };
+    }));
   }
   return exports;
 }

@@ -2,7 +2,6 @@
  * Trusted addresses and limits for deposit plans.
  *
  * These come from config, never from the indexer or the tool input (spec R4).
- * Source: @lagoon-protocol/v0-core addresses (sdk-v0), verified on Arc mainnet.
  */
 
 import type { Address } from 'viem';
@@ -10,24 +9,116 @@ import type { Address } from 'viem';
 export interface DepositChainConfig {
   chainId: number;
   name: string;
-  /** USDC ERC-20 (on Arc, the 6-decimals view of the native gas token) */
+  /** Circle's native USDC on the chain (on Arc, the 6-decimals view of the gas token) */
   usdc: Address;
   usdcDecimals: number;
-  /** Lagoon OptinProxyFactory: `isInstance(vault)` proves a vault is Lagoon's */
-  factory: Address;
+  /** Gas is paid in USDC (Arc): "max" keeps a reserve and the plan checks it */
+  usdcIsGas: boolean;
+  /** Lagoon vault factories: `isInstance(vault)` on any of them proves a vault is Lagoon's */
+  factories: Address[];
   multicall3: Address;
   explorerUrl: string;
 }
 
+const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11';
+
+/**
+ * Chains with Lagoon v0.6.0 vaults whose native USDC address is already
+ * trusted in this codebase (the dapp's CCTP config). Factories come from
+ * @lagoon-protocol/v0-core addresses (beaconProxyFactory, optinFactory).
+ */
 export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
+  1: {
+    chainId: 1,
+    name: 'Ethereum',
+    usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    usdcDecimals: 6,
+    usdcIsGas: false,
+    factories: [
+      '0x09C8803f7Dc251f9FaAE5f56E3B91f8A6d0b70ee',
+      '0x8D6f5479B14348186faE9BC7E636e947c260f9B1',
+    ],
+    multicall3: MULTICALL3,
+    explorerUrl: 'https://etherscan.io',
+  },
+  10: {
+    chainId: 10,
+    name: 'Optimism',
+    usdc: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+    usdcDecimals: 6,
+    usdcIsGas: false,
+    factories: ['0xA8E0684887b9475f8942DF6a89bEBa5B25219632'],
+    multicall3: MULTICALL3,
+    explorerUrl: 'https://optimistic.etherscan.io',
+  },
+  137: {
+    chainId: 137,
+    name: 'Polygon',
+    usdc: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+    usdcDecimals: 6,
+    usdcIsGas: false,
+    factories: ['0x0C0E287f6e4de685f4b44A5282A3ad4A29D05a91'],
+    multicall3: MULTICALL3,
+    explorerUrl: 'https://polygonscan.com',
+  },
+  999: {
+    chainId: 999,
+    name: 'HyperEVM',
+    usdc: '0xb88339CB7199b77E23DB6E890353E22632Ba630f',
+    usdcDecimals: 6,
+    usdcIsGas: false,
+    factories: ['0x90beB507A1BA7D64633540cbce615B574224CD84'],
+    multicall3: MULTICALL3,
+    explorerUrl: 'https://hyperevmscan.io',
+  },
   5042: {
     chainId: 5042,
     name: 'Arc',
     usdc: '0x3600000000000000000000000000000000000000',
     usdcDecimals: 6,
-    factory: '0xf185b0083fd2446d3742FE3f4C3175B7e306752b',
-    multicall3: '0xcA11bde05977b3631167028862bE2a173976CA11',
+    usdcIsGas: true,
+    factories: ['0xf185b0083fd2446d3742FE3f4C3175B7e306752b'],
+    multicall3: MULTICALL3,
     explorerUrl: 'https://explorer.arc.io',
+  },
+  8453: {
+    chainId: 8453,
+    name: 'Base',
+    usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    usdcDecimals: 6,
+    usdcIsGas: false,
+    factories: [
+      '0xC953Fd298FdfA8Ed0D38ee73772D3e21Bf19c61b',
+      '0x6FC0F2320483fa03FBFdF626DDbAE2CC4B112b51',
+    ],
+    multicall3: MULTICALL3,
+    explorerUrl: 'https://basescan.org',
+  },
+  42161: {
+    chainId: 42161,
+    name: 'Arbitrum',
+    usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    usdcDecimals: 6,
+    usdcIsGas: false,
+    factories: [
+      '0x29f3dba953C57814A5579e08462724B9C760333e',
+      '0x9De724B0efEe0FbA07FE21a16B9Bf9bBb5204Fb4',
+    ],
+    multicall3: MULTICALL3,
+    explorerUrl: 'https://arbiscan.io',
+  },
+  43114: {
+    chainId: 43114,
+    name: 'Avalanche',
+    usdc: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+    usdcDecimals: 6,
+    usdcIsGas: false,
+    factories: [
+      '0x5e231c6d030a5c0f51fa7d0f891d3f50a928c685',
+      '0xC094C224ce0406BC338E00837B96aD2e265F7287',
+    ],
+    multicall3: MULTICALL3,
+    explorerUrl: 'https://snowtrace.io',
   },
 };
 
