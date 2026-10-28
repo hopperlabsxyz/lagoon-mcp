@@ -34,6 +34,7 @@ import { createExecuteGetAsset } from './get-asset.js';
 import { createExecuteGetHistoricalState } from './get-historical-state.js';
 import { createExecutePrepareDeposit } from './prepare-deposit.js';
 import { createExecuteDepositStatus } from './deposit-status.js';
+import { createExecuteListDepositVaults } from './list-deposit-vaults.js';
 
 // Service container
 import { ServiceContainer } from '../core/container.js';
@@ -63,6 +64,7 @@ import {
   getHistoricalStateInputSchema,
   prepareDepositInputSchema,
   depositStatusInputSchema,
+  listDepositVaultsInputSchema,
 } from '../utils/validators.js';
 
 // Tool utilities
@@ -376,6 +378,17 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~300-500 tokens. Cache: 60 minutes (historical state is immutable once past).',
     schema: getHistoricalStateInputSchema,
     executorFactory: createExecuteGetHistoricalState,
+  },
+  {
+    name: 'list_deposit_vaults',
+    description:
+      'The vaults a USDC deposit can go into: open Lagoon v0.6.0 vaults whose asset is Circle USDC, on ' +
+      'Ethereum, Optimism, Polygon, HyperEVM, Arc, Base, Arbitrum and Avalanche, including vaults hidden ' +
+      'from the app (`listed: false`). Filter by `chainId` and `search` (name, ticker or curator). Returns ' +
+      'chainId, address, name, ticker, curators and TVL, listed first then by TVL. Use it to pick vaults ' +
+      'for `prepare_deposit`; never invent an address.',
+    schema: listDepositVaultsInputSchema,
+    executorFactory: createExecuteListDepositVaults,
   },
   {
     name: 'prepare_deposit',

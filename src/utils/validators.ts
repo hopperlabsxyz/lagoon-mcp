@@ -553,5 +553,20 @@ export const depositStatusInputSchema = z.object({
   vaults: z.array(chainRefSchema).max(10).optional(),
 });
 
+export const listDepositVaultsInputSchema = z.object({
+  chainId: chainIdSchema.optional(),
+  search: z
+    .string()
+    .max(100)
+    .optional()
+    .describe('Words to match in the vault name, ticker or curator'),
+  includeUnlisted: z
+    .boolean()
+    .optional()
+    .describe('Include vaults hidden from the app (default true)'),
+  limit: z.number().int().positive().max(50).optional(),
+});
+
+export type ListDepositVaultsInput = z.infer<typeof listDepositVaultsInputSchema>;
 export type PrepareDepositInput = z.infer<typeof prepareDepositInputSchema>;
 export type DepositStatusInput = z.infer<typeof depositStatusInputSchema>;
