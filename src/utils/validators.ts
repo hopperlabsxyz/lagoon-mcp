@@ -480,3 +480,70 @@ export type ListCuratorsInput = z.infer<typeof listCuratorsInputSchema>;
 export type GetCuratorInput = z.infer<typeof getCuratorInputSchema>;
 export type GetAssetInput = z.infer<typeof getAssetInputSchema>;
 export type GetHistoricalStateInput = z.infer<typeof getHistoricalStateInputSchema>;
+
+// ============================================================================
+// Deposit plans (docs/specs/deposit.md)
+// ============================================================================
+
+// Human decimal amount ("200000", "0.5"): parsed to base units with the token's decimals
+const decimalAmountSchema = z
+  .string()
+  .regex(/^\d+(\.\d+)?$/, 'Amount must be a positive decimal number written as a string');
+
+const chainRefSchema = z.object({
+  chainId: chainIdSchema,
+  address: ethereumAddressSchema,
+});
+
+const allocationSchema = z.discriminatedUnion('kind', [
+  z.object({ vault: chainRefSchema, kind: z.literal('amount'), value: decimalAmountSchema }),
+  z.object({
+    vault: chainRefSchema,
+    kind: z.literal('bps'),
+    value: z.number().int().positive().max(10_000),
+  }),
+]);
+
+export const prepareDepositInputSchema = z.object({
+  specVersion: z.literal('1').optional(),
+  account: z.object({
+    address: ethereumAddressSchema,
+    type: z.enum(['eoa', 'safe', 'smartAccount']).optional(),
+  }),
+  source: z.object({
+    kind: z.literal('wallet'),
+    chainId: chainIdSchema,
+    asset: z.literal('USDC'),
+  }),
+  total: z
+    .discriminatedUnion('kind', [
+      z.object({ kind: z.literal('amount'), value: decimalAmountSchema }),
+      z.object({ kind: z.literal('max'), keepForGas: decimalAmountSchema.optional() }),
+    ])
+    .optional(),
+  allocations: z.array(allocationSchema).min(1).max(10),
+  options: z
+    .object({
+      depositMode: z.enum(['auto', 'async']).optional(),
+      remainder: z.enum(['last', 'largest']).optional(),
+      exports: z.array(z.enum(['eip5792', 'safeTxBuilder'])).optional(),
+    })
+    .optional(),
+});
+
+export const depositStatusInputSchema = z.object({
+  account: ethereumAddressSchema,
+  txHashes: z
+    .array(
+      z.object({
+        chainId: chainIdSchema,
+        hash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash'),
+      })
+    )
+    .max(20)
+    .optional(),
+  vaults: z.array(chainRefSchema).max(10).optional(),
+});
+
+export type PrepareDepositInput = z.infer<typeof prepareDepositInputSchema>;
+export type DepositStatusInput = z.infer<typeof depositStatusInputSchema>;

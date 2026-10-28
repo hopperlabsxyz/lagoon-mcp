@@ -32,6 +32,8 @@ import { createExecuteListCurators } from './list-curators.js';
 import { createExecuteGetCurator } from './get-curator.js';
 import { createExecuteGetAsset } from './get-asset.js';
 import { createExecuteGetHistoricalState } from './get-historical-state.js';
+import { createExecutePrepareDeposit } from './prepare-deposit.js';
+import { createExecuteDepositStatus } from './deposit-status.js';
 
 // Service container
 import { ServiceContainer } from '../core/container.js';
@@ -59,6 +61,8 @@ import {
   getCuratorInputSchema,
   getAssetInputSchema,
   getHistoricalStateInputSchema,
+  prepareDepositInputSchema,
+  depositStatusInputSchema,
 } from '../utils/validators.js';
 
 // Tool utilities
@@ -372,6 +376,30 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~300-500 tokens. Cache: 60 minutes (historical state is immutable once past).',
     schema: getHistoricalStateInputSchema,
     executorFactory: createExecuteGetHistoricalState,
+  },
+  {
+    name: 'prepare_deposit',
+    description:
+      'Prepare a USDC deposit into one or more Lagoon vaults for the user to sign in their own wallet. ' +
+      'Never signs or sends anything. Input: the user wallet address, the chain holding their USDC ' +
+      '(Arc, chainId 5042, for now), and allocations per vault as an amount ("200000") or a share of ' +
+      '`total` in basis points (2000 = 20%). Take vault addresses from `search_vaults`, never invent them. ' +
+      'Reads the chain, checks each vault (created by Lagoon, open, user allowed, capacity, balance), builds ' +
+      'the exact approve + deposit transactions and simulates them. Returns `{ ok: true, plan }` (show ' +
+      '`plan.summary`, warnings, and that the user signs `plan.steps` in order) or `{ ok: false, issues }` ' +
+      '(explain each issue and propose a fix, e.g. a smaller amount when `details.remainingCapacity` is set). ' +
+      'Always ask the user to confirm the split before calling.',
+    schema: prepareDepositInputSchema,
+    executorFactory: createExecutePrepareDeposit,
+  },
+  {
+    name: 'deposit_status',
+    description:
+      'Where a deposit stands: requested (waiting for the curator settlement), claimable, claimed, or synced ' +
+      '(shares received immediately). Pass the transaction hashes of the deposits (preferred), or vaults to ' +
+      'get the latest request of the account. Read-only.',
+    schema: depositStatusInputSchema,
+    executorFactory: createExecuteDepositStatus,
   },
 ];
 
