@@ -130,8 +130,8 @@ export const PLAN_TTL_MS = 30 * 60 * 1000;
 /** USDC kept for gas when the user deposits "everything" (Arc pays gas in USDC) */
 export const DEFAULT_GAS_RESERVE = '1';
 
-/** Smallest deposit per vault */
-export const MIN_ALLOCATION = '1';
+/** Smallest deposit per vault: any amount above zero (one base unit) */
+export const MIN_ALLOCATION = '0.000001';
 
 /**
  * RPC URL of a chain, from LAGOON_RPC_URLS (`{"5042":"https://…"}`).

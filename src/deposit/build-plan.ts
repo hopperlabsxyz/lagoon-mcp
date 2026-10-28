@@ -188,7 +188,7 @@ export function buildPlan(
     if (deposit < context.minAllocation && resolved.issues.length === 0) {
       fail(
         'AMOUNT_TOO_SMALL',
-        `The deposit into ${label} is below ${amount(context.minAllocation).formatted} USDC`
+        `The deposit into ${label} would be ${amount(deposit).formatted} USDC, below the minimum of ${amount(context.minAllocation).formatted} USDC`
       );
     }
 
@@ -266,7 +266,8 @@ export function buildPlan(
     checks.push({
       code: 'SYNC_ALLOWED',
       target: vaultRef,
-      passed: mode === 'sync',
+      // Informational: async is a vault mode, not a failure (the observed mode says which)
+      passed: true,
       observed: { syncMode: String(vault.syncMode), navValid: String(vault.navValid), mode },
       source: 'onchain',
     });

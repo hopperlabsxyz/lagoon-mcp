@@ -35,7 +35,7 @@ intent  ───────────▶   read chain → check → build pl
 | D10 | **No referral.** Deposits pass `referral = address(0)`. Agent attribution is off-chain only (LAG-485). | Product decision. See §11 for what this implies for external MCP clients. |
 | D11 | **Wallets: personal wallets (EOA) and Safe.** Safe is served by an export file for the Safe Transaction Builder, not by a live integration. | Covers retail and institutions with little extra work. |
 | D12 | **A deposit counts as "completed" for grant reporting when the request transaction is mined** (`DepositRequest` or `DepositSync` event). `deposit_status` still reports settlement and claim. | Product decision. |
-| D13 | **Defaults:** plan TTL 30 min · gas reserve for `max` 1 USDC · minimum 1 USDC per allocation · steps ordered vault by vault. | See §6. |
+| D13 | **Defaults:** plan TTL 30 min · gas reserve for `max` 1 USDC (Arc only, where USDC pays gas) · no minimum per allocation beyond zero · steps ordered vault by vault. | See §6. |
 
 ## 3. Contract and chain facts (v0.6.0, Arc)
 
@@ -152,7 +152,7 @@ more decimals than the token has → `INVALID_INPUT`.
 **`total: max`.** `balanceOf(account) − keepForGas` (default 1 USDC). Negative or zero →
 `INSUFFICIENT_BALANCE`. A reserve below 1 USDC → warning `LOW_GAS_RESERVE`.
 
-**Minimum.** Each resolved allocation must be ≥ 1 USDC, else `AMOUNT_TOO_SMALL`.
+**Minimum.** Each resolved allocation must be above zero (one base unit), else `AMOUNT_TOO_SMALL`.
 
 **Step order: vault by vault**, in input order:
 `[approve V1]?, deposit V1, [approve V2]?, deposit V2, …`. An approve is omitted when the current
