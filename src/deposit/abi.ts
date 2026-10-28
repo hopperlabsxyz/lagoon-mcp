@@ -35,6 +35,7 @@ export const vaultAbi = parseAbi([
   'function syncDeposit(uint256 assets, address receiver, address referral) payable returns (uint256)',
   'event DepositRequest(address indexed controller, address indexed owner, uint256 indexed requestId, address sender, uint256 assets)',
   'event DepositSync(address indexed sender, address indexed owner, uint256 assets, uint256 shares)',
+  'event DepositRequestCanceled(uint256 indexed requestId, address indexed controller)',
   'error AddressNotAllowed(address _address)',
   'error BelowMinimumAssets(uint256 assets, uint256 minimumAssets)',
   'error Closed()',

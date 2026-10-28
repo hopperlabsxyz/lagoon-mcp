@@ -149,6 +149,7 @@ export type DepositStatus =
   | 'requested'
   | 'claimable'
   | 'claimed'
+  | 'canceled'
   | 'synced';
 
 export interface DepositStatusOutput {
