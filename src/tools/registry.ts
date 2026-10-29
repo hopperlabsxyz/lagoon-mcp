@@ -394,18 +394,20 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
     name: 'prepare_deposit',
     description:
       'Prepare a USDC deposit into one or more Lagoon vaults for the user to sign in their own wallet. ' +
-      'Never signs or sends anything. Input: the user wallet address, the chain holding their USDC ' +
-      '(Arc, chainId 5042, for now), and allocations per vault as an amount ("200000") or a share of ' +
-      '`total` in basis points (2000 = 20%). Take vault addresses from `search_vaults`, never invent them. ' +
+      'Never signs or sends anything. Input: the user wallet address (optional), the chain holding their ' +
+      'USDC, and allocations per vault as an amount ("200000") or a share of `total` in basis points ' +
+      '(2000 = 20%). Take vault addresses from `search_vaults` or `list_deposit_vaults`, never invent them. ' +
       'Reads the chain, checks each vault (created by Lagoon, open, user allowed, capacity, balance), builds ' +
       'the exact approve + deposit transactions and simulates them. Returns `{ ok: true, plan }` (show ' +
       '`plan.summary`, warnings, and that the user signs `plan.steps` in order) or `{ ok: false, issues }` ' +
       '(explain each issue and propose a fix, e.g. a smaller amount when `details.remainingCapacity` is set). ' +
-      'When the output has `signUrl`, give it to the user: it opens the plan in the Lagoon app to review and sign. ' +
-      'If you do not know the wallet address, call it without `account` rather than asking for it: the output ' +
-      'has no plan (issue ACCOUNT_REQUIRED) but its `signUrl` opens the request in the app, which checks it ' +
-      'against the wallet the user connects there. Ask before calling only when the request is ambiguous ' +
-      '(e.g. several vaults match a name); nothing is signed without the user.',
+      'Always call it once the user has named an amount and vaults, and always give the `signUrl` from the ' +
+      'output: it opens the request in the Lagoon app, where the user reviews it, can change any vault, ' +
+      'and signs. Do not ask for the wallet address: call it without `account` (the output then has issue ' +
+      'ACCOUNT_REQUIRED and no plan, but still a `signUrl`; the app checks the wallet the user connects). ' +
+      'Do not stop to ask when a name matches several vaults: pick the most likely one (its name contains ' +
+      "the user's words, then the largest TVL), call it, then say which vault you picked and list the " +
+      'other matches so the user can switch here or in the app. Nothing is signed without the user.',
     schema: prepareDepositInputSchema,
     executorFactory: createExecutePrepareDeposit,
   },
