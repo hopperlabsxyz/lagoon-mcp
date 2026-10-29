@@ -237,4 +237,32 @@ describe('request rules and helpers', () => {
     expect(uuidv7(1) < uuidv7(2)).toBe(true);
     expect(contentHashOf({ a: '1', b: '2' })).toBe(contentHashOf({ b: '2', a: '1' }));
   });
+
+  describe('existing allowance', () => {
+    it('says "unlimited" instead of printing a max approval', () => {
+      const maxish = 2n ** 256n - 1n - 6_602_000n;
+      const result = plan(
+        request([{ vault: { chainId: 5042, address: V1 }, kind: 'amount', value: '10' }]),
+        [vault(V1, { allowance: maxish })]
+      );
+      const warning = result.ok
+        ? result.plan.warnings.find((w) => w.code === 'EXISTING_ALLOWANCE_USED')
+        : undefined;
+      expect(warning?.message).toBe(
+        'Vault 1 already has an unlimited approval on your USDC; no approval needed'
+      );
+      expect(warning?.details?.allowance).toBe('unlimited');
+    });
+
+    it('keeps the exact amount for a normal allowance', () => {
+      const result = plan(
+        request([{ vault: { chainId: 5042, address: V1 }, kind: 'amount', value: '10' }]),
+        [vault(V1, { allowance: usdc(50) })]
+      );
+      const warning = result.ok
+        ? result.plan.warnings.find((w) => w.code === 'EXISTING_ALLOWANCE_USED')
+        : undefined;
+      expect(warning?.message).toContain('allowed to take 50.00 USDC');
+    });
+  });
 });

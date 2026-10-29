@@ -49,6 +49,13 @@ export type BuildResult =
 
 const SYMBOL = 'USDC';
 
+/**
+ * An "infinite" approval (max uint256, or close to it: some tokens decrement
+ * even a max allowance as it is spent). Above 2^128 base units no real amount
+ * is meant.
+ */
+export const isUnlimited = (allowance: bigint): boolean => allowance >= 2n ** 128n;
+
 /** Whether a vault takes a deposit synchronously (spec §3, v0.6.0) */
 export function depositModeOf(
   vault: Pick<VaultReading, 'syncMode' | 'navValid'>,
@@ -280,8 +287,13 @@ export function buildPlan(
       warnings.push({
         code: 'EXISTING_ALLOWANCE_USED',
         severity: 'info',
-        message: `${name} is already allowed to take ${amount(vault.allowance).formatted} USDC; no approval needed`,
+        message: isUnlimited(vault.allowance)
+          ? `${name} already has an unlimited approval on your USDC; no approval needed`
+          : `${name} is already allowed to take ${amount(vault.allowance).formatted} USDC; no approval needed`,
         allocationIndex: i,
+        details: {
+          allowance: isUnlimited(vault.allowance) ? 'unlimited' : amount(vault.allowance).formatted,
+        },
       });
     } else {
       const id = nextId();
