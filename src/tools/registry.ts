@@ -401,6 +401,7 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'the exact approve + deposit transactions and simulates them. Returns `{ ok: true, plan }` (show ' +
       '`plan.summary`, warnings, and that the user signs `plan.steps` in order) or `{ ok: false, issues }` ' +
       '(explain each issue and propose a fix, e.g. a smaller amount when `details.remainingCapacity` is set). ' +
+      'When the output has `signUrl`, give it to the user: it opens the plan in the Lagoon app to review and sign. ' +
       'Always ask the user to confirm the split before calling.',
     schema: prepareDepositInputSchema,
     executorFactory: createExecutePrepareDeposit,

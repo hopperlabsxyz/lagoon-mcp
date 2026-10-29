@@ -180,3 +180,17 @@ export function rpcUrlFor(
     return undefined;
   }
 }
+
+/**
+ * Where users review and sign a prepared deposit: the dapp's /allocate page,
+ * opened with the request in `?intent=` (base64url JSON). Unset: no link.
+ */
+export function signUrlFor(
+  intent: unknown,
+  env: NodeJS.ProcessEnv = process.env
+): string | undefined {
+  const base = env.LAGOON_APP_URL?.replace(/\/+$/, '');
+  if (!base) return undefined;
+  const encoded = Buffer.from(JSON.stringify(intent)).toString('base64url');
+  return `${base}/allocate?intent=${encoded}`;
+}

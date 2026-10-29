@@ -139,9 +139,13 @@ export interface PlanExports {
   safeTxBuilder?: unknown;
 }
 
-export type PrepareDepositOutput =
+export type PrepareDepositOutput = (
   | { ok: true; plan: Plan; exports?: PlanExports }
-  | { ok: false; issues: Issue[]; checks: Check[] };
+  | { ok: false; issues: Issue[]; checks: Check[] }
+) & {
+  /** Link to the dapp's /allocate page, opened with this request: it re-prepares the plan for the user to review and sign */
+  signUrl?: string;
+};
 
 export type DepositStatus =
   | 'notFound'
