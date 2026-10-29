@@ -402,7 +402,10 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       '`plan.summary`, warnings, and that the user signs `plan.steps` in order) or `{ ok: false, issues }` ' +
       '(explain each issue and propose a fix, e.g. a smaller amount when `details.remainingCapacity` is set). ' +
       'When the output has `signUrl`, give it to the user: it opens the plan in the Lagoon app to review and sign. ' +
-      'Always ask the user to confirm the split before calling.',
+      'If you do not know the wallet address, call it without `account` rather than asking for it: the output ' +
+      'has no plan (issue ACCOUNT_REQUIRED) but its `signUrl` opens the request in the app, which checks it ' +
+      'against the wallet the user connects there. Ask before calling only when the request is ambiguous ' +
+      '(e.g. several vaults match a name); nothing is signed without the user.',
     schema: prepareDepositInputSchema,
     executorFactory: createExecutePrepareDeposit,
   },

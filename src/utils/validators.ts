@@ -511,10 +511,14 @@ const allocationSchema = z.discriminatedUnion('kind', [
 
 export const prepareDepositInputSchema = z.object({
   specVersion: z.literal('1').optional(),
-  account: z.object({
-    address: ethereumAddressSchema,
-    type: z.enum(['eoa', 'safe', 'smartAccount']).optional(),
-  }),
+  // Omitted when the user's address is unknown: no plan, but the sign link
+  // still opens the request in the app, which uses the connected wallet
+  account: z
+    .object({
+      address: ethereumAddressSchema,
+      type: z.enum(['eoa', 'safe', 'smartAccount']).optional(),
+    })
+    .optional(),
   // Each vault is funded from the wallet on its own chain (no bridging).
   // chainId, when set, restricts the plan to that chain.
   source: z.object({
@@ -569,4 +573,8 @@ export const listDepositVaultsInputSchema = z.object({
 
 export type ListDepositVaultsInput = z.infer<typeof listDepositVaultsInputSchema>;
 export type PrepareDepositInput = z.infer<typeof prepareDepositInputSchema>;
+/** A request with a known account: what plans are built from */
+export type PlannedDepositInput = PrepareDepositInput & {
+  account: NonNullable<PrepareDepositInput['account']>;
+};
 export type DepositStatusInput = z.infer<typeof depositStatusInputSchema>;

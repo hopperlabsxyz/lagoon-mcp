@@ -20,6 +20,7 @@ export interface Amount {
 
 export type IssueCode =
   | 'INVALID_INPUT'
+  | 'ACCOUNT_REQUIRED'
   | 'DUPLICATE_VAULT'
   | 'BPS_SUM_INVALID'
   | 'AMOUNT_TOO_SMALL'

@@ -8,7 +8,7 @@ import { erc20Abi, SYNC_MODE, vaultAbi } from './abi.js';
 import { toAmount, type ResolvedAmounts } from './amounts.js';
 import { PLAN_TTL_MS, SUPPORTED_VAULT_VERSION, type DepositChainConfig } from './config.js';
 import type { Check, Issue, Plan, PlanExports, ResolvedAllocation, Step } from './types.js';
-import type { PrepareDepositInput } from '../utils/validators.js';
+import type { PlannedDepositInput } from '../utils/validators.js';
 
 /** What was read on chain for one target vault, at the plan's block */
 export interface VaultReading {
@@ -81,7 +81,7 @@ export function contentHashOf(value: unknown): `0x${string}` {
 }
 
 export function buildPlan(
-  input: PrepareDepositInput,
+  input: PlannedDepositInput,
   chain: DepositChainConfig,
   reading: ChainReading,
   resolved: ResolvedAmounts,
@@ -489,7 +489,7 @@ export function buildPlan(
 
 /** Wallet payloads for a (possibly multi-chain) plan: one batch per chain */
 export function buildExports(
-  input: PrepareDepositInput,
+  input: PlannedDepositInput,
   plan: Pick<Plan, 'planId' | 'createdAt' | 'summary' | 'steps'>
 ): PlanExports | undefined {
   const wanted = new Set(input.options?.exports ?? []);

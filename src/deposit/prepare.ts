@@ -23,7 +23,7 @@ import {
   type DepositChainConfig,
 } from './config.js';
 import type { Check, Issue, Plan, PlanSimulation, PrepareDepositOutput, Step } from './types.js';
-import type { PrepareDepositInput } from '../utils/validators.js';
+import type { PlannedDepositInput, PrepareDepositInput } from '../utils/validators.js';
 
 /** Time-ordered unique id (UUIDv7, RFC 9562) */
 export function uuidv7(now = Date.now()): string {
@@ -39,7 +39,7 @@ export function uuidv7(now = Date.now()): string {
 /** Input rules that need no chain state (spec §4) */
 export function validateRequest(input: PrepareDepositInput): Issue[] {
   const issues: Issue[] = [];
-  if (input.account.type === 'smartAccount') {
+  if (input.account?.type === 'smartAccount') {
     issues.push({
       code: 'UNSUPPORTED_ACCOUNT_TYPE',
       severity: 'error',
@@ -81,11 +81,11 @@ export function groupByChain(input: PrepareDepositInput): Map<number, number[]> 
 
 /** The part of the request that concerns one chain */
 export function chainRequest(
-  input: PrepareDepositInput,
+  input: PlannedDepositInput,
   chainId: number,
   indexes: number[],
   singleChain: boolean
-): PrepareDepositInput {
+): PlannedDepositInput {
   const perChain = input.totals?.find((t) => t.chainId === chainId);
   const total = perChain
     ? perChain.kind === 'amount'
@@ -122,7 +122,7 @@ const remap = (issues: Issue[], indexes: number[]): Issue[] =>
   );
 
 async function prepareChain(
-  input: PrepareDepositInput,
+  input: PlannedDepositInput,
   chainId: number,
   indexes: number[],
   singleChain: boolean,
@@ -208,7 +208,7 @@ async function prepareChain(
 /** Issue for the first failing call of a chain's simulation */
 function simulationIssue(
   part: Extract<ChainResult, { ok: true }>,
-  input: PrepareDepositInput
+  input: PlannedDepositInput
 ): Issue {
   const failed = part.simulation.calls.find((c) => !c.success);
   const step = part.plan.steps.find((s) => s.id === failed?.stepId);
@@ -309,13 +309,28 @@ export function mergePlans(
 export async function prepareDeposit(input: PrepareDepositInput): Promise<PrepareDepositOutput> {
   const inputIssues = validateRequest(input);
   if (inputIssues.length > 0) return { ok: false, issues: inputIssues, checks: [] };
+  if (!input.account) {
+    return {
+      ok: false,
+      issues: [
+        {
+          code: 'ACCOUNT_REQUIRED',
+          severity: 'error',
+          message:
+            'No wallet address given: the plan is checked against the wallet the user connects in the app (signUrl), or call again with account.address',
+        },
+      ],
+      checks: [],
+    };
+  }
+  const planned: PlannedDepositInput = { ...input, account: input.account };
 
   const now = new Date();
   const context = { now, planId: uuidv7(now.getTime()) };
-  const groups = groupByChain(input);
+  const groups = groupByChain(planned);
   const results = await Promise.all(
     [...groups].map(([chainId, indexes]) =>
-      prepareChain(input, chainId, indexes, groups.size === 1, context)
+      prepareChain(planned, chainId, indexes, groups.size === 1, context)
     )
   );
 
@@ -328,7 +343,7 @@ export async function prepareDeposit(input: PrepareDepositInput): Promise<Prepar
       ok: false,
       issues: [
         ...failed.flatMap((r) => r.issues),
-        ...simulationFailures.map((p) => simulationIssue(p, input)),
+        ...simulationFailures.map((p) => simulationIssue(p, planned)),
       ],
       checks: [
         ...failed.flatMap((r) => r.checks),
@@ -338,6 +353,6 @@ export async function prepareDeposit(input: PrepareDepositInput): Promise<Prepar
   }
 
   const plan = mergePlans(parts, context);
-  const exports = buildExports(input, plan);
+  const exports = buildExports(planned, plan);
   return { ok: true, plan, ...(exports ? { exports } : {}) };
 }

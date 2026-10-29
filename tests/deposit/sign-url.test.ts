@@ -26,3 +26,12 @@ describe('signUrlFor', () => {
     expect(signUrlFor(intent, {})).toBeUndefined();
   });
 });
+
+describe('prepareDeposit without an account', () => {
+  it('returns ACCOUNT_REQUIRED without reading the chain', async () => {
+    const { prepareDeposit } = await import('../../src/deposit/prepare');
+    const result = await prepareDeposit({ ...intent, account: undefined } as never);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.issues.map((i) => i.code)).toEqual(['ACCOUNT_REQUIRED']);
+  });
+});
