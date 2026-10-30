@@ -36,12 +36,16 @@ describe('selectDepositVaults', () => {
       asset: { address: ARC_USDC },
     }),
     vault({ name: 'Unsupported chain', chain: { id: '56' } }),
+    vault({ name: 'Ancient', state: { version: 'v0.2.0', totalAssetsUsd: 1 } }),
+    vault({ name: 'Future', state: { version: 'v0.7.0', totalAssetsUsd: 9e9 } }),
   ];
 
-  it('keeps v0.6.0 Circle USDC vaults on supported chains, listed first then by TVL', () => {
+  it('keeps Circle USDC vaults of every supported version, listed first then by TVL', () => {
     expect(selectDepositVaults(items, {}).map((v) => v.name)).toEqual([
+      'Old Base',
       'Big Base',
       'Small Base',
+      'Ancient',
       'TestUSDC',
     ]);
   });

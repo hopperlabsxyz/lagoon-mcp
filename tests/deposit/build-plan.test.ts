@@ -170,6 +170,52 @@ describe('buildPlan — worked example (spec §9)', () => {
   });
 });
 
+describe('buildPlan — every vault version', () => {
+  // What older vaults return: no syncMode, maxCap or entry fee to read
+  const v05 = vault(V1, {
+    version: 'v0.5.0',
+    navValid: true,
+    syncMode: undefined,
+    maxCap: undefined,
+    entryRateBps: undefined,
+  });
+  const v02 = vault(V2, {
+    version: undefined,
+    navValid: undefined,
+    syncMode: undefined,
+    maxCap: undefined,
+    entryRateBps: undefined,
+  });
+
+  it('deposits sync into v0.5 and requests into v0.1 to v0.4, with no cap', () => {
+    const result = plan(twentyThirtyFifty, [v05, v02, vault(V3)]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.steps.map((s) => s.kind)).toEqual([
+      'erc20.approve',
+      'lagoon.syncDeposit',
+      'erc20.approve',
+      'lagoon.requestDeposit',
+      'erc20.approve',
+      'lagoon.requestDeposit',
+    ]);
+    expect(result.plan.allocations.map((a) => a.entryRateBps)).toEqual([0, 0, 0]);
+  });
+
+  it('refuses a version not supported yet', () => {
+    const result = plan(twentyThirtyFifty, [
+      vault(V1, { version: 'v0.7.0' }),
+      vault(V2),
+      vault(V3),
+    ]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.find((i) => i.code === 'UNSUPPORTED_VAULT_VERSION')?.message).toContain(
+      'v0.7.0; deposits support Lagoon vaults v0.1 to v0.6'
+    );
+  });
+});
+
 describe('buildPlan — failures (all reported together)', () => {
   it('reports capacity, access and balance problems at once, with hints', () => {
     const result = plan(
@@ -217,11 +263,18 @@ describe('request rules and helpers', () => {
     expect(issues.map((i) => i.code)).toEqual(['DUPLICATE_VAULT', 'CROSS_CHAIN_NOT_SUPPORTED']);
   });
 
-  it('picks sync only when allowed and the NAV is valid', () => {
-    expect(depositModeOf({ syncMode: 0, navValid: true })).toBe('sync');
-    expect(depositModeOf({ syncMode: 0, navValid: false })).toBe('async');
-    expect(depositModeOf({ syncMode: 3, navValid: true })).toBe('async');
-    expect(depositModeOf({ syncMode: 1, navValid: true }, 'async')).toBe('async');
+  it('picks sync only when the version allows it and the NAV is valid', () => {
+    const v6 = { version: 'v0.6.0' };
+    expect(depositModeOf({ ...v6, syncMode: 0, navValid: true })).toBe('sync');
+    expect(depositModeOf({ ...v6, syncMode: 0, navValid: false })).toBe('async');
+    expect(depositModeOf({ ...v6, syncMode: 3, navValid: true })).toBe('async');
+    expect(depositModeOf({ ...v6, syncMode: 1, navValid: true }, 'async')).toBe('async');
+    // v0.5 has no syncMode: sync while the NAV is valid
+    expect(depositModeOf({ version: 'v0.5.0', navValid: true })).toBe('sync');
+    expect(depositModeOf({ version: 'v0.5.0', navValid: false })).toBe('async');
+    // v0.1 to v0.4 only take requests (v0.1 and v0.2 have no version())
+    expect(depositModeOf({ version: 'v0.4.0', navValid: true })).toBe('async');
+    expect(depositModeOf({ version: undefined, navValid: true })).toBe('async');
   });
 
   it('reads a request status from pending and claimable amounts', () => {

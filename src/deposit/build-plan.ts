@@ -6,7 +6,13 @@
 import { encodeFunctionData, getAddress, keccak256, toHex, zeroAddress, type Address } from 'viem';
 import { erc20Abi, SYNC_MODE, vaultAbi } from './abi.js';
 import { toAmount, type ResolvedAmounts } from './amounts.js';
-import { PLAN_TTL_MS, SUPPORTED_VAULT_VERSION, type DepositChainConfig } from './config.js';
+import {
+  PLAN_TTL_MS,
+  SUPPORTED_VERSIONS,
+  vaultFamily,
+  type DepositChainConfig,
+  type VaultFamily,
+} from './config.js';
 import type { Check, Issue, Plan, PlanExports, ResolvedAllocation, Step } from './types.js';
 import type { PlannedDepositInput } from '../utils/validators.js';
 
@@ -56,12 +62,20 @@ const SYMBOL = 'USDC';
  */
 export const isUnlimited = (allowance: bigint): boolean => allowance >= 2n ** 128n;
 
-/** Whether a vault takes a deposit synchronously (spec §3, v0.6.0) */
+/**
+ * Whether a vault takes a deposit synchronously (spec §3): on v0.6 when its
+ * syncMode allows it, on v0.5 always; both only while the NAV is valid.
+ * Older versions only take requests.
+ */
 export function depositModeOf(
-  vault: Pick<VaultReading, 'syncMode' | 'navValid'>,
+  vault: Pick<VaultReading, 'syncMode' | 'navValid' | 'version'>,
   requested: 'auto' | 'async' = 'auto'
 ): 'sync' | 'async' {
-  const syncAllowed = vault.syncMode === SYNC_MODE.Both || vault.syncMode === SYNC_MODE.SyncDeposit;
+  const family: VaultFamily | undefined = vaultFamily(vault.version);
+  const syncAllowed =
+    family === 'v0.6'
+      ? vault.syncMode === SYNC_MODE.Both || vault.syncMode === SYNC_MODE.SyncDeposit
+      : family === 'v0.5';
   return requested === 'auto' && syncAllowed && vault.navValid === true ? 'sync' : 'async';
 }
 
@@ -121,18 +135,18 @@ export function buildPlan(
       return;
     }
 
-    const versionOk = vault.version === SUPPORTED_VAULT_VERSION;
+    const versionOk = vaultFamily(vault.version) !== undefined;
     checks.push({
       code: 'VAULT_VERSION_SUPPORTED',
       target,
       passed: versionOk,
-      observed: { version: vault.version ?? 'unknown' },
+      observed: { version: vault.version ?? 'none (v0.1 or v0.2)', supported: SUPPORTED_VERSIONS },
       source: 'onchain',
     });
     if (!versionOk) {
       fail(
         'UNSUPPORTED_VAULT_VERSION',
-        `${label} runs ${vault.version ?? 'an unknown version'}; only ${SUPPORTED_VAULT_VERSION} is supported`
+        `${label} runs ${vault.version}; deposits support Lagoon vaults ${SUPPORTED_VERSIONS}`
       );
     }
 

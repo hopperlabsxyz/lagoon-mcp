@@ -8,7 +8,13 @@
 
 import { getAddress } from 'viem';
 import { resolveAmounts, parseDecimal, toAmount } from './amounts.js';
-import { buildExports, buildPlan, contentHashOf, type DraftPlan } from './build-plan.js';
+import {
+  buildExports,
+  buildPlan,
+  contentHashOf,
+  depositModeOf,
+  type DraftPlan,
+} from './build-plan.js';
 import {
   clientFor,
   issueCodeForRevert,
@@ -20,6 +26,7 @@ import {
   DEFAULT_GAS_RESERVE,
   DEPOSIT_CHAINS,
   MIN_ALLOCATION,
+  vaultFamily,
   type DepositChainConfig,
 } from './config.js';
 import type { Check, Issue, Plan, PlanSimulation, PrepareDepositOutput, Step } from './types.js';
@@ -165,11 +172,15 @@ async function prepareChain(
     const previews = await readPreviews(
       client,
       reading.blockNumber,
-      reading.vaults.map((v, i) =>
-        v.isLagoon && v.navValid && (resolved.amounts[i] ?? 0n) > 0n
-          ? { vault: v.address, assets: resolved.amounts[i] }
-          : undefined
-      )
+      reading.vaults.map((v, i) => {
+        const family = vaultFamily(v.version);
+        return v.isLagoon &&
+          family !== undefined &&
+          depositModeOf(v, request.options?.depositMode) === 'sync' &&
+          (resolved.amounts[i] ?? 0n) > 0n
+          ? { vault: v.address, assets: resolved.amounts[i], family }
+          : undefined;
+      })
     );
     reading.vaults.forEach((v, i) => (v.previewShares = previews[i]));
 

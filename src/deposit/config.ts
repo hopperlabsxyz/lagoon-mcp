@@ -151,7 +151,29 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
   },
 };
 
-export const SUPPORTED_VAULT_VERSION = 'v0.6.0';
+/**
+ * How a vault takes deposits, by version (checked against the contracts in
+ * lagoon-v0-internal and the per-version ABIs of @lagoon-protocol/v0-core):
+ * - v0.6: sync deposit when `syncMode` allows it and the NAV is valid,
+ *   `previewSyncDeposit` (entry fee included), `isAllowed`, `maxCap`.
+ * - v0.5: sync deposit while the NAV is valid, `convertToShares` (no entry
+ *   fee), `isWhitelisted`, no cap.
+ * - legacy (v0.1 to v0.4): deposit requests only, `isWhitelisted`, no cap.
+ *   v0.1 and v0.2 have no `version()`: a Lagoon vault without one is legacy.
+ * Every version takes `requestDeposit(assets, controller, owner)`.
+ */
+export type VaultFamily = 'v0.6' | 'v0.5' | 'legacy';
+
+export const SUPPORTED_VERSIONS = 'v0.1 to v0.6';
+
+/** The family of a vault version; undefined for a version not supported yet */
+export function vaultFamily(version: string | undefined): VaultFamily | undefined {
+  if (version === undefined) return 'legacy';
+  if (/^v0\.6\./.test(version)) return 'v0.6';
+  if (/^v0\.5\./.test(version)) return 'v0.5';
+  if (/^v0\.[1-4]\./.test(version)) return 'legacy';
+  return undefined;
+}
 
 /** A plan expires after this, or earlier when a sync deposit's NAV expires */
 export const PLAN_TTL_MS = 30 * 60 * 1000;

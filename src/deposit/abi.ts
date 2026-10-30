@@ -1,7 +1,8 @@
 /**
- * Minimal ABIs for deposit plans (Lagoon vault v0.6.0, ERC-20, factory).
- * Taken from the v0.6.0 vault ABI in @lagoon-protocol/v0-core (sdk-v0); the
- * pinned v0-core 0.9.0 predates v0.6.0.
+ * Minimal ABIs for deposit plans (Lagoon vaults v0.1 to v0.6, ERC-20,
+ * factory). Taken from the per-version vault ABIs in @lagoon-protocol/v0-core
+ * (sdk-v0); the pinned v0-core 0.9.0 predates v0.6.0. Functions of one
+ * version only are marked; reading one on another version just fails.
  */
 
 import { parseAbi } from 'viem';
@@ -21,13 +22,22 @@ export const vaultAbi = parseAbi([
   'function asset() view returns (address)',
   'function decimals() view returns (uint8)',
   'function paused() view returns (bool)',
+  // v0.6 only
   'function isAllowed(address account) view returns (bool)',
+  // v0.1 to v0.5
+  'function isWhitelisted(address account) view returns (bool)',
+  // v0.6 only
   'function maxCap() view returns (uint256)',
   'function totalAssets() view returns (uint256)',
+  // v0.6 only
   'function syncMode() view returns (uint8)',
+  // v0.5 and v0.6
   'function isTotalAssetsValid() view returns (bool)',
+  // The v0.6 shape; older versions have 2 rates, so the read fails (no entry fee)
   'function feeRates() view returns (Rates)',
+  // v0.6 only; v0.5 mints convertToShares(assets)
   'function previewSyncDeposit(uint256 assets) view returns (uint256)',
+  'function convertToShares(uint256 assets) view returns (uint256)',
   'function balanceOf(address account) view returns (uint256)',
   'function pendingDepositRequest(uint256 requestId, address controller) view returns (uint256)',
   'function claimableDepositRequest(uint256 requestId, address controller) view returns (uint256)',
@@ -43,6 +53,9 @@ export const vaultAbi = parseAbi([
   'error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)',
   'error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)',
   'error MaxCapReached()',
+  // v0.1 to v0.5
+  'error NotWhitelisted()',
+  'error OnlyAsyncDepositAllowed()',
   'error NotOpen(uint8 currentState)',
   'error OnlyOneRequestAllowed()',
   'error SyncOperationNotAllowed()',

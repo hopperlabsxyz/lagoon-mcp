@@ -17,7 +17,7 @@ import {
   type PublicClient,
 } from 'viem';
 import { erc20Abi, factoryAbi, vaultAbi } from './abi.js';
-import { rpcUrlFor, type DepositChainConfig } from './config.js';
+import { rpcUrlFor, type DepositChainConfig, type VaultFamily } from './config.js';
 import type { ChainReading, VaultReading } from './build-plan.js';
 import type { IssueCode, PlanSimulation } from './types.js';
 
@@ -60,8 +60,9 @@ export async function readChainState(
       { address: vault, abi: vaultAbi, functionName: 'feeRates' },
       { address: vault, abi: vaultAbi, functionName: 'pendingDepositRequest', args: [0n, account] },
       { address: chain.usdc, abi: erc20Abi, functionName: 'allowance', args: [account, vault] },
+      { address: vault, abi: vaultAbi, functionName: 'isWhitelisted', args: [account] },
     ] as const;
-  const FIELDS = 13;
+  const FIELDS = 14;
 
   const [balance, results, instances] = await Promise.all([
     client.readContract({
@@ -108,7 +109,8 @@ export async function readChainState(
       version: value<string>(at(1)),
       asset: value<Address>(at(2)),
       paused: value<boolean>(at(4)),
-      isAllowed: value<boolean>(at(5)),
+      // isAllowed on v0.6, isWhitelisted before: the other one fails
+      isAllowed: value<boolean>(at(5)) ?? value<boolean>(at(13)),
       maxCap: value<bigint>(at(6)),
       totalAssets: value<bigint>(at(7)),
       syncMode: value<number>(at(8)),
@@ -128,11 +130,14 @@ export async function readChainState(
   };
 }
 
-/** previewSyncDeposit for the sync allocations, at the plan's block */
+/**
+ * The shares each sync deposit mints, at the plan's block: previewSyncDeposit
+ * on v0.6 (entry fee included), convertToShares on v0.5 (what syncDeposit uses)
+ */
 export async function readPreviews(
   client: PublicClient,
   blockNumber: bigint,
-  requests: Array<{ vault: Address; assets: bigint } | undefined>
+  requests: Array<{ vault: Address; assets: bigint; family: VaultFamily } | undefined>
 ): Promise<Array<bigint | undefined>> {
   const wanted = requests.flatMap((r, i) => (r ? [{ ...r, i }] : []));
   if (wanted.length === 0) return requests.map(() => undefined);
@@ -142,7 +147,8 @@ export async function readPreviews(
     contracts: wanted.map((r) => ({
       address: r.vault,
       abi: vaultAbi,
-      functionName: 'previewSyncDeposit' as const,
+      functionName:
+        r.family === 'v0.6' ? ('previewSyncDeposit' as const) : ('convertToShares' as const),
       args: [r.assets] as const,
     })),
   });
@@ -158,6 +164,7 @@ const REVERT_TO_ISSUE: Record<string, IssueCode> = {
   Closed: 'VAULT_NOT_OPEN',
   EnforcedPause: 'VAULT_PAUSED',
   AddressNotAllowed: 'ACCESS_DENIED',
+  NotWhitelisted: 'ACCESS_DENIED',
   MaxCapReached: 'MAX_CAP_REACHED',
   OnlyOneRequestAllowed: 'PENDING_REQUEST_EXISTS',
   ERC20InsufficientBalance: 'INSUFFICIENT_BALANCE',

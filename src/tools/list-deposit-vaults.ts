@@ -7,7 +7,7 @@
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { DEPOSIT_CHAINS, SUPPORTED_VAULT_VERSION } from '../deposit/config.js';
+import { DEPOSIT_CHAINS, vaultFamily } from '../deposit/config.js';
 import type { ListDepositVaultsInput } from '../utils/validators.js';
 import { ServiceContainer } from '../core/container.js';
 
@@ -62,7 +62,7 @@ export function selectDepositVaults(
       const chain = DEPOSIT_CHAINS[Number(v.chain.id)];
       return (
         chain !== undefined &&
-        v.state.version === SUPPORTED_VAULT_VERSION &&
+        vaultFamily(v.state.version ?? undefined) !== undefined &&
         v.asset.address.toLowerCase() === chain.usdc.toLowerCase()
       );
     })
