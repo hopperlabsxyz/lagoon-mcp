@@ -31,9 +31,11 @@ export interface ResolvedAmounts {
 }
 
 /**
- * Turns the allocations into exact amounts (spec §6):
- * fixed amounts first, then each bps share of the total rounded down, the
- * dust going to the last allocation (or the largest with remainder: 'largest').
+ * Turns the allocations into exact amounts (spec §6): fixed amounts as given,
+ * each bps share of the total rounded down, and when the allocations cover
+ * exactly the total, the rounding dust goes to the last bps allocation (or
+ * the largest with remainder: 'largest'). Fixed amounts plus shares may not
+ * exceed the total.
  */
 export function resolveAmounts(
   input: PrepareDepositInput,
@@ -76,8 +78,22 @@ export function resolveAmounts(
     fixedSum += value;
   }
 
+  const overTotal = (): ResolvedAmounts => ({
+    total: total ?? 0n,
+    amounts,
+    issues: [
+      ...issues,
+      {
+        code: 'BPS_SUM_INVALID',
+        severity: 'error',
+        message: 'The fixed amounts and percentages add up to more than the total',
+      },
+    ],
+  });
+
   const bpsIndexes = input.allocations.flatMap((a, i) => (a.kind === 'bps' ? [i] : []));
   if (bpsIndexes.length === 0) {
+    if (total !== null && fixedSum > total) return overTotal();
     return { total: total ?? fixedSum, amounts, issues };
   }
 
@@ -101,27 +117,20 @@ export function resolveAmounts(
     });
     return { total, amounts, issues };
   }
-  if (fixedSum > total) {
-    issues.push({
-      code: 'BPS_SUM_INVALID',
-      severity: 'error',
-      message: 'Fixed amounts are larger than the total',
-    });
-    return { total, amounts, issues };
-  }
-
-  // Percentages apply to what the fixed amounts leave
-  const base = total - fixedSum;
+  // Each percentage is a share of the total (spec §4), not of what the fixed
+  // amounts leave
   let assigned = 0n;
   for (const i of bpsIndexes) {
     const allocation = input.allocations[i];
     if (allocation.kind !== 'bps') continue;
-    amounts[i] = (base * BigInt(allocation.value)) / 10_000n;
+    amounts[i] = (total * BigInt(allocation.value)) / 10_000n;
     assigned += amounts[i];
   }
-  // Rounding dust: only when the shares cover 100% of the base
-  if (bpsSum === 10_000) {
-    const dust = base - assigned;
+  // Exact shares (no rounding) must fit in the total with the fixed amounts
+  if (fixedSum * 10_000n + total * BigInt(bpsSum) > total * 10_000n) return overTotal();
+  // Rounding dust: only when the allocations cover exactly the total
+  if (fixedSum * 10_000n + total * BigInt(bpsSum) === total * 10_000n) {
+    const dust = total - fixedSum - assigned;
     const target =
       input.options?.remainder === 'largest'
         ? bpsIndexes.reduce((best, i) => (amounts[i] > amounts[best] ? i : best), bpsIndexes[0])

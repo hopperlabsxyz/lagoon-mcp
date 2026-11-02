@@ -41,7 +41,9 @@ export type IssueCode =
   | 'ASYNC_DEPOSIT'
   | 'PENDING_DEPOSIT_EXISTS'
   | 'LOW_GAS_RESERVE'
-  | 'EXISTING_ALLOWANCE_USED';
+  | 'EXISTING_ALLOWANCE_USED'
+  | 'SYNC_ONLY_VAULT'
+  | 'UNLISTED_VAULT';
 
 export interface Issue {
   code: IssueCode;
@@ -55,6 +57,7 @@ export type CheckCode =
   | 'VAULT_FROM_LAGOON_FACTORY'
   | 'VAULT_VERSION_SUPPORTED'
   | 'VAULT_ASSET_IS_USDC'
+  | 'VAULT_OPEN'
   | 'VAULT_NOT_PAUSED'
   | 'ACCOUNT_ALLOWED'
   | 'UNDER_MAX_CAP'
@@ -113,6 +116,9 @@ export interface StateAt {
 export interface PlanSimulation {
   chainId: number;
   blockNumber: string;
+  /** eth_call where the node lacks eth_simulateV1: each call then gets the
+   * earlier approvals but not their other effects, and no gas figure */
+  method: 'eth_simulateV1' | 'eth_call';
   success: boolean;
   calls: Array<{ stepId: string; success: boolean; gasUsed: string; error?: string }>;
 }

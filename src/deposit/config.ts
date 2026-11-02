@@ -123,8 +123,11 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
     usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
     usdcDecimals: 6,
     usdcIsGas: false,
+    // Production factories of @lagoon-protocol/v0-core (addresses.ts). Its
+    // dev factory (0x29f3…) is left out: its vaults are not indexed by Lagoon,
+    // and on chain it recognizes no open USDC vault the others don't.
     factories: [
-      '0x29f3dba953C57814A5579e08462724B9C760333e',
+      '0x58a7729125acA9e5E9C687018E66bfDd5b2D4490',
       '0x9De724B0efEe0FbA07FE21a16B9Bf9bBb5204Fb4',
     ],
     legacyVaults: [

@@ -43,6 +43,7 @@ function vault(address: string, asset: `0x${string}`): VaultReading {
     entryRateBps: 0,
     allowance: 0n,
     pendingDeposit: 0n,
+    state: 0,
   };
 }
 

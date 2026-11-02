@@ -38,6 +38,7 @@ function vault(address: string, overrides: Partial<VaultReading> = {}): VaultRea
     entryRateBps: 0,
     allowance: 0n,
     pendingDeposit: 0n,
+    state: 0,
     ...overrides,
   };
 }
@@ -216,6 +217,100 @@ describe('buildPlan — every vault version', () => {
   });
 });
 
+describe('buildPlan — review fixes (seen live)', () => {
+  it('refuses a vault that is closing or closed (AP3, CoinShares, Flint USD)', () => {
+    for (const state of [1, 2]) {
+      const result = plan(twentyThirtyFifty, [vault(V1, { state }), vault(V2), vault(V3)]);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues.map((i) => i.code)).toEqual(['VAULT_NOT_OPEN']);
+      expect(result.checks.find((c) => c.code === 'VAULT_OPEN' && !c.passed)?.observed.state).toBe(
+        state === 1 ? 'Closing' : 'Closed'
+      );
+    }
+  });
+
+  it('deposits sync into a v0.5 vault with a valid NAV even when async is asked, with a warning', () => {
+    const v05 = vault(V1, {
+      version: 'v0.5.0',
+      navValid: true,
+      syncMode: undefined,
+      maxCap: undefined,
+    });
+    const input = { ...twentyThirtyFifty, options: { depositMode: 'async' as const } };
+    const result = plan(input, [v05, vault(V2), vault(V3)]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.plan.steps[1].kind).toBe('lagoon.syncDeposit');
+    expect(result.plan.warnings.map((w) => w.code)).toContain('SYNC_ONLY_VAULT');
+  });
+
+  it('states what must still hold when each deposit is sent', () => {
+    const result = plan(twentyThirtyFifty, [
+      vault(V1, { navValid: true, navExpiration: 1_800_000_000n }),
+      vault(V2, { version: 'v0.5.0', maxCap: undefined }),
+      vault(V3),
+    ]);
+    if (!result.ok) throw new Error('expected a plan');
+    const kinds = (id: string) =>
+      result.plan.steps.find((s) => s.id === id)?.preconditions.map((p) => p.kind);
+    expect(kinds('s2')).toEqual(['minAllowance', 'vaultState', 'navValid', 'capacity']);
+    expect(kinds('s4')).toEqual(['minAllowance', 'vaultState']);
+  });
+
+  it('ends the plan when the NAV of a sync deposit expires, if sooner', () => {
+    const soon = BigInt(Date.parse('2026-10-28T10:05:00Z') / 1000);
+    const result = plan(twentyThirtyFifty, [
+      vault(V1, { navValid: true, navExpiration: soon }),
+      vault(V2),
+      vault(V3),
+    ]);
+    if (!result.ok) throw new Error('expected a plan');
+    expect(result.plan.validUntil).toBe('2026-10-28T10:05:00.000Z');
+    const later = plan(twentyThirtyFifty, [
+      vault(V1, { navValid: true, navExpiration: soon * 2n }),
+      vault(V2),
+      vault(V3),
+    ]);
+    if (!later.ok) throw new Error('expected a plan');
+    expect(later.plan.validUntil).toBe('2026-10-28T10:30:00.000Z');
+  });
+});
+
+describe('amounts — shares of the total (review findings 2 and 3)', () => {
+  const vaultRef = (n: number) => ({ chainId: 5042, address: `0x${String(n).repeat(40)}` });
+  it('takes a percentage of the total, not of what fixed amounts leave', () => {
+    const input = request(
+      [
+        { vault: vaultRef(1), kind: 'amount', value: '200' },
+        { vault: vaultRef(2), kind: 'bps', value: 5000 },
+      ],
+      { kind: 'amount', value: '1000' }
+    );
+    expect(resolveAmounts(input, usdc(10_000), 6, 0n).amounts).toEqual([usdc(200), usdc(500)]);
+  });
+
+  it('refuses fixed amounts and shares above the total', () => {
+    const only = request([{ vault: vaultRef(1), kind: 'amount', value: '200' }], {
+      kind: 'amount',
+      value: '100',
+    });
+    expect(resolveAmounts(only, usdc(10_000), 6, 0n).issues.map((i) => i.code)).toEqual([
+      'BPS_SUM_INVALID',
+    ]);
+    const mixed = request(
+      [
+        { vault: vaultRef(1), kind: 'amount', value: '600' },
+        { vault: vaultRef(2), kind: 'bps', value: 5000 },
+      ],
+      { kind: 'amount', value: '1000' }
+    );
+    expect(resolveAmounts(mixed, usdc(10_000), 6, 0n).issues.map((i) => i.code)).toEqual([
+      'BPS_SUM_INVALID',
+    ]);
+  });
+});
+
 describe('buildPlan — failures (all reported together)', () => {
   it('reports capacity, access and balance problems at once, with hints', () => {
     const result = plan(
@@ -231,7 +326,7 @@ describe('buildPlan — failures (all reported together)', () => {
     expect(codes).toContainEqual(['INSUFFICIENT_BALANCE', undefined]);
     expect(
       result.issues.find((i) => i.code === 'MAX_CAP_REACHED')?.details?.remainingCapacity
-    ).toBe('120,000.00');
+    ).toBe('120000');
   });
 
   it('refuses an address the factory did not create', () => {
@@ -261,6 +356,19 @@ describe('request rules and helpers', () => {
       ])
     );
     expect(issues.map((i) => i.code)).toEqual(['DUPLICATE_VAULT', 'CROSS_CHAIN_NOT_SUPPORTED']);
+  });
+
+  it('refuses a single total for allocations on several chains', () => {
+    const issues = validateRequest({
+      source: { kind: 'wallet', asset: 'USDC' },
+      total: { kind: 'amount', value: '100' },
+      allocations: [
+        { vault: { chainId: 1, address: V1 }, kind: 'bps', value: 5000 },
+        { vault: { chainId: 8453, address: V2 }, kind: 'bps', value: 5000 },
+      ],
+    });
+    expect(issues.map((i) => i.code)).toEqual(['INVALID_INPUT']);
+    expect(issues[0].message).toContain('totals');
   });
 
   it('picks sync only when the version allows it and the NAV is valid', () => {

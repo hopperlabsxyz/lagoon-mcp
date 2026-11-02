@@ -56,6 +56,7 @@ export const vaultAbi = parseAbi([
   // v0.1 to v0.5
   'error NotWhitelisted()',
   'error OnlyAsyncDepositAllowed()',
+  'error OnlySyncDepositAllowed()',
   'error NotOpen(uint8 currentState)',
   'error OnlyOneRequestAllowed()',
   'error SyncOperationNotAllowed()',

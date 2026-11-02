@@ -74,6 +74,16 @@ export function validateRequest(input: PrepareDepositInput): Issue[] {
     }
     seen.add(key);
   });
+  // `total` is one chain's amount: on several chains it would be ignored
+  const chains = new Set(input.allocations.map((a) => a.vault.chainId));
+  if (input.total && chains.size > 1) {
+    issues.push({
+      code: 'INVALID_INPUT',
+      severity: 'error',
+      message:
+        'The allocations are on several chains: give each chain its own total in `totals` (`total` is for one chain)',
+    });
+  }
   return issues;
 }
 
@@ -192,13 +202,31 @@ async function prepareChain(
     if (!built.ok)
       return { ok: false, indexes, issues: remap(built.issues, indexes), checks: built.checks };
 
-    const { revertName, ...simulation } = await simulatePlan(
-      client,
-      chain.chainId,
-      reading.blockNumber,
-      account,
-      built.plan.steps
-    );
+    let simulated: Awaited<ReturnType<typeof simulatePlan>>;
+    try {
+      simulated = await simulatePlan(
+        client,
+        chain.chainId,
+        reading.blockNumber,
+        account,
+        built.plan.steps
+      );
+    } catch (error) {
+      // The chain was read; it is the simulation that could not run
+      return {
+        ok: false,
+        indexes,
+        checks: built.plan.checks,
+        issues: [
+          {
+            code: 'SIMULATION_FAILED',
+            severity: 'error',
+            message: `Could not simulate the plan on ${chain.name}: ${error instanceof Error ? error.message.split('\n')[0] : 'unknown error'}`,
+          },
+        ],
+      };
+    }
+    const { revertName, ...simulation } = simulated;
     return { ok: true, chain, indexes, plan: built.plan, simulation, revertName };
   } catch (error) {
     return {
@@ -290,7 +318,7 @@ export function mergePlans(
           `${a.vault.name} ${a.assets.formatted} USDC (${a.mode === 'sync' ? 'immediate' : 'after settlement'})`
       )
       .join(', ');
-    return `on ${part.chain.name}, ${toAmount(raw, part.chain.usdcDecimals, 'USDC').formatted} USDC into ${list}`;
+    return `${toAmount(raw, part.chain.usdcDecimals, 'USDC').formatted} USDC on ${part.chain.name}: ${list}`;
   });
   const vaultCount = allocations.length;
   const summary =
@@ -317,10 +345,38 @@ export function mergePlans(
   };
 }
 
+const VAULT_PROBLEM_CODES: ReadonlySet<Issue['code']> = new Set([
+  'NOT_A_LAGOON_VAULT',
+  'ASSET_MISMATCH',
+  'UNSUPPORTED_VAULT_VERSION',
+  'VAULT_NOT_OPEN',
+]);
+
+/**
+ * A problem with a vault itself, whoever deposits: the request is not worth
+ * opening in the app (no signUrl). A chain deposits do not support is one;
+ * a chain this server has no RPC for is not (the app has its own).
+ */
+export const isVaultProblem = (issue: Issue): boolean =>
+  VAULT_PROBLEM_CODES.has(issue.code) ||
+  (issue.code === 'UNSUPPORTED_CHAIN' && issue.details?.reason === 'notConfigured');
+
+/** Reads vault state when no wallet is given; never a real account */
+const PROBE_ACCOUNT = '0x000000000000000000000000000000000000dEaD';
+
 export async function prepareDeposit(input: PrepareDepositInput): Promise<PrepareDepositOutput> {
   const inputIssues = validateRequest(input);
   if (inputIssues.length > 0) return { ok: false, issues: inputIssues, checks: [] };
   if (!input.account) {
+    // No plan without the wallet, but the vaults themselves are still checked:
+    // read with a probe address, only the vault problems are kept
+    const probe = await prepareDeposit({ ...input, account: { address: PROBE_ACCOUNT } });
+    const vaultIssues = probe.ok
+      ? []
+      : probe.issues.filter(
+          (i) =>
+            isVaultProblem(i) || i.code === 'UNSUPPORTED_CHAIN' || i.code === 'STATE_UNAVAILABLE'
+        );
     return {
       ok: false,
       issues: [
@@ -330,8 +386,9 @@ export async function prepareDeposit(input: PrepareDepositInput): Promise<Prepar
           message:
             'No wallet address given: the plan is checked against the wallet the user connects in the app (signUrl), or call again with account.address',
         },
+        ...vaultIssues,
       ],
-      checks: [],
+      checks: probe.ok ? [] : probe.checks.filter((c) => c.code.startsWith('VAULT_')),
     };
   }
   const planned: PlannedDepositInput = { ...input, account: input.account };

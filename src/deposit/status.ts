@@ -5,10 +5,10 @@
 
 import { getAddress, parseEventLogs, type Address, type Hex, type PublicClient } from 'viem';
 import { toAmount } from './amounts.js';
-import { clientFor } from './chain.js';
+import { areLagoonVaults, clientFor } from './chain.js';
 import { vaultAbi } from './abi.js';
 import { DEPOSIT_CHAINS, type DepositChainConfig } from './config.js';
-import type { DepositStatus, DepositStatusOutput } from './types.js';
+import type { Amount, DepositStatus, DepositStatusOutput } from './types.js';
 import type { DepositStatusInput } from '../utils/validators.js';
 
 type Deposit = DepositStatusOutput['deposits'][number];
@@ -57,28 +57,45 @@ async function readRequest(
   return { name, pending, claimable };
 }
 
-/** Whether the request was canceled after it was made (DepositRequestCanceled) */
-async function wasCanceled(
+/** Log ranges tried when a provider refuses a long one, and how far back */
+const LOG_CHUNK = 2_000n;
+const MAX_LOG_CHUNKS = 100n;
+
+/**
+ * Whether the request was canceled after it was made (DepositRequestCanceled);
+ * undefined when the logs cannot be read (providers cap log ranges: the range
+ * is then read in chunks, up to MAX_LOG_CHUNKS of them).
+ */
+export async function wasCanceled(
   client: PublicClient,
   vault: Address,
   controller: Address,
   requestId: bigint,
   fromBlock: bigint,
   toBlock: bigint
-): Promise<boolean> {
-  try {
-    const logs = await client.getContractEvents({
+): Promise<boolean | undefined> {
+  const read = (from: bigint, to: bigint): Promise<unknown[]> =>
+    client.getContractEvents({
       address: vault,
       abi: vaultAbi,
       eventName: 'DepositRequestCanceled',
       args: { requestId, controller },
-      fromBlock,
-      toBlock,
+      fromBlock: from,
+      toBlock: to,
     });
-    return logs.length > 0;
+  try {
+    return (await read(fromBlock, toBlock)).length > 0;
   } catch {
-    // Providers cap log ranges; without the answer, keep what the vault reports
-    return false;
+    if (toBlock - fromBlock > LOG_CHUNK * MAX_LOG_CHUNKS) return undefined;
+    try {
+      for (let from = fromBlock; from <= toBlock; from += LOG_CHUNK) {
+        const to = from + LOG_CHUNK - 1n < toBlock ? from + LOG_CHUNK - 1n : toBlock;
+        if ((await read(from, to)).length > 0) return true;
+      }
+      return false;
+    } catch {
+      return undefined;
+    }
   }
 }
 
@@ -93,7 +110,7 @@ async function fromTxHash(
   hash: Hex,
   blockNumber: bigint
 ): Promise<Deposit[]> {
-  const amount = (raw: bigint) => toAmount(raw, chain.usdcDecimals, 'USDC');
+  const amount = (raw: bigint): Amount => toAmount(raw, chain.usdcDecimals, 'USDC');
   const zero = amount(0n);
   const without = (status: DepositStatus, address: Address): Deposit => ({
     vault: { chainId: chain.chainId, address, name: 'unknown' },
@@ -108,14 +125,23 @@ async function fromTxHash(
   if (!receipt) return [without('notFound', account)];
   if (receipt.status === 'reverted') return [without('failed', getAddress(receipt.to ?? account))];
 
-  const mine = (owner: Address | undefined) => owner?.toLowerCase() === account.toLowerCase();
+  const mine = (owner: Address | undefined): boolean =>
+    owner?.toLowerCase() === account.toLowerCase();
   const events = parseEventLogs({ abi: vaultAbi, logs: receipt.logs, strict: false }).filter(
     (l) => (l.eventName === 'DepositSync' || l.eventName === 'DepositRequest') && mine(l.args.owner)
   );
-  if (events.length === 0) return [without('notFound', getAddress(receipt.to ?? account))];
+  // Only events a Lagoon vault emitted: any contract can emit one with this shape
+  const lagoon = await areLagoonVaults(
+    client,
+    chain,
+    events.map((e) => getAddress(e.address)),
+    blockNumber
+  );
+  const fromVaults = events.filter((_, i) => lagoon[i]);
+  if (fromVaults.length === 0) return [without('notFound', getAddress(receipt.to ?? account))];
 
   return Promise.all(
-    events.map(async (event): Promise<Deposit> => {
+    fromVaults.map(async (event): Promise<Deposit> => {
       const vault = getAddress(event.address);
       if (event.eventName === 'DepositSync') {
         const name = await client.readContract({
@@ -139,12 +165,26 @@ async function fromTxHash(
       const requestId = event.args.requestId;
       const state = await readRequest(client, vault, account, requestId, blockNumber);
       let status = requestStatus(state.pending, state.claimable);
+      let next = NEXT[status];
       // A canceled request also reads 0 pending / 0 claimable: tell it apart by its event
-      if (
-        status === 'claimed' &&
-        (await wasCanceled(client, vault, account, requestId, receipt.blockNumber, blockNumber))
-      ) {
-        status = 'canceled';
+      if (status === 'claimed') {
+        const canceled = await wasCanceled(
+          client,
+          vault,
+          account,
+          requestId,
+          receipt.blockNumber,
+          blockNumber
+        );
+        if (canceled === true) {
+          status = 'canceled';
+          next = NEXT.canceled;
+        } else if (canceled === undefined) {
+          next = {
+            description:
+              'Settled and claimed, or canceled: the cancel events could not be read to tell which',
+          };
+        }
       }
       return {
         vault: { chainId: chain.chainId, address: vault, name: state.name },
@@ -154,7 +194,7 @@ async function fromTxHash(
         assets: amount(event.args.assets ?? 0n),
         pending: amount(state.pending),
         claimable: amount(state.claimable),
-        next: NEXT[status],
+        next,
       };
     })
   );
@@ -202,7 +242,7 @@ export async function depositStatus(input: DepositStatusInput): Promise<DepositS
         state.pending === 0n && state.claimable === 0n
           ? 'notFound'
           : requestStatus(state.pending, state.claimable);
-      const amount = (raw: bigint) => toAmount(raw, chain.usdcDecimals, 'USDC');
+      const amount = (raw: bigint): Amount => toAmount(raw, chain.usdcDecimals, 'USDC');
       output.deposits.push({
         vault: { chainId, address, name: state.name },
         status,

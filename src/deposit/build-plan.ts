@@ -3,7 +3,15 @@
  * Pure: no network calls, so every rule can be tested with plain objects.
  */
 
-import { encodeFunctionData, getAddress, keccak256, toHex, zeroAddress, type Address } from 'viem';
+import {
+  encodeFunctionData,
+  formatUnits,
+  getAddress,
+  keccak256,
+  toHex,
+  zeroAddress,
+  type Address,
+} from 'viem';
 import { erc20Abi, SYNC_MODE, vaultAbi } from './abi.js';
 import { toAmount, type ResolvedAmounts } from './amounts.js';
 import {
@@ -13,7 +21,7 @@ import {
   type DepositChainConfig,
   type VaultFamily,
 } from './config.js';
-import type { Check, Issue, Plan, PlanExports, ResolvedAllocation, Step } from './types.js';
+import type { Amount, Check, Issue, Plan, PlanExports, ResolvedAllocation, Step } from './types.js';
 import type { PlannedDepositInput } from '../utils/validators.js';
 
 /** What was read on chain for one target vault, at the plan's block */
@@ -34,6 +42,10 @@ export interface VaultReading {
   entryRateBps?: number;
   allowance: bigint;
   pendingDeposit?: bigint;
+  /** Stored state: 0 Open, 1 Closing, 2 Closed (see VAULT_STATE in chain.ts) */
+  state?: number;
+  /** When the NAV expires (unix seconds), on v0.5 and v0.6 */
+  navExpiration?: bigint;
   /** previewSyncDeposit(amount), when the deposit is sync */
   previewShares?: bigint;
 }
@@ -63,19 +75,23 @@ const SYMBOL = 'USDC';
 export const isUnlimited = (allowance: bigint): boolean => allowance >= 2n ** 128n;
 
 /**
- * Whether a vault takes a deposit synchronously (spec §3): on v0.6 when its
- * syncMode allows it, on v0.5 always; both only while the NAV is valid.
- * Older versions only take requests.
+ * Whether a vault takes a deposit synchronously (spec §3):
+ * - v0.6: when its syncMode allows it and the NAV is valid, unless the
+ *   request asks for async;
+ * - v0.5: exactly while the NAV is valid. The contract decides, not the
+ *   request: a valid NAV refuses requests (OnlySyncDepositAllowed), an
+ *   invalid one refuses sync deposits;
+ * - older versions only take requests.
  */
 export function depositModeOf(
   vault: Pick<VaultReading, 'syncMode' | 'navValid' | 'version'>,
   requested: 'auto' | 'async' = 'auto'
 ): 'sync' | 'async' {
   const family: VaultFamily | undefined = vaultFamily(vault.version);
+  if (family === 'v0.5') return vault.navValid === true ? 'sync' : 'async';
   const syncAllowed =
-    family === 'v0.6'
-      ? vault.syncMode === SYNC_MODE.Both || vault.syncMode === SYNC_MODE.SyncDeposit
-      : family === 'v0.5';
+    family === 'v0.6' &&
+    (vault.syncMode === SYNC_MODE.Both || vault.syncMode === SYNC_MODE.SyncDeposit);
   return requested === 'auto' && syncAllowed && vault.navValid === true ? 'sync' : 'async';
 }
 
@@ -102,7 +118,7 @@ export function buildPlan(
   context: { now: Date; planId: string; minAllocation: bigint; gasReserve: bigint }
 ): BuildResult {
   const decimals = chain.usdcDecimals;
-  const amount = (raw: bigint) => toAmount(raw, decimals, SYMBOL);
+  const amount = (raw: bigint): Amount => toAmount(raw, decimals, SYMBOL);
   const account = getAddress(input.account.address);
   const issues: Issue[] = [...resolved.issues];
   const warnings: Issue[] = [];
@@ -113,7 +129,7 @@ export function buildPlan(
     const vault = reading.vaults[i];
     const target = { chainId: chain.chainId, address: getAddress(allocation.vault.address) };
     const label = vault.name ?? target.address;
-    const fail = (code: Issue['code'], message: string, details?: Record<string, string>) =>
+    const fail = (code: Issue['code'], message: string, details?: Record<string, string>): number =>
       issues.push({ code, severity: 'error', message, allocationIndex: i, details });
 
     checks.push({
@@ -159,6 +175,28 @@ export function buildPlan(
       source: 'onchain',
     });
     if (!assetOk) fail('ASSET_MISMATCH', `${label} does not take USDC`);
+
+    // Only an Open vault settles deposits: v0.6 still takes requests while
+    // closing, but they would wait forever
+    const STATES = ['Open', 'Closing', 'Closed'];
+    const stateName =
+      vault.state === undefined ? 'unknown' : (STATES[vault.state] ?? `${vault.state}`);
+    checks.push({
+      code: 'VAULT_OPEN',
+      target,
+      passed: vault.state === 0,
+      observed: { state: stateName },
+      source: 'onchain',
+    });
+    if (vault.state !== 0) {
+      fail(
+        'VAULT_NOT_OPEN',
+        vault.state === undefined
+          ? `Could not read whether ${label} is open`
+          : `${label} is ${stateName.toLowerCase()}: it no longer takes deposits`,
+        { state: stateName }
+      );
+    }
 
     checks.push({
       code: 'VAULT_NOT_PAUSED',
@@ -206,7 +244,8 @@ export function buildPlan(
     });
     if (!underCap && room !== undefined) {
       fail('MAX_CAP_REACHED', `${label} has room for ${amount(room).formatted} USDC only`, {
-        remainingCapacity: amount(room).formatted,
+        // A plain decimal ("120000.5"), usable as an amount in a new request
+        remainingCapacity: formatUnits(room, decimals),
       });
     }
 
@@ -278,7 +317,7 @@ export function buildPlan(
   // ── Steps, vault by vault ───────────────────────────────────────────────
   const steps: Step[] = [];
   const allocations: ResolvedAllocation[] = [];
-  const nextId = () => `s${steps.length + 1}`;
+  const nextId = (): string => `s${steps.length + 1}`;
 
   input.allocations.forEach((allocation, i) => {
     const vault = reading.vaults[i];
@@ -296,6 +335,14 @@ export function buildPlan(
       observed: { syncMode: String(vault.syncMode), navValid: String(vault.navValid), mode },
       source: 'onchain',
     });
+    if (input.options?.depositMode === 'async' && mode === 'sync') {
+      warnings.push({
+        code: 'SYNC_ONLY_VAULT',
+        severity: 'warning',
+        message: `${name} only takes instant deposits while its NAV is valid, so this deposit is instant, not a request`,
+        allocationIndex: i,
+      });
+    }
 
     if (vault.allowance >= assets) {
       warnings.push({
@@ -356,6 +403,22 @@ export function buildPlan(
     }
 
     const dependsOn = steps.at(-1)?.id;
+    // What must still hold when the deposit is sent (spec §5)
+    const vaultPreconditions: Step['preconditions'] = [
+      { kind: 'vaultState', vault: vaultRef, state: 'Open', paused: false },
+      ...(mode === 'sync' && vault.navExpiration !== undefined && vault.navExpiration > 0n
+        ? [
+            {
+              kind: 'navValid',
+              vault: vaultRef,
+              until: new Date(Number(vault.navExpiration) * 1000).toISOString(),
+            },
+          ]
+        : []),
+      ...(vault.maxCap !== undefined
+        ? [{ kind: 'capacity', vault: vaultRef, atLeast: amount(assets) }]
+        : []),
+    ];
     if (mode === 'sync') {
       steps.push({
         id: nextId(),
@@ -386,6 +449,7 @@ export function buildPlan(
             spender: vaultRef.address,
             amount: amount(assets),
           },
+          ...vaultPreconditions,
         ],
         expectedEffects: [
           {
@@ -429,6 +493,7 @@ export function buildPlan(
             spender: vaultRef.address,
             amount: amount(assets),
           },
+          ...vaultPreconditions,
         ],
         expectedEffects: [
           {
@@ -476,12 +541,21 @@ export function buildPlan(
     `Deposit ${amount(needed).formatted} USDC into ${allocations.length} vault${allocations.length > 1 ? 's' : ''} on ${chain.name}: ` +
     `${parts.join(', ')}. ${steps.length} transaction${steps.length > 1 ? 's' : ''} to sign.`;
 
+  // A sync deposit reverts once the NAV expires: the plan ends then at the latest
+  const navEnds = allocations.flatMap((a, i) => {
+    const expiration = reading.vaults[i]?.navExpiration;
+    return a.mode === 'sync' && expiration !== undefined && expiration > 0n
+      ? [Number(expiration) * 1000]
+      : [];
+  });
+  const validUntil = Math.min(context.now.getTime() + PLAN_TTL_MS, ...navEnds);
+
   const plan: DraftPlan = {
     specVersion: '1',
     planId: context.planId,
     contentHash: contentHashOf({ account: accountRef, steps }),
     createdAt: context.now.toISOString(),
-    validUntil: new Date(context.now.getTime() + PLAN_TTL_MS).toISOString(),
+    validUntil: new Date(validUntil).toISOString(),
     account: accountRef,
     stateAt: [
       {
@@ -511,7 +585,7 @@ export function buildExports(
   if (wanted.size === 0) return undefined;
 
   const chainIds = [...new Set(plan.steps.map((s) => s.chainId))];
-  const stepsOn = (chainId: number) => plan.steps.filter((s) => s.chainId === chainId);
+  const stepsOn = (chainId: number): Step[] => plan.steps.filter((s) => s.chainId === chainId);
   const exports: PlanExports = {};
   if (wanted.has('eip5792')) {
     exports.eip5792 = chainIds.map((chainId) => ({
