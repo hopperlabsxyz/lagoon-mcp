@@ -1,5 +1,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { signUrlFor } from '../../src/deposit/config';
+import { CHAIN_MODULE, openVault, prepareWithChain } from '../helpers/deposit-chain';
+
+const VAULT = '0x344247959b8be57cfe5447debbc59a4f913d8058';
 
 const intent = {
   account: { address: '0xb03eda433d5bb1ef76b63087d4042a92c02822bd' },
@@ -7,7 +10,7 @@ const intent = {
   totals: [{ chainId: 5042, kind: 'amount', value: '1' }],
   allocations: [
     {
-      vault: { chainId: 5042, address: '0x344247959b8be57cfe5447debbc59a4f913d8058' },
+      vault: { chainId: 5042, address: VAULT },
       kind: 'bps',
       value: 10000,
     },
@@ -28,47 +31,37 @@ describe('signUrlFor', () => {
 });
 
 describe('prepareDeposit without an account', () => {
-  afterEach(() => vi.doUnmock('../../src/deposit/chain'));
+  afterEach(() => vi.doUnmock(CHAIN_MODULE));
 
   // The chain as read with the probe address: one vault, open or closed
-  const withVaultState = async (state: number) => {
-    vi.resetModules();
-    vi.doMock('../../src/deposit/chain', async (original) => ({
-      ...(await original<typeof import('../../src/deposit/chain')>()),
-      clientFor: () => ({}),
-      readChainState: () =>
-        Promise.resolve({
-          chainId: 5042,
-          blockNumber: 1n,
-          timestamp: 1n,
-          balance: 0n,
-          vaults: [
-            {
-              address: intent.allocations[0].vault.address,
-              isLagoon: true,
-              name: 'TestUSDC',
-              decimals: 18,
-              version: 'v0.6.0',
-              asset: '0x3600000000000000000000000000000000000000',
-              paused: false,
-              isAllowed: true,
-              state,
-              allowance: 0n,
-            },
-          ],
-        }),
-      readPreviews: () => Promise.resolve([]),
-    }));
-    const { prepareDeposit } = await import('../../src/deposit/prepare');
-    return prepareDeposit({ ...intent, account: undefined } as never);
-  };
+  const withVaultState = (state: number) =>
+    prepareWithChain(
+      {
+        readChainState: () =>
+          Promise.resolve({
+            chainId: 5042,
+            blockNumber: 1n,
+            timestamp: 1n,
+            balance: 0n,
+            vaults: [
+              openVault(VAULT, '0x3600000000000000000000000000000000000000', {
+                name: 'TestUSDC',
+                state,
+                syncMode: undefined,
+                navValid: undefined,
+              }),
+            ],
+          }),
+      },
+      { ...intent, account: undefined }
+    );
 
   it('returns ACCOUNT_REQUIRED alone when the vaults can take the deposit', async () => {
     const result = await withVaultState(0);
     expect(!result.ok && result.issues.map((i) => i.code)).toEqual(['ACCOUNT_REQUIRED']);
   });
 
-  it('still reports a vault that cannot take it (seen live: closed vaults)', async () => {
+  it('still reports a closed vault when no wallet is given', async () => {
     const result = await withVaultState(2);
     expect(!result.ok && result.issues.map((i) => i.code)).toEqual([
       'ACCOUNT_REQUIRED',

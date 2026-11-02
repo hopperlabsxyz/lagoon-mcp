@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import type { Address } from 'viem';
 import { DEPOSIT_CHAINS } from '../../src/deposit/config';
+import { CHAIN_MODULE, openVault, prepareWithChain } from '../helpers/deposit-chain';
 
 const ACCOUNT = '0xa11ce00000000000000000000000000000000001' as Address;
 const VAULT = '0x1000000000000000000000000000000000000001' as Address;
@@ -17,38 +18,14 @@ const reading = {
   blockNumber: 1n,
   timestamp: 1n,
   balance: 100_000_000n,
-  vaults: [
-    {
-      address: VAULT,
-      isLagoon: true,
-      name: 'Vault',
-      decimals: 18,
-      version: 'v0.6.0',
-      asset: DEPOSIT_CHAINS[1].usdc,
-      paused: false,
-      isAllowed: true,
-      state: 0,
-      syncMode: 0,
-      navValid: false,
-      allowance: 0n,
-    },
-  ],
+  vaults: [openVault(VAULT, DEPOSIT_CHAINS[1].usdc)],
 };
 
-async function prepareWith(chain: Partial<Record<string, unknown>>, chainId = 1) {
-  vi.resetModules();
-  vi.doMock('../../src/deposit/chain', async (original) => ({
-    ...(await original<typeof import('../../src/deposit/chain')>()),
-    clientFor: () => ({}),
-    readPreviews: () => Promise.resolve([]),
-    ...chain,
-  }));
-  const { prepareDeposit } = await import('../../src/deposit/prepare');
-  return prepareDeposit(input(chainId));
-}
+const prepareWith = (chain: Record<string, unknown>, chainId = 1) =>
+  prepareWithChain(chain, input(chainId));
 
 describe('prepareDeposit error paths', () => {
-  afterEach(() => vi.doUnmock('../../src/deposit/chain'));
+  afterEach(() => vi.doUnmock(CHAIN_MODULE));
 
   it('says the chain could not be read when the reads fail', async () => {
     const out = await prepareWith({

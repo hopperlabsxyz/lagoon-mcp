@@ -217,8 +217,8 @@ describe('buildPlan — every vault version', () => {
   });
 });
 
-describe('buildPlan — review fixes (seen live)', () => {
-  it('refuses a vault that is closing or closed (AP3, CoinShares, Flint USD)', () => {
+describe('buildPlan — vault state, NAV and preconditions', () => {
+  it('refuses a vault that is closing or closed', () => {
     for (const state of [1, 2]) {
       const result = plan(twentyThirtyFifty, [vault(V1, { state }), vault(V2), vault(V3)]);
       expect(result.ok).toBe(false);
@@ -277,7 +277,7 @@ describe('buildPlan — review fixes (seen live)', () => {
   });
 });
 
-describe('amounts — shares of the total (review findings 2 and 3)', () => {
+describe('amounts — shares of the total', () => {
   const vaultRef = (n: number) => ({ chainId: 5042, address: `0x${String(n).repeat(40)}` });
   it('takes a percentage of the total, not of what fixed amounts leave', () => {
     const input = request(
