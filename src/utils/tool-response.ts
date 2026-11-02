@@ -25,3 +25,17 @@ export function createSuccessResponse(data: unknown, prettyPrint = true): CallTo
     isError: false,
   };
 }
+
+/**
+ * A success response that also carries the data as `structuredContent`, for
+ * clients that read tool output as an object. The text stays compact JSON,
+ * first, so programmatic callers can parse it.
+ */
+export function createStructuredResponse(data: object): CallToolResult {
+  return {
+    content: [{ type: 'text', text: JSON.stringify(data) }],
+    // The output types are interfaces, which TypeScript does not treat as records
+    structuredContent: data as Record<string, unknown>,
+    isError: false,
+  };
+}

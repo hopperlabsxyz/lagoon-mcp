@@ -6,12 +6,17 @@ import { formatUnits, parseUnits } from 'viem';
 import type { Amount, Issue } from './types.js';
 import type { PrepareDepositInput } from '../utils/validators.js';
 
+/** 100% in basis points */
+const FULL_BPS = 10_000n;
+
+/** "1234567" → "1,234,567" */
+const groupThousands = (digits: string): string => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
 export function toAmount(raw: bigint, decimals: number, symbol: string): Amount {
   const [whole, fraction = ''] = formatUnits(raw, decimals).split('.');
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return {
     raw: raw.toString(),
-    formatted: `${grouped}.${fraction.padEnd(2, '0')}`,
+    formatted: `${groupThousands(whole)}.${fraction.padEnd(2, '0')}`,
     decimals,
     symbol,
   };
@@ -109,7 +114,7 @@ export function resolveAmounts(
     });
     return { total: 0n, amounts, issues };
   }
-  if (bpsSum > 10_000) {
+  if (bpsSum > Number(FULL_BPS)) {
     issues.push({
       code: 'BPS_SUM_INVALID',
       severity: 'error',
@@ -123,13 +128,15 @@ export function resolveAmounts(
   for (const i of bpsIndexes) {
     const allocation = input.allocations[i];
     if (allocation.kind !== 'bps') continue;
-    amounts[i] = (total * BigInt(allocation.value)) / 10_000n;
+    amounts[i] = (total * BigInt(allocation.value)) / FULL_BPS;
     assigned += amounts[i];
   }
-  // Exact shares (no rounding) must fit in the total with the fixed amounts
-  if (fixedSum * 10_000n + total * BigInt(bpsSum) > total * 10_000n) return overTotal();
-  // Rounding dust: only when the allocations cover exactly the total
-  if (fixedSum * 10_000n + total * BigInt(bpsSum) === total * 10_000n) {
+  // Compared in bps units, before rounding: fixed amounts plus exact shares
+  const allocated = fixedSum * FULL_BPS + total * BigInt(bpsSum);
+  const whole = total * FULL_BPS;
+  if (allocated > whole) return overTotal();
+  // Rounding dust goes to one allocation, only when the total is covered exactly
+  if (allocated === whole) {
     const dust = total - fixedSum - assigned;
     const target =
       input.options?.remainder === 'largest'

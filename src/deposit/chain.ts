@@ -43,9 +43,6 @@ export const NAV_EXPIRATION_SLOT = toHex(
   { size: 32 }
 );
 
-/** Vault states, as stored */
-export const VAULT_STATE = { Open: 0, Closing: 1, Closed: 2 } as const;
-
 const lowBits = (word: Hex | undefined, bits: bigint): bigint | undefined =>
   word === undefined ? undefined : BigInt(word) & ((1n << bits) - 1n);
 
@@ -91,6 +88,35 @@ export async function areLagoonVaults(
   );
 }
 
+/**
+ * The view calls read for each vault. Some only exist on some versions (see
+ * abi.ts): they fail on the others, and the reading leaves them undefined.
+ */
+function vaultCalls(chain: DepositChainConfig, account: Address, vault: Address) {
+  return [
+    { address: vault, abi: vaultAbi, functionName: 'name' },
+    { address: vault, abi: vaultAbi, functionName: 'version' },
+    { address: vault, abi: vaultAbi, functionName: 'asset' },
+    { address: vault, abi: vaultAbi, functionName: 'decimals' },
+    { address: vault, abi: vaultAbi, functionName: 'paused' },
+    { address: vault, abi: vaultAbi, functionName: 'isAllowed', args: [account] },
+    { address: vault, abi: vaultAbi, functionName: 'isWhitelisted', args: [account] },
+    { address: vault, abi: vaultAbi, functionName: 'maxCap' },
+    { address: vault, abi: vaultAbi, functionName: 'totalAssets' },
+    { address: vault, abi: vaultAbi, functionName: 'syncMode' },
+    { address: vault, abi: vaultAbi, functionName: 'isTotalAssetsValid' },
+    { address: vault, abi: vaultAbi, functionName: 'feeRates' },
+    { address: vault, abi: vaultAbi, functionName: 'pendingDepositRequest', args: [0n, account] },
+    { address: chain.usdc, abi: erc20Abi, functionName: 'allowance', args: [account, vault] },
+  ] as const;
+}
+
+/** The state byte of the vault's storage word, when it could be read */
+function storedState(word: Hex | undefined): number | undefined {
+  const state = lowBits(word, 8n);
+  return state === undefined ? undefined : Number(state);
+}
+
 export async function readChainState(
   client: PublicClient,
   chain: DepositChainConfig,
@@ -99,26 +125,7 @@ export async function readChainState(
 ): Promise<ChainReading> {
   const block = await client.getBlock({ blockTag: 'latest' });
   const blockNumber = block.number;
-
-  const perVault = (vault: Address) =>
-    [
-      { address: vault, abi: vaultAbi, functionName: 'name' },
-      { address: vault, abi: vaultAbi, functionName: 'version' },
-      { address: vault, abi: vaultAbi, functionName: 'asset' },
-      { address: vault, abi: vaultAbi, functionName: 'decimals' },
-      { address: vault, abi: vaultAbi, functionName: 'paused' },
-      { address: vault, abi: vaultAbi, functionName: 'isAllowed', args: [account] },
-      { address: vault, abi: vaultAbi, functionName: 'maxCap' },
-      { address: vault, abi: vaultAbi, functionName: 'totalAssets' },
-      { address: vault, abi: vaultAbi, functionName: 'syncMode' },
-      { address: vault, abi: vaultAbi, functionName: 'isTotalAssetsValid' },
-      { address: vault, abi: vaultAbi, functionName: 'feeRates' },
-      { address: vault, abi: vaultAbi, functionName: 'pendingDepositRequest', args: [0n, account] },
-      { address: chain.usdc, abi: erc20Abi, functionName: 'allowance', args: [account, vault] },
-      { address: vault, abi: vaultAbi, functionName: 'isWhitelisted', args: [account] },
-    ] as const;
-  const FIELDS = 14;
-
+  const calls = vaultAddresses.map((vault) => vaultCalls(chain, account, vault));
   const storage = (address: Address, slot: Hex): Promise<Hex | undefined> =>
     client.getStorageAt({ address, slot, blockNumber }).catch(() => undefined);
 
@@ -130,56 +137,46 @@ export async function readChainState(
       args: [account],
       blockNumber,
     }),
-    client.multicall({
-      blockNumber,
-      allowFailure: true,
-      contracts: vaultAddresses.flatMap(perVault),
-    }),
-    // isInstance(vault) on every Lagoon factory of the chain
+    client.multicall({ blockNumber, allowFailure: true, contracts: calls.flat() }),
     areLagoonVaults(client, chain, vaultAddresses, blockNumber),
     Promise.all(vaultAddresses.map((vault) => storage(vault, VAULT_STATE_SLOT))),
     Promise.all(vaultAddresses.map((vault) => storage(vault, NAV_EXPIRATION_SLOT))),
   ]);
 
-  const value = <T>(index: number): T | undefined =>
-    results[index]?.status === 'success' ? (results[index].result as T) : undefined;
-
+  let offset = 0;
   const vaults: VaultReading[] = vaultAddresses.map((address, v) => {
-    const at = (field: number): number => v * FIELDS + field;
-    const isLagoon = lagoon[v];
-    const fees = value<{ entryRate: number }>(at(10));
+    // What each call of this vault returned, by function name
+    const returned = new Map<string, unknown>();
+    calls[v].forEach((call, k) => {
+      const result = results[offset + k];
+      if (result?.status === 'success') returned.set(call.functionName, result.result);
+    });
+    offset += calls[v].length;
+    const read = <T>(functionName: string): T | undefined => returned.get(functionName) as T;
+
     return {
       address: getAddress(address),
-      isLagoon,
-      name: value<string>(at(0)),
-      decimals: value<number>(at(3)),
-      version: value<string>(at(1)),
-      asset: value<Address>(at(2)),
-      paused: value<boolean>(at(4)),
-      // isAllowed on v0.6, isWhitelisted before: the other one fails
-      isAllowed: value<boolean>(at(5)) ?? value<boolean>(at(13)),
-      maxCap: value<bigint>(at(6)),
-      totalAssets: value<bigint>(at(7)),
-      syncMode: value<number>(at(8)),
-      navValid: value<boolean>(at(9)),
-      entryRateBps: fees?.entryRate,
-      pendingDeposit: value<bigint>(at(11)),
-      state: (() => {
-        const state = lowBits(states[v], 8n);
-        return state === undefined ? undefined : Number(state);
-      })(),
+      isLagoon: lagoon[v],
+      name: read<string>('name'),
+      decimals: read<number>('decimals'),
+      version: read<string>('version'),
+      asset: read<Address>('asset'),
+      paused: read<boolean>('paused'),
+      // v0.6 has isAllowed, older versions isWhitelisted
+      isAllowed: read<boolean>('isAllowed') ?? read<boolean>('isWhitelisted'),
+      maxCap: read<bigint>('maxCap'),
+      totalAssets: read<bigint>('totalAssets'),
+      syncMode: read<number>('syncMode'),
+      navValid: read<boolean>('isTotalAssetsValid'),
+      entryRateBps: read<{ entryRate: number }>('feeRates')?.entryRate,
+      pendingDeposit: read<bigint>('pendingDepositRequest'),
+      state: storedState(states[v]),
       navExpiration: lowBits(expirations[v], 128n),
-      allowance: value<bigint>(at(12)) ?? 0n,
+      allowance: read<bigint>('allowance') ?? 0n,
     };
   });
 
-  return {
-    chainId: chain.chainId,
-    blockNumber,
-    timestamp: block.timestamp,
-    balance,
-    vaults,
-  };
+  return { chainId: chain.chainId, blockNumber, timestamp: block.timestamp, balance, vaults };
 }
 
 /**
@@ -242,27 +239,44 @@ export function issueCodeForRevert(errorName: string | undefined): IssueCode {
   return (errorName && REVERT_TO_ISSUE[errorName]) || 'SIMULATION_FAILED';
 }
 
+/** The first line of an error's message: viem appends multi-line details */
+export const firstLine = (error: unknown, fallback: string): string =>
+  error instanceof Error ? error.message.split('\n')[0] : fallback;
+
+type RpcError = {
+  message?: string;
+  details?: string;
+  code?: number;
+  data?: unknown;
+  cause?: unknown;
+};
+
+/** An error and the errors it wraps (viem nests the RPC's error in `cause`) */
+function* errorAndCauses(error: unknown): Generator<RpcError> {
+  for (let e = error as RpcError | undefined; e; e = e.cause as RpcError | undefined) yield e;
+}
+
+/** JSON-RPC "method not found" */
+const METHOD_NOT_FOUND = -32601;
+
 /** Whether an RPC error says the node does not offer eth_simulateV1 */
 export function isSimulateUnsupported(error: unknown): boolean {
-  for (let e: unknown = error; e; e = (e as { cause?: unknown }).cause) {
-    const text = `${(e as Error).message ?? ''} ${(e as { details?: string }).details ?? ''}`;
-    if (
-      /eth_simulateV1/i.test(text) &&
-      /not (available|supported|found)|does not exist|unsupported/i.test(text)
-    )
-      return true;
-    if ((e as { code?: number }).code === -32601) return true;
+  for (const e of errorAndCauses(error)) {
+    if (e.code === METHOD_NOT_FOUND) return true;
+    const text = `${e.message ?? ''} ${e.details ?? ''}`;
+    const namesTheMethod = /eth_simulateV1/i.test(text);
+    const saysMissing = /not (available|supported|found)|does not exist|unsupported/i.test(text);
+    if (namesTheMethod && saysMissing) return true;
   }
   return false;
 }
 
 /** The revert data an eth_call error carries, if any */
 function revertDataOf(error: unknown): Hex | undefined {
-  for (let e: unknown = error; e; e = (e as { cause?: unknown }).cause) {
-    const data = (e as { data?: unknown }).data;
-    if (typeof data === 'string' && data.startsWith('0x')) return data as Hex;
-    if (data && typeof (data as { data?: unknown }).data === 'string')
-      return (data as { data: Hex }).data;
+  for (const e of errorAndCauses(error)) {
+    if (typeof e.data === 'string' && e.data.startsWith('0x')) return e.data as Hex;
+    const nested = (e.data as { data?: unknown } | undefined)?.data;
+    if (typeof nested === 'string') return nested as Hex;
   }
   return undefined;
 }
@@ -288,21 +302,26 @@ export const SLOT_PROBE = {
 /** Storage slot of each token's `allowance` mapping, found once per token */
 const allowanceSlots = new Map<string, bigint>();
 
+/** How far to look for the allowance mapping: token layouts put it in the first slots */
+const MAX_ALLOWANCE_SLOT = 64n;
+
 /**
  * Finds the slot of an ERC-20's allowance mapping (`mapping(owner =>
  * mapping(spender => amount))`) by overriding candidate slots until
  * `allowance()` reads the override back. Read-only.
  */
-export async function findAllowanceSlot(
+async function findAllowanceSlot(
   client: PublicClient,
   token: Address,
   blockNumber: bigint
 ): Promise<bigint | undefined> {
-  const cached = allowanceSlots.get(`${client.chain?.id}:${token.toLowerCase()}`);
+  const cacheKey = `${client.chain?.id}:${token.toLowerCase()}`;
+  const cached = allowanceSlots.get(cacheKey);
   if (cached !== undefined) return cached;
   const { owner, spender } = SLOT_PROBE;
+  // Any value no real allowance of the probe addresses would have
   const marker = 123_456_789n;
-  for (let slot = 0n; slot < 64n; slot++) {
+  for (let slot = 0n; slot < MAX_ALLOWANCE_SLOT; slot++) {
     const { data } = await client.call({
       to: token,
       data: encodeFunctionData({
@@ -321,67 +340,107 @@ export async function findAllowanceSlot(
       ],
     });
     if (data && BigInt(data) === marker) {
-      allowanceSlots.set(`${client.chain?.id}:${token.toLowerCase()}`, slot);
+      allowanceSlots.set(cacheKey, slot);
       return slot;
     }
   }
   return undefined;
 }
 
+type PlanStep = { id: string; execution: { to: Address; data: Hex } };
+type CallResult = { success: boolean; data?: Hex; error?: string; gasUsed?: bigint };
+type Approval = { token: Address; spender: Address; amount: bigint };
+
+/** The approval a step grants, when it is an ERC-20 approve */
+function approvalIn(step: PlanStep): Approval | undefined {
+  try {
+    const call = decodeFunctionData({ abi: erc20Abi, data: step.execution.data });
+    if (call.functionName !== 'approve') return undefined;
+    const [spender, amount] = call.args;
+    return { token: step.execution.to, spender, amount };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Storage overrides that make `account`'s earlier approvals already granted */
+async function approvalOverrides(
+  client: PublicClient,
+  blockNumber: bigint,
+  account: Address,
+  approvals: Approval[]
+): Promise<Array<{ address: Address; stateDiff: Array<{ slot: Hex; value: Hex }> }>> {
+  const byToken = new Map<Address, Array<{ slot: Hex; value: Hex }>>();
+  for (const approval of approvals) {
+    const slot = await findAllowanceSlot(client, approval.token, blockNumber);
+    if (slot === undefined) throw new Error(`cannot simulate approvals of ${approval.token}`);
+    const diffs = byToken.get(approval.token) ?? [];
+    diffs.push({
+      slot: allowanceKey(account, approval.spender, slot),
+      value: toHex(approval.amount, { size: 32 }),
+    });
+    byToken.set(approval.token, diffs);
+  }
+  return [...byToken].map(([address, stateDiff]) => ({ address, stateDiff }));
+}
+
 /**
  * The plan replayed with eth_call, for nodes without eth_simulateV1 (all
  * Avalanche nodes): each step runs at the plan's block from the account,
- * with the allowances the approvals before it grant written into the
- * token's storage. Calls do not see each other's other effects (e.g. the
- * USDC an earlier deposit spent), so the balance check covers the total.
+ * with the approvals before it written into the token's storage. Calls do
+ * not see each other's other effects (e.g. the USDC an earlier deposit
+ * spent), so the balance check covers the total.
  */
 async function simulateByCalls(
   client: PublicClient,
   blockNumber: bigint,
   account: Address,
-  steps: Array<{ id: string; execution: { to: Address; data: Hex } }>
-): Promise<Array<{ success: boolean; data?: Hex; error?: string }>> {
-  const approved: Array<{ token: Address; spender: Address; amount: bigint }> = [];
-  const results: Array<{ success: boolean; data?: Hex; error?: string }> = [];
+  steps: PlanStep[]
+): Promise<CallResult[]> {
+  const approvals: Approval[] = [];
+  const results: CallResult[] = [];
   for (const step of steps) {
-    const stateDiffs = new Map<Address, Array<{ slot: Hex; value: Hex }>>();
-    for (const a of approved) {
-      const slot = await findAllowanceSlot(client, a.token, blockNumber);
-      if (slot === undefined) throw new Error(`cannot simulate approvals of ${a.token}`);
-      const diffs = stateDiffs.get(a.token) ?? [];
-      diffs.push({
-        slot: allowanceKey(account, a.spender, slot),
-        value: toHex(a.amount, { size: 32 }),
-      });
-      stateDiffs.set(a.token, diffs);
-    }
+    const stateOverride = await approvalOverrides(client, blockNumber, account, approvals);
     try {
       await client.call({
         account,
         to: step.execution.to,
         data: step.execution.data,
         blockNumber,
-        stateOverride: [...stateDiffs].map(([address, stateDiff]) => ({ address, stateDiff })),
+        stateOverride,
       });
       results.push({ success: true });
     } catch (error) {
       results.push({
         success: false,
         data: revertDataOf(error),
-        error: error instanceof Error ? error.message.split('\n')[0] : 'reverted',
+        error: firstLine(error, 'reverted'),
       });
     }
-    try {
-      const approve = decodeFunctionData({ abi: erc20Abi, data: step.execution.data });
-      if (approve.functionName === 'approve') {
-        const [spender, amount] = approve.args;
-        approved.push({ token: step.execution.to, spender, amount });
-      }
-    } catch {
-      // Not an ERC-20 call
-    }
+    const approval = approvalIn(step);
+    if (approval) approvals.push(approval);
   }
   return results;
+}
+
+/** eth_simulateV1 over the whole plan */
+async function simulateTogether(
+  client: PublicClient,
+  blockNumber: bigint,
+  account: Address,
+  steps: PlanStep[]
+): Promise<CallResult[]> {
+  const { results } = await client.simulateCalls({
+    account,
+    blockNumber,
+    calls: steps.map((s) => ({ to: s.execution.to, data: s.execution.data })),
+  });
+  return results.map((r) => ({
+    success: r.status === 'success',
+    data: r.data,
+    error: r.error?.message?.split('\n')[0],
+    gasUsed: r.gasUsed,
+  }));
 }
 
 /**
@@ -393,22 +452,12 @@ export async function simulatePlan(
   chainId: number,
   blockNumber: bigint,
   account: Address,
-  steps: Array<{ id: string; execution: { to: Address; data: Hex } }>
+  steps: PlanStep[]
 ): Promise<PlanSimulation & { revertName?: string }> {
   let method: PlanSimulation['method'] = 'eth_simulateV1';
-  let results: Array<{ success: boolean; data?: Hex; error?: string; gasUsed?: bigint }>;
+  let results: CallResult[];
   try {
-    const simulated = await client.simulateCalls({
-      account,
-      blockNumber,
-      calls: steps.map((s) => ({ to: s.execution.to, data: s.execution.data })),
-    });
-    results = simulated.results.map((r) => ({
-      success: r.status === 'success',
-      data: r.data,
-      error: r.error?.message?.split('\n')[0],
-      gasUsed: r.gasUsed,
-    }));
+    results = await simulateTogether(client, blockNumber, account, steps);
   } catch (error) {
     if (!isSimulateUnsupported(error)) throw error;
     method = 'eth_call';

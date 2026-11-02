@@ -10,6 +10,7 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { DEPOSIT_CHAINS, vaultFamily } from '../deposit/config.js';
 import type { ListDepositVaultsInput } from '../utils/validators.js';
+import { createStructuredResponse } from '../utils/tool-response.js';
 import { ServiceContainer } from '../core/container.js';
 
 const PAGE = 1000;
@@ -56,13 +57,13 @@ export interface DepositVault {
   listed: boolean;
 }
 
-/** Keeps the vaults prepare_deposit accepts, matching the optional filters (pure) */
 /** Networks whose hidden vaults are listed by default: Arc only has test vaults */
 const UNLISTED_BY_DEFAULT = new Set([5042]);
 
 const includeUnlisted = (input: ListDepositVaultsInput, chainId: number): boolean =>
   input.includeUnlisted ?? UNLISTED_BY_DEFAULT.has(chainId);
 
+/** Keeps the vaults prepare_deposit accepts, matching the optional filters (pure) */
 export function selectDepositVaults(
   items: VaultItem[],
   input: ListDepositVaultsInput
@@ -117,11 +118,6 @@ export function createExecuteListDepositVaults(
       if (data.vaults.items.length < PAGE || skip >= MAX_VAULTS) break;
     }
     const vaults = selectDepositVaults(items, input);
-    const output = { count: vaults.length, vaults };
-    return {
-      content: [{ type: 'text', text: JSON.stringify(output) }],
-      structuredContent: output as unknown as Record<string, unknown>,
-      isError: false,
-    };
+    return createStructuredResponse({ count: vaults.length, vaults });
   };
 }

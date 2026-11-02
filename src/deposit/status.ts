@@ -66,7 +66,7 @@ const MAX_LOG_CHUNKS = 100n;
  * undefined when the logs cannot be read (providers cap log ranges: the range
  * is then read in chunks, up to MAX_LOG_CHUNKS of them).
  */
-export async function wasCanceled(
+async function wasCanceled(
   client: PublicClient,
   vault: Address,
   controller: Address,
@@ -74,8 +74,8 @@ export async function wasCanceled(
   fromBlock: bigint,
   toBlock: bigint
 ): Promise<boolean | undefined> {
-  const read = (from: bigint, to: bigint): Promise<unknown[]> =>
-    client.getContractEvents({
+  const hasCancel = async (from: bigint, to: bigint): Promise<boolean> => {
+    const events = await client.getContractEvents({
       address: vault,
       abi: vaultAbi,
       eventName: 'DepositRequestCanceled',
@@ -83,20 +83,117 @@ export async function wasCanceled(
       fromBlock: from,
       toBlock: to,
     });
+    return events.length > 0;
+  };
   try {
-    return (await read(fromBlock, toBlock)).length > 0;
+    return await hasCancel(fromBlock, toBlock);
   } catch {
-    if (toBlock - fromBlock > LOG_CHUNK * MAX_LOG_CHUNKS) return undefined;
-    try {
-      for (let from = fromBlock; from <= toBlock; from += LOG_CHUNK) {
-        const to = from + LOG_CHUNK - 1n < toBlock ? from + LOG_CHUNK - 1n : toBlock;
-        if ((await read(from, to)).length > 0) return true;
-      }
-      return false;
-    } catch {
-      return undefined;
+    // The provider refused the whole range: read it in chunks, if not too many
+  }
+  if (toBlock - fromBlock > LOG_CHUNK * MAX_LOG_CHUNKS) return undefined;
+  try {
+    for (let from = fromBlock; from <= toBlock; from += LOG_CHUNK) {
+      const chunkEnd = from + LOG_CHUNK - 1n;
+      if (await hasCancel(from, chunkEnd < toBlock ? chunkEnd : toBlock)) return true;
+    }
+    return false;
+  } catch {
+    return undefined;
+  }
+}
+
+const usdcAmount = (chain: DepositChainConfig, raw: bigint): Amount =>
+  toAmount(raw, chain.usdcDecimals, 'USDC');
+
+/** A deposit entry with no amounts: not found, or a failed transaction */
+function emptyDeposit(
+  chain: DepositChainConfig,
+  hash: Hex,
+  status: DepositStatus,
+  vault: Address
+): Deposit {
+  const zero = usdcAmount(chain, 0n);
+  return {
+    vault: { chainId: chain.chainId, address: vault, name: 'unknown' },
+    txHash: hash,
+    status,
+    assets: zero,
+    pending: zero,
+    claimable: zero,
+  };
+}
+
+/** An instant deposit: shares were minted in the transaction itself */
+async function syncedDeposit(
+  client: PublicClient,
+  chain: DepositChainConfig,
+  hash: Hex,
+  vault: Address,
+  assets: bigint,
+  blockNumber: bigint
+): Promise<Deposit> {
+  const name = await client.readContract({
+    address: vault,
+    abi: vaultAbi,
+    functionName: 'name',
+    blockNumber,
+  });
+  const zero = usdcAmount(chain, 0n);
+  return {
+    vault: { chainId: chain.chainId, address: vault, name },
+    txHash: hash,
+    status: 'synced',
+    assets: usdcAmount(chain, assets),
+    pending: zero,
+    claimable: zero,
+  };
+}
+
+/** A deposit request: where it stands now, told apart from a cancel by its event */
+async function requestedDeposit(
+  client: PublicClient,
+  chain: DepositChainConfig,
+  account: Address,
+  hash: Hex,
+  vault: Address,
+  requestId: bigint,
+  assets: bigint,
+  requestBlock: bigint,
+  blockNumber: bigint
+): Promise<Deposit> {
+  const state = await readRequest(client, vault, account, requestId, blockNumber);
+  let status = requestStatus(state.pending, state.claimable);
+  let next = NEXT[status];
+  // A canceled request also reads 0 pending / 0 claimable
+  if (status === 'claimed') {
+    const canceled = await wasCanceled(
+      client,
+      vault,
+      account,
+      requestId,
+      requestBlock,
+      blockNumber
+    );
+    if (canceled === true) {
+      status = 'canceled';
+      next = NEXT.canceled;
+    } else if (canceled === undefined) {
+      next = {
+        description:
+          'Settled and claimed, or canceled: the cancel events could not be read to tell which',
+      };
     }
   }
+  return {
+    vault: { chainId: chain.chainId, address: vault, name: state.name },
+    txHash: hash,
+    requestId: requestId.toString(),
+    status,
+    assets: usdcAmount(chain, assets),
+    pending: usdcAmount(chain, state.pending),
+    claimable: usdcAmount(chain, state.claimable),
+    next,
+  };
 }
 
 /**
@@ -110,27 +207,17 @@ async function fromTxHash(
   hash: Hex,
   blockNumber: bigint
 ): Promise<Deposit[]> {
-  const amount = (raw: bigint): Amount => toAmount(raw, chain.usdcDecimals, 'USDC');
-  const zero = amount(0n);
-  const without = (status: DepositStatus, address: Address): Deposit => ({
-    vault: { chainId: chain.chainId, address, name: 'unknown' },
-    txHash: hash,
-    status,
-    assets: zero,
-    pending: zero,
-    claimable: zero,
-  });
-
   const receipt = await client.getTransactionReceipt({ hash }).catch(() => undefined);
-  if (!receipt) return [without('notFound', account)];
-  if (receipt.status === 'reverted') return [without('failed', getAddress(receipt.to ?? account))];
+  if (!receipt) return [emptyDeposit(chain, hash, 'notFound', account)];
+  const target = getAddress(receipt.to ?? account);
+  if (receipt.status === 'reverted') return [emptyDeposit(chain, hash, 'failed', target)];
 
   const mine = (owner: Address | undefined): boolean =>
     owner?.toLowerCase() === account.toLowerCase();
   const events = parseEventLogs({ abi: vaultAbi, logs: receipt.logs, strict: false }).filter(
     (l) => (l.eventName === 'DepositSync' || l.eventName === 'DepositRequest') && mine(l.args.owner)
   );
-  // Only events a Lagoon vault emitted: any contract can emit one with this shape
+  // Any contract can emit an event of this shape: keep those a Lagoon vault emitted
   const lagoon = await areLagoonVaults(
     client,
     chain,
@@ -138,66 +225,53 @@ async function fromTxHash(
     blockNumber
   );
   const fromVaults = events.filter((_, i) => lagoon[i]);
-  if (fromVaults.length === 0) return [without('notFound', getAddress(receipt.to ?? account))];
+  if (fromVaults.length === 0) return [emptyDeposit(chain, hash, 'notFound', target)];
 
   return Promise.all(
-    fromVaults.map(async (event): Promise<Deposit> => {
+    fromVaults.map((event): Promise<Deposit> => {
       const vault = getAddress(event.address);
       if (event.eventName === 'DepositSync') {
-        const name = await client.readContract({
-          address: vault,
-          abi: vaultAbi,
-          functionName: 'name',
-          blockNumber,
-        });
-        return {
-          vault: { chainId: chain.chainId, address: vault, name },
-          txHash: hash,
-          status: 'synced',
-          assets: amount(event.args.assets ?? 0n),
-          pending: zero,
-          claimable: zero,
-        };
+        return syncedDeposit(client, chain, hash, vault, event.args.assets ?? 0n, blockNumber);
       }
       if (event.eventName !== 'DepositRequest' || event.args.requestId === undefined) {
-        return without('notFound', vault);
+        return Promise.resolve(emptyDeposit(chain, hash, 'notFound', vault));
       }
-      const requestId = event.args.requestId;
-      const state = await readRequest(client, vault, account, requestId, blockNumber);
-      let status = requestStatus(state.pending, state.claimable);
-      let next = NEXT[status];
-      // A canceled request also reads 0 pending / 0 claimable: tell it apart by its event
-      if (status === 'claimed') {
-        const canceled = await wasCanceled(
-          client,
-          vault,
-          account,
-          requestId,
-          receipt.blockNumber,
-          blockNumber
-        );
-        if (canceled === true) {
-          status = 'canceled';
-          next = NEXT.canceled;
-        } else if (canceled === undefined) {
-          next = {
-            description:
-              'Settled and claimed, or canceled: the cancel events could not be read to tell which',
-          };
-        }
-      }
-      return {
-        vault: { chainId: chain.chainId, address: vault, name: state.name },
-        txHash: hash,
-        requestId: requestId.toString(),
-        status,
-        assets: amount(event.args.assets ?? 0n),
-        pending: amount(state.pending),
-        claimable: amount(state.claimable),
-        next,
-      };
+      return requestedDeposit(
+        client,
+        chain,
+        account,
+        hash,
+        vault,
+        event.args.requestId,
+        event.args.assets ?? 0n,
+        receipt.blockNumber,
+        blockNumber
+      );
     })
   );
+}
+
+/** The account's latest request in a vault (requestId 0 means "the latest") */
+async function latestRequest(
+  client: PublicClient,
+  chain: DepositChainConfig,
+  account: Address,
+  vault: Address,
+  blockNumber: bigint
+): Promise<Deposit> {
+  const state = await readRequest(client, vault, account, 0n, blockNumber);
+  const status =
+    state.pending === 0n && state.claimable === 0n
+      ? 'notFound'
+      : requestStatus(state.pending, state.claimable);
+  return {
+    vault: { chainId: chain.chainId, address: vault, name: state.name },
+    status,
+    assets: usdcAmount(chain, state.pending + state.claimable),
+    pending: usdcAmount(chain, state.pending),
+    claimable: usdcAmount(chain, state.claimable),
+    next: NEXT[status],
+  };
 }
 
 export async function depositStatus(input: DepositStatusInput): Promise<DepositStatusOutput> {
@@ -232,25 +306,13 @@ export async function depositStatus(input: DepositStatusInput): Promise<DepositS
         .filter((d) => d.vault.chainId === chainId)
         .map((d) => d.vault.address.toLowerCase())
     );
-    for (const vault of (input.vaults ?? []).filter(
+    const vaults = (input.vaults ?? []).filter(
       (v) => v.chainId === chainId && !tracked.has(v.address.toLowerCase())
-    )) {
-      // requestId 0 = the account's latest request in this vault
-      const address = getAddress(vault.address);
-      const state = await readRequest(client, address, account, 0n, block.number);
-      const status =
-        state.pending === 0n && state.claimable === 0n
-          ? 'notFound'
-          : requestStatus(state.pending, state.claimable);
-      const amount = (raw: bigint): Amount => toAmount(raw, chain.usdcDecimals, 'USDC');
-      output.deposits.push({
-        vault: { chainId, address, name: state.name },
-        status,
-        assets: amount(state.pending + state.claimable),
-        pending: amount(state.pending),
-        claimable: amount(state.claimable),
-        next: NEXT[status],
-      });
+    );
+    for (const vault of vaults) {
+      output.deposits.push(
+        await latestRequest(client, chain, account, getAddress(vault.address), block.number)
+      );
     }
   }
   return output;

@@ -25,8 +25,8 @@ export interface DepositChainConfig {
 const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11';
 
 /**
- * Chains with Lagoon v0.6.0 vaults whose native USDC address is already
- * trusted in this codebase (the dapp's CCTP config). Factories come from
+ * Chains with Lagoon vaults whose native USDC address is already trusted in
+ * this codebase (the dapp's CCTP config). Factories come from
  * @lagoon-protocol/v0-core addresses (beaconProxyFactory, optinFactory);
  * legacy vaults from the indexer's `customVaults` (infrastructure shovun.config.ts).
  */

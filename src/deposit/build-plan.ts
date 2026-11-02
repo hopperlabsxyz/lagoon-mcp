@@ -14,14 +14,17 @@ import {
 } from 'viem';
 import { erc20Abi, SYNC_MODE, vaultAbi } from './abi.js';
 import { toAmount, type ResolvedAmounts } from './amounts.js';
-import {
-  PLAN_TTL_MS,
-  SUPPORTED_VERSIONS,
-  vaultFamily,
-  type DepositChainConfig,
-  type VaultFamily,
-} from './config.js';
-import type { Amount, Check, Issue, Plan, PlanExports, ResolvedAllocation, Step } from './types.js';
+import { PLAN_TTL_MS, SUPPORTED_VERSIONS, vaultFamily, type DepositChainConfig } from './config.js';
+import type {
+  Amount,
+  ChainRef,
+  Check,
+  Issue,
+  Plan,
+  PlanExports,
+  ResolvedAllocation,
+  Step,
+} from './types.js';
 import type { PlannedDepositInput } from '../utils/validators.js';
 
 /** What was read on chain for one target vault, at the plan's block */
@@ -42,11 +45,11 @@ export interface VaultReading {
   entryRateBps?: number;
   allowance: bigint;
   pendingDeposit?: bigint;
-  /** Stored state: 0 Open, 1 Closing, 2 Closed (see VAULT_STATE in chain.ts) */
+  /** Stored state, an index into VAULT_STATE_NAMES */
   state?: number;
   /** When the NAV expires (unix seconds), on v0.5 and v0.6 */
   navExpiration?: bigint;
-  /** previewSyncDeposit(amount), when the deposit is sync */
+  /** Shares a sync deposit of the planned amount mints */
   previewShares?: bigint;
 }
 
@@ -65,14 +68,19 @@ export type BuildResult =
   | { ok: true; plan: DraftPlan }
   | { ok: false; issues: Issue[]; checks: Check[] };
 
-const SYMBOL = 'USDC';
+type DepositMode = ResolvedAllocation['mode'];
+
+/** Vault states as stored on chain (0, 1, 2); only an Open vault settles deposits */
+const VAULT_STATE_NAMES = ['Open', 'Closing', 'Closed'];
+const OPEN = 0;
 
 /**
- * An "infinite" approval (max uint256, or close to it: some tokens decrement
- * even a max allowance as it is spent). Above 2^128 base units no real amount
- * is meant.
+ * Above this, an allowance means "unlimited": max uint256, or close to it
+ * since some tokens decrement even a max allowance as it is spent.
  */
-export const isUnlimited = (allowance: bigint): boolean => allowance >= 2n ** 128n;
+const UNLIMITED_ALLOWANCE = 2n ** 128n;
+
+const isUnlimited = (allowance: bigint): boolean => allowance >= UNLIMITED_ALLOWANCE;
 
 /**
  * Whether a vault takes a deposit synchronously (spec §3):
@@ -86,8 +94,8 @@ export const isUnlimited = (allowance: bigint): boolean => allowance >= 2n ** 12
 export function depositModeOf(
   vault: Pick<VaultReading, 'syncMode' | 'navValid' | 'version'>,
   requested: 'auto' | 'async' = 'auto'
-): 'sync' | 'async' {
-  const family: VaultFamily | undefined = vaultFamily(vault.version);
+): DepositMode {
+  const family = vaultFamily(vault.version);
   if (family === 'v0.5') return vault.navValid === true ? 'sync' : 'async';
   const syncAllowed =
     family === 'v0.6' &&
@@ -95,239 +103,369 @@ export function depositModeOf(
   return requested === 'auto' && syncAllowed && vault.navValid === true ? 'sync' : 'async';
 }
 
-/** keccak256 of canonical JSON (sorted keys; values are strings and integers only) */
-export function contentHashOf(value: unknown): `0x${string}` {
-  const canonical = (v: unknown): string => {
-    if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
-    if (v !== null && typeof v === 'object') {
-      const entries = Object.entries(v as Record<string, unknown>)
-        .filter(([, x]) => x !== undefined)
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-      return `{${entries.map(([k, x]) => `${JSON.stringify(k)}:${canonical(x)}`).join(',')}}`;
-    }
-    return JSON.stringify(v);
-  };
-  return keccak256(toHex(canonical(value)));
+/** JSON with sorted keys and no undefined values (values are strings and integers only) */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
-export function buildPlan(
-  input: PlannedDepositInput,
+export function contentHashOf(value: unknown): `0x${string}` {
+  return keccak256(toHex(canonicalJson(value)));
+}
+
+export const plural = (count: number, word: string): string =>
+  `${count} ${word}${count > 1 ? 's' : ''}`;
+
+/** "Vault A 10.00 USDC (immediate)", as the plan summary lists each allocation */
+export const describeAllocation = (a: ResolvedAllocation): string =>
+  `${a.vault.name} ${a.assets.formatted} USDC (${a.mode === 'sync' ? 'immediate' : 'after settlement'})`;
+
+const usdcAmount = (chain: DepositChainConfig, raw: bigint): Amount =>
+  toAmount(raw, chain.usdcDecimals, 'USDC');
+
+/** What the checks found, in the order they ran */
+interface Findings {
+  issues: Issue[];
+  warnings: Issue[];
+  checks: Check[];
+}
+
+const stateName = (state: number | undefined): string =>
+  state === undefined ? 'unknown' : (VAULT_STATE_NAMES[state] ?? `${state}`);
+
+/** Room left under the vault's cap (v0.6 only); undefined when the vault has no cap */
+function remainingCapacity(vault: VaultReading): bigint | undefined {
+  if (vault.maxCap === undefined || vault.totalAssets === undefined) return undefined;
+  return vault.maxCap > vault.totalAssets ? vault.maxCap - vault.totalAssets : 0n;
+}
+
+/** Every rule a vault must pass before anything is built for it */
+function checkVault(
+  found: Findings,
   chain: DepositChainConfig,
-  reading: ChainReading,
-  resolved: ResolvedAmounts,
-  context: { now: Date; planId: string; minAllocation: bigint; gasReserve: bigint }
-): BuildResult {
-  const decimals = chain.usdcDecimals;
-  const amount = (raw: bigint): Amount => toAmount(raw, decimals, SYMBOL);
-  const account = getAddress(input.account.address);
-  const issues: Issue[] = [...resolved.issues];
-  const warnings: Issue[] = [];
-  const checks: Check[] = [];
+  account: Address,
+  vault: VaultReading,
+  target: ChainRef,
+  index: number,
+  deposit: bigint,
+  minAllocation: bigint | undefined
+): void {
+  const label = vault.name ?? target.address;
+  const amount = (raw: bigint): Amount => usdcAmount(chain, raw);
+  const check = (code: Check['code'], passed: boolean, observed: Check['observed']): void => {
+    found.checks.push({ code, target, passed, observed, source: 'onchain' });
+  };
+  const fail = (code: Issue['code'], message: string, details?: Record<string, string>): void => {
+    found.issues.push({ code, severity: 'error', message, allocationIndex: index, details });
+  };
 
-  // ── Per-vault checks ────────────────────────────────────────────────────
-  input.allocations.forEach((allocation, i) => {
-    const vault = reading.vaults[i];
-    const target = { chainId: chain.chainId, address: getAddress(allocation.vault.address) };
-    const label = vault.name ?? target.address;
-    const fail = (code: Issue['code'], message: string, details?: Record<string, string>): number =>
-      issues.push({ code, severity: 'error', message, allocationIndex: i, details });
-
-    checks.push({
-      code: 'VAULT_FROM_LAGOON_FACTORY',
-      target,
-      passed: vault.isLagoon,
-      observed: {
-        factories: chain.factories.join(','),
-        knownToLagoon: String(vault.isLagoon),
-        note: 'created by a Lagoon factory, or a listed legacy Lagoon vault',
-      },
-      source: 'onchain',
-    });
-    if (!vault.isLagoon) {
-      fail(
-        'NOT_A_LAGOON_VAULT',
-        `${target.address} is not a Lagoon vault (no Lagoon factory created it and it is not a known legacy vault) on ${chain.name}`
-      );
-      return;
-    }
-
-    const versionOk = vaultFamily(vault.version) !== undefined;
-    checks.push({
-      code: 'VAULT_VERSION_SUPPORTED',
-      target,
-      passed: versionOk,
-      observed: { version: vault.version ?? 'none (v0.1 or v0.2)', supported: SUPPORTED_VERSIONS },
-      source: 'onchain',
-    });
-    if (!versionOk) {
-      fail(
-        'UNSUPPORTED_VAULT_VERSION',
-        `${label} runs ${vault.version}; deposits support Lagoon vaults ${SUPPORTED_VERSIONS}`
-      );
-    }
-
-    const assetOk = vault.asset?.toLowerCase() === chain.usdc.toLowerCase();
-    checks.push({
-      code: 'VAULT_ASSET_IS_USDC',
-      target,
-      passed: assetOk,
-      observed: { asset: vault.asset ?? 'unknown', usdc: chain.usdc },
-      source: 'onchain',
-    });
-    if (!assetOk) fail('ASSET_MISMATCH', `${label} does not take USDC`);
-
-    // Only an Open vault settles deposits: v0.6 still takes requests while
-    // closing, but they would wait forever
-    const STATES = ['Open', 'Closing', 'Closed'];
-    const stateName =
-      vault.state === undefined ? 'unknown' : (STATES[vault.state] ?? `${vault.state}`);
-    checks.push({
-      code: 'VAULT_OPEN',
-      target,
-      passed: vault.state === 0,
-      observed: { state: stateName },
-      source: 'onchain',
-    });
-    if (vault.state !== 0) {
-      fail(
-        'VAULT_NOT_OPEN',
-        vault.state === undefined
-          ? `Could not read whether ${label} is open`
-          : `${label} is ${stateName.toLowerCase()}: it no longer takes deposits`,
-        { state: stateName }
-      );
-    }
-
-    checks.push({
-      code: 'VAULT_NOT_PAUSED',
-      target,
-      passed: vault.paused === false,
-      observed: { paused: String(vault.paused) },
-      source: 'onchain',
-    });
-    if (vault.paused !== false) fail('VAULT_PAUSED', `${label} is paused`);
-
-    checks.push({
-      code: 'ACCOUNT_ALLOWED',
-      target,
-      passed: vault.isAllowed === true,
-      observed: { isAllowed: String(vault.isAllowed) },
-      source: 'onchain',
-    });
-    if (vault.isAllowed !== true) {
-      fail(
-        'ACCESS_DENIED',
-        `${account} is not allowed to deposit into ${label} (whitelist, blacklist or sanctions list)`
-      );
-    }
-
-    // Upper bound: pending deposits held in the silo are not readable here;
-    // the simulation is the final word on MaxCapReached.
-    const deposit = resolved.amounts[i] ?? 0n;
-    const room =
-      vault.maxCap !== undefined && vault.totalAssets !== undefined
-        ? vault.maxCap > vault.totalAssets
-          ? vault.maxCap - vault.totalAssets
-          : 0n
-        : undefined;
-    const underCap = room === undefined || deposit <= room;
-    checks.push({
-      code: 'UNDER_MAX_CAP',
-      target,
-      passed: underCap,
-      observed: {
-        maxCap: vault.maxCap?.toString() ?? 'unknown',
-        totalAssets: vault.totalAssets?.toString() ?? 'unknown',
-        note: 'excludes deposits still pending; the simulation checks the exact cap',
-      },
-      source: 'onchain',
-    });
-    if (!underCap && room !== undefined) {
-      fail('MAX_CAP_REACHED', `${label} has room for ${amount(room).formatted} USDC only`, {
-        // A plain decimal ("120000.5"), usable as an amount in a new request
-        remainingCapacity: formatUnits(room, decimals),
-      });
-    }
-
-    if (deposit < context.minAllocation && resolved.issues.length === 0) {
-      fail(
-        'AMOUNT_TOO_SMALL',
-        `The deposit into ${label} would be ${amount(deposit).formatted} USDC, below the minimum of ${amount(context.minAllocation).formatted} USDC`
-      );
-    }
-
-    if ((vault.pendingDeposit ?? 0n) > 0n) {
-      warnings.push({
-        code: 'PENDING_DEPOSIT_EXISTS',
-        severity: 'warning',
-        message: `You already have ${amount(vault.pendingDeposit ?? 0n).formatted} USDC waiting for settlement in ${label}. The vault refuses a new request while an older one is unsettled; the simulation tells which case applies.`,
-        allocationIndex: i,
-      });
-    }
+  check('VAULT_FROM_LAGOON_FACTORY', vault.isLagoon, {
+    factories: chain.factories.join(','),
+    knownToLagoon: String(vault.isLagoon),
+    note: 'created by a Lagoon factory, or a listed legacy Lagoon vault',
   });
+  if (!vault.isLagoon) {
+    fail(
+      'NOT_A_LAGOON_VAULT',
+      `${target.address} is not a Lagoon vault (no Lagoon factory created it and it is not a known legacy vault) on ${chain.name}`
+    );
+    return;
+  }
 
-  // ── Balance ─────────────────────────────────────────────────────────────
-  const needed = resolved.amounts.reduce((sum, a) => sum + a, 0n);
-  const enough = reading.balance >= needed;
-  checks.push({
+  const versionOk = vaultFamily(vault.version) !== undefined;
+  check('VAULT_VERSION_SUPPORTED', versionOk, {
+    version: vault.version ?? 'none (v0.1 or v0.2)',
+    supported: SUPPORTED_VERSIONS,
+  });
+  if (!versionOk) {
+    fail(
+      'UNSUPPORTED_VAULT_VERSION',
+      `${label} runs ${vault.version}; deposits support Lagoon vaults ${SUPPORTED_VERSIONS}`
+    );
+  }
+
+  const assetOk = vault.asset?.toLowerCase() === chain.usdc.toLowerCase();
+  check('VAULT_ASSET_IS_USDC', assetOk, { asset: vault.asset ?? 'unknown', usdc: chain.usdc });
+  if (!assetOk) fail('ASSET_MISMATCH', `${label} does not take USDC`);
+
+  // v0.6 still takes requests while closing, but they would never be settled
+  const state = stateName(vault.state);
+  check('VAULT_OPEN', vault.state === OPEN, { state });
+  if (vault.state !== OPEN) {
+    fail(
+      'VAULT_NOT_OPEN',
+      vault.state === undefined
+        ? `Could not read whether ${label} is open`
+        : `${label} is ${state.toLowerCase()}: it no longer takes deposits`,
+      { state }
+    );
+  }
+
+  check('VAULT_NOT_PAUSED', vault.paused === false, { paused: String(vault.paused) });
+  if (vault.paused !== false) fail('VAULT_PAUSED', `${label} is paused`);
+
+  check('ACCOUNT_ALLOWED', vault.isAllowed === true, { isAllowed: String(vault.isAllowed) });
+  if (vault.isAllowed !== true) {
+    fail(
+      'ACCESS_DENIED',
+      `${account} is not allowed to deposit into ${label} (whitelist, blacklist or sanctions list)`
+    );
+  }
+
+  // Deposits still pending in the silo are not readable here: the
+  // simulation has the final word on MaxCapReached
+  const room = remainingCapacity(vault);
+  const underCap = room === undefined || deposit <= room;
+  check('UNDER_MAX_CAP', underCap, {
+    maxCap: vault.maxCap?.toString() ?? 'unknown',
+    totalAssets: vault.totalAssets?.toString() ?? 'unknown',
+    note: 'excludes deposits still pending; the simulation checks the exact cap',
+  });
+  if (room !== undefined && !underCap) {
+    fail('MAX_CAP_REACHED', `${label} has room for ${amount(room).formatted} USDC only`, {
+      // A plain decimal, usable as the amount of a new request
+      remainingCapacity: formatUnits(room, chain.usdcDecimals),
+    });
+  }
+
+  if (minAllocation !== undefined && deposit < minAllocation) {
+    fail(
+      'AMOUNT_TOO_SMALL',
+      `The deposit into ${label} would be ${amount(deposit).formatted} USDC, below the minimum of ${amount(minAllocation).formatted} USDC`
+    );
+  }
+
+  const pending = vault.pendingDeposit ?? 0n;
+  if (pending > 0n) {
+    found.warnings.push({
+      code: 'PENDING_DEPOSIT_EXISTS',
+      severity: 'warning',
+      message: `You already have ${amount(pending).formatted} USDC waiting for settlement in ${label}. The vault refuses a new request while an older one is unsettled; the simulation tells which case applies.`,
+      allocationIndex: index,
+    });
+  }
+}
+
+/** The wallet holds what the plan spends, and on Arc what pays the fees after it */
+function checkBalance(
+  found: Findings,
+  chain: DepositChainConfig,
+  balance: bigint,
+  needed: bigint,
+  gasReserve: bigint
+): void {
+  const amount = (raw: bigint): Amount => usdcAmount(chain, raw);
+  const enough = balance >= needed;
+  found.checks.push({
     code: 'BALANCE_SUFFICIENT',
     passed: enough,
-    observed: { balance: amount(reading.balance).formatted, needed: amount(needed).formatted },
+    observed: { balance: amount(balance).formatted, needed: amount(needed).formatted },
     source: 'onchain',
   });
   if (!enough) {
-    issues.push({
+    found.issues.push({
       code: 'INSUFFICIENT_BALANCE',
       severity: 'error',
-      message: `You have ${amount(reading.balance).formatted} USDC on ${chain.name}, the plan needs ${amount(needed).formatted} USDC`,
+      message: `You have ${amount(balance).formatted} USDC on ${chain.name}, the plan needs ${amount(needed).formatted} USDC`,
       details: {
         chainId: String(chain.chainId),
-        balance: amount(reading.balance).formatted,
-        missing: amount(needed - reading.balance).formatted,
+        balance: amount(balance).formatted,
+        missing: amount(needed - balance).formatted,
       },
     });
   }
-  // Only where USDC also pays the fees (Arc)
-  if (chain.usdcIsGas) {
-    const left = reading.balance - needed;
-    const gasOk = left >= context.gasReserve;
-    checks.push({
-      code: 'GAS_RESERVE',
-      passed: gasOk,
-      observed: {
-        leftAfterPlan: amount(left > 0n ? left : 0n).formatted,
-        recommended: amount(context.gasReserve).formatted,
-      },
-      source: 'onchain',
+
+  if (!chain.usdcIsGas) return;
+  const left = balance - needed;
+  const gasOk = left >= gasReserve;
+  found.checks.push({
+    code: 'GAS_RESERVE',
+    passed: gasOk,
+    observed: {
+      leftAfterPlan: amount(left > 0n ? left : 0n).formatted,
+      recommended: amount(gasReserve).formatted,
+    },
+    source: 'onchain',
+  });
+  if (enough && !gasOk) {
+    found.warnings.push({
+      code: 'LOW_GAS_RESERVE',
+      severity: 'warning',
+      message: `Only ${amount(left).formatted} USDC would be left to pay transaction fees on ${chain.name}`,
+      details: { chainId: String(chain.chainId) },
     });
-    if (enough && !gasOk) {
-      warnings.push({
-        code: 'LOW_GAS_RESERVE',
-        severity: 'warning',
-        message: `Only ${amount(left).formatted} USDC would be left to pay transaction fees on ${chain.name}`,
-        details: { chainId: String(chain.chainId) },
-      });
-    }
   }
+}
 
-  if (issues.some((issue) => issue.severity === 'error')) {
-    return { ok: false, issues, checks };
+/** Each step waits for the one before it, in plan order */
+const afterLastStep = (steps: Step[]): string[] => {
+  const last = steps.at(-1)?.id;
+  return last ? [last] : [];
+};
+
+function approveStep(
+  id: string,
+  dependsOn: string[],
+  chain: DepositChainConfig,
+  account: Address,
+  vault: ChainRef,
+  name: string,
+  assets: bigint
+): Step {
+  const usdc = { chainId: chain.chainId, address: chain.usdc };
+  const amount = usdcAmount(chain, assets);
+  return {
+    id,
+    kind: 'erc20.approve',
+    chainId: chain.chainId,
+    dependsOn,
+    description: `Approve ${name} to spend ${amount.formatted} USDC`,
+    decoded: {
+      contract: 'USDC',
+      function: 'approve',
+      args: { spender: vault.address, amount: assets.toString() },
+    },
+    execution: {
+      type: 'evmCall',
+      to: chain.usdc,
+      data: encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [vault.address, assets],
+      }),
+      value: '0',
+    },
+    preconditions: [{ kind: 'minBalance', token: usdc, holder: account, amount }],
+    expectedEffects: [
+      { kind: 'allowance', token: usdc, owner: account, spender: vault.address, amount },
+    ],
+    token: usdc,
+    spender: vault.address,
+    amount,
+  };
+}
+
+/** What must still hold when the deposit is sent (spec §5) */
+function depositPreconditions(
+  chain: DepositChainConfig,
+  account: Address,
+  vault: ChainRef,
+  reading: VaultReading,
+  mode: DepositMode,
+  amount: Amount
+): Step['preconditions'] {
+  const preconditions: Step['preconditions'] = [
+    {
+      kind: 'minAllowance',
+      token: { chainId: chain.chainId, address: chain.usdc },
+      owner: account,
+      spender: vault.address,
+      amount,
+    },
+    { kind: 'vaultState', vault, state: 'Open', paused: false },
+  ];
+  if (mode === 'sync' && reading.navExpiration !== undefined && reading.navExpiration > 0n) {
+    preconditions.push({
+      kind: 'navValid',
+      vault,
+      until: new Date(Number(reading.navExpiration) * 1000).toISOString(),
+    });
   }
+  if (reading.maxCap !== undefined) {
+    preconditions.push({ kind: 'capacity', vault, atLeast: amount });
+  }
+  return preconditions;
+}
 
-  // ── Steps, vault by vault ───────────────────────────────────────────────
+/** A syncDeposit (shares now) or a requestDeposit (shares after the next settlement) */
+function depositStep(
+  id: string,
+  dependsOn: string[],
+  chain: DepositChainConfig,
+  account: Address,
+  vault: ChainRef,
+  reading: VaultReading,
+  name: string,
+  assets: bigint,
+  mode: DepositMode
+): Step {
+  const sync = mode === 'sync';
+  const amount = usdcAmount(chain, assets);
+  const spent = {
+    kind: 'balanceDelta',
+    token: { chainId: chain.chainId, address: chain.usdc },
+    holder: account,
+    delta: amount,
+    sign: '-',
+  };
+  return {
+    id,
+    kind: sync ? 'lagoon.syncDeposit' : 'lagoon.requestDeposit',
+    chainId: chain.chainId,
+    dependsOn,
+    description: sync
+      ? `Deposit ${amount.formatted} USDC into ${name}`
+      : `Request a deposit of ${amount.formatted} USDC into ${name}`,
+    decoded: {
+      contract: name,
+      function: sync ? 'syncDeposit' : 'requestDeposit',
+      args: sync
+        ? { assets: assets.toString(), receiver: account, referral: zeroAddress }
+        : { assets: assets.toString(), controller: account, owner: account },
+    },
+    execution: {
+      type: 'evmCall',
+      to: vault.address,
+      data: sync
+        ? encodeFunctionData({
+            abi: vaultAbi,
+            functionName: 'syncDeposit',
+            args: [assets, account, zeroAddress],
+          })
+        : encodeFunctionData({
+            abi: vaultAbi,
+            functionName: 'requestDeposit',
+            args: [assets, account, account],
+          }),
+      value: '0',
+    },
+    preconditions: depositPreconditions(chain, account, vault, reading, mode, amount),
+    expectedEffects: sync
+      ? [spent]
+      : [spent, { kind: 'pendingDeposit', vault, controller: account, assets: amount }],
+    vault,
+    assets: amount,
+  };
+}
+
+/** The approval (unless an existing one covers it) and the deposit, for each vault */
+function buildSteps(
+  found: Findings,
+  input: PlannedDepositInput,
+  chain: DepositChainConfig,
+  account: Address,
+  reading: ChainReading,
+  amounts: bigint[]
+): { steps: Step[]; allocations: ResolvedAllocation[] } {
   const steps: Step[] = [];
   const allocations: ResolvedAllocation[] = [];
   const nextId = (): string => `s${steps.length + 1}`;
+  const requestedMode = input.options?.depositMode;
 
   input.allocations.forEach((allocation, i) => {
     const vault = reading.vaults[i];
     const vaultRef = { chainId: chain.chainId, address: getAddress(allocation.vault.address) };
     const name = vault.name ?? vaultRef.address;
-    const assets = resolved.amounts[i];
-    const mode = depositModeOf(vault, input.options?.depositMode);
-    const previous = steps.at(-1)?.id;
+    const assets = amounts[i];
+    const mode = depositModeOf(vault, requestedMode);
 
-    checks.push({
+    found.checks.push({
       code: 'SYNC_ALLOWED',
       target: vaultRef,
       // Informational: async is a vault mode, not a failure (the observed mode says which)
@@ -335,8 +473,8 @@ export function buildPlan(
       observed: { syncMode: String(vault.syncMode), navValid: String(vault.navValid), mode },
       source: 'onchain',
     });
-    if (input.options?.depositMode === 'async' && mode === 'sync') {
-      warnings.push({
+    if (requestedMode === 'async' && mode === 'sync') {
+      found.warnings.push({
         code: 'SYNC_ONLY_VAULT',
         severity: 'warning',
         message: `${name} only takes instant deposits while its NAV is valid, so this deposit is instant, not a request`,
@@ -345,170 +483,38 @@ export function buildPlan(
     }
 
     if (vault.allowance >= assets) {
-      warnings.push({
+      const unlimited = isUnlimited(vault.allowance);
+      const allowance = usdcAmount(chain, vault.allowance).formatted;
+      found.warnings.push({
         code: 'EXISTING_ALLOWANCE_USED',
         severity: 'info',
-        message: isUnlimited(vault.allowance)
+        message: unlimited
           ? `${name} already has an unlimited approval on your USDC; no approval needed`
-          : `${name} is already allowed to take ${amount(vault.allowance).formatted} USDC; no approval needed`,
+          : `${name} is already allowed to take ${allowance} USDC; no approval needed`,
         allocationIndex: i,
-        details: {
-          allowance: isUnlimited(vault.allowance) ? 'unlimited' : amount(vault.allowance).formatted,
-        },
+        details: { allowance: unlimited ? 'unlimited' : allowance },
       });
     } else {
-      const id = nextId();
-      steps.push({
-        id,
-        kind: 'erc20.approve',
-        chainId: chain.chainId,
-        dependsOn: previous ? [previous] : [],
-        description: `Approve ${name} to spend ${amount(assets).formatted} USDC`,
-        decoded: {
-          contract: 'USDC',
-          function: 'approve',
-          args: { spender: vaultRef.address, amount: assets.toString() },
-        },
-        execution: {
-          type: 'evmCall',
-          to: chain.usdc,
-          data: encodeFunctionData({
-            abi: erc20Abi,
-            functionName: 'approve',
-            args: [vaultRef.address, assets],
-          }),
-          value: '0',
-        },
-        preconditions: [
-          {
-            kind: 'minBalance',
-            token: { chainId: chain.chainId, address: chain.usdc },
-            holder: account,
-            amount: amount(assets),
-          },
-        ],
-        expectedEffects: [
-          {
-            kind: 'allowance',
-            token: { chainId: chain.chainId, address: chain.usdc },
-            owner: account,
-            spender: vaultRef.address,
-            amount: amount(assets),
-          },
-        ],
-        token: { chainId: chain.chainId, address: chain.usdc },
-        spender: vaultRef.address,
-        amount: amount(assets),
-      });
+      steps.push(
+        approveStep(nextId(), afterLastStep(steps), chain, account, vaultRef, name, assets)
+      );
     }
 
-    const dependsOn = steps.at(-1)?.id;
-    // What must still hold when the deposit is sent (spec §5)
-    const vaultPreconditions: Step['preconditions'] = [
-      { kind: 'vaultState', vault: vaultRef, state: 'Open', paused: false },
-      ...(mode === 'sync' && vault.navExpiration !== undefined && vault.navExpiration > 0n
-        ? [
-            {
-              kind: 'navValid',
-              vault: vaultRef,
-              until: new Date(Number(vault.navExpiration) * 1000).toISOString(),
-            },
-          ]
-        : []),
-      ...(vault.maxCap !== undefined
-        ? [{ kind: 'capacity', vault: vaultRef, atLeast: amount(assets) }]
-        : []),
-    ];
-    if (mode === 'sync') {
-      steps.push({
-        id: nextId(),
-        kind: 'lagoon.syncDeposit',
-        chainId: chain.chainId,
-        dependsOn: dependsOn ? [dependsOn] : [],
-        description: `Deposit ${amount(assets).formatted} USDC into ${name}`,
-        decoded: {
-          contract: name,
-          function: 'syncDeposit',
-          args: { assets: assets.toString(), receiver: account, referral: zeroAddress },
-        },
-        execution: {
-          type: 'evmCall',
-          to: vaultRef.address,
-          data: encodeFunctionData({
-            abi: vaultAbi,
-            functionName: 'syncDeposit',
-            args: [assets, account, zeroAddress],
-          }),
-          value: '0',
-        },
-        preconditions: [
-          {
-            kind: 'minAllowance',
-            token: { chainId: chain.chainId, address: chain.usdc },
-            owner: account,
-            spender: vaultRef.address,
-            amount: amount(assets),
-          },
-          ...vaultPreconditions,
-        ],
-        expectedEffects: [
-          {
-            kind: 'balanceDelta',
-            token: { chainId: chain.chainId, address: chain.usdc },
-            holder: account,
-            delta: amount(assets),
-            sign: '-',
-          },
-        ],
-        vault: vaultRef,
-        assets: amount(assets),
-      });
-    } else {
-      steps.push({
-        id: nextId(),
-        kind: 'lagoon.requestDeposit',
-        chainId: chain.chainId,
-        dependsOn: dependsOn ? [dependsOn] : [],
-        description: `Request a deposit of ${amount(assets).formatted} USDC into ${name}`,
-        decoded: {
-          contract: name,
-          function: 'requestDeposit',
-          args: { assets: assets.toString(), controller: account, owner: account },
-        },
-        execution: {
-          type: 'evmCall',
-          to: vaultRef.address,
-          data: encodeFunctionData({
-            abi: vaultAbi,
-            functionName: 'requestDeposit',
-            args: [assets, account, account],
-          }),
-          value: '0',
-        },
-        preconditions: [
-          {
-            kind: 'minAllowance',
-            token: { chainId: chain.chainId, address: chain.usdc },
-            owner: account,
-            spender: vaultRef.address,
-            amount: amount(assets),
-          },
-          ...vaultPreconditions,
-        ],
-        expectedEffects: [
-          {
-            kind: 'balanceDelta',
-            token: { chainId: chain.chainId, address: chain.usdc },
-            holder: account,
-            delta: amount(assets),
-            sign: '-',
-          },
-          { kind: 'pendingDeposit', vault: vaultRef, controller: account, assets: amount(assets) },
-        ],
-        vault: vaultRef,
-        assets: amount(assets),
-      });
-      warnings.push({
+    steps.push(
+      depositStep(
+        nextId(),
+        afterLastStep(steps),
+        chain,
+        account,
+        vaultRef,
+        vault,
+        name,
+        assets,
+        mode
+      )
+    );
+    if (mode === 'async') {
+      found.warnings.push({
         code: 'ASYNC_DEPOSIT',
         severity: 'info',
         message: `${name}: your shares arrive after the curator's next settlement`,
@@ -518,7 +524,7 @@ export function buildPlan(
 
     allocations.push({
       vault: { ...vaultRef, name, version: vault.version ?? 'unknown' },
-      assets: amount(assets),
+      assets: usdcAmount(chain, assets),
       mode,
       entryRateBps: vault.entryRateBps ?? 0,
       estimatedShares:
@@ -529,50 +535,90 @@ export function buildPlan(
     });
   });
 
-  const accountRef = {
-    address: account,
-    type: input.account.type === 'safe' ? 'safe' : 'eoa',
-  } as const;
-  const parts = allocations.map(
-    (a) =>
-      `${a.vault.name} ${a.assets.formatted} USDC (${a.mode === 'sync' ? 'immediate' : 'after settlement'})`
-  );
-  const summary =
-    `Deposit ${amount(needed).formatted} USDC into ${allocations.length} vault${allocations.length > 1 ? 's' : ''} on ${chain.name}: ` +
-    `${parts.join(', ')}. ${steps.length} transaction${steps.length > 1 ? 's' : ''} to sign.`;
+  return { steps, allocations };
+}
 
-  // A sync deposit reverts once the NAV expires: the plan ends then at the latest
-  const navEnds = allocations.flatMap((a, i) => {
-    const expiration = reading.vaults[i]?.navExpiration;
+/** When the plan expires: after PLAN_TTL_MS, or earlier when a sync deposit's NAV expires */
+function planExpiry(now: Date, allocations: ResolvedAllocation[], vaults: VaultReading[]): string {
+  const navExpiries = allocations.flatMap((a, i) => {
+    const expiration = vaults[i]?.navExpiration;
     return a.mode === 'sync' && expiration !== undefined && expiration > 0n
       ? [Number(expiration) * 1000]
       : [];
   });
-  const validUntil = Math.min(context.now.getTime() + PLAN_TTL_MS, ...navEnds);
+  return new Date(Math.min(now.getTime() + PLAN_TTL_MS, ...navExpiries)).toISOString();
+}
 
-  const plan: DraftPlan = {
-    specVersion: '1',
-    planId: context.planId,
-    contentHash: contentHashOf({ account: accountRef, steps }),
-    createdAt: context.now.toISOString(),
-    validUntil: new Date(validUntil).toISOString(),
-    account: accountRef,
-    stateAt: [
-      {
-        chainId: chain.chainId,
-        blockNumber: reading.blockNumber.toString(),
-        timestamp: new Date(Number(reading.timestamp) * 1000).toISOString(),
-      },
-    ],
-    allocations,
-    steps,
-    batches: [{ chainId: chain.chainId, stepIds: steps.map((s) => s.id) }],
-    checks,
-    warnings,
-    summary,
+export function buildPlan(
+  input: PlannedDepositInput,
+  chain: DepositChainConfig,
+  reading: ChainReading,
+  resolved: ResolvedAmounts,
+  context: { now: Date; planId: string; minAllocation: bigint; gasReserve: bigint }
+): BuildResult {
+  const account = getAddress(input.account.address);
+  const found: Findings = { issues: [...resolved.issues], warnings: [], checks: [] };
+
+  input.allocations.forEach((allocation, i) => {
+    checkVault(
+      found,
+      chain,
+      account,
+      reading.vaults[i],
+      { chainId: chain.chainId, address: getAddress(allocation.vault.address) },
+      i,
+      resolved.amounts[i] ?? 0n,
+      // Too small only means something once the amounts themselves are valid
+      resolved.issues.length === 0 ? context.minAllocation : undefined
+    );
+  });
+  const needed = resolved.amounts.reduce((sum, a) => sum + a, 0n);
+  checkBalance(found, chain, reading.balance, needed, context.gasReserve);
+
+  if (found.issues.some((issue) => issue.severity === 'error')) {
+    return { ok: false, issues: found.issues, checks: found.checks };
+  }
+
+  const { steps, allocations } = buildSteps(
+    found,
+    input,
+    chain,
+    account,
+    reading,
+    resolved.amounts
+  );
+  const accountRef = {
+    address: account,
+    type: input.account.type === 'safe' ? 'safe' : 'eoa',
+  } as const;
+  const summary =
+    `Deposit ${usdcAmount(chain, needed).formatted} USDC into ${plural(allocations.length, 'vault')} on ${chain.name}: ` +
+    `${allocations.map(describeAllocation).join(', ')}. ${plural(steps.length, 'transaction')} to sign.`;
+
+  return {
+    ok: true,
+    plan: {
+      specVersion: '1',
+      planId: context.planId,
+      contentHash: contentHashOf({ account: accountRef, steps }),
+      createdAt: context.now.toISOString(),
+      validUntil: planExpiry(context.now, allocations, reading.vaults),
+      account: accountRef,
+      stateAt: [
+        {
+          chainId: chain.chainId,
+          blockNumber: reading.blockNumber.toString(),
+          timestamp: new Date(Number(reading.timestamp) * 1000).toISOString(),
+        },
+      ],
+      allocations,
+      steps,
+      batches: [{ chainId: chain.chainId, stepIds: steps.map((s) => s.id) }],
+      checks: found.checks,
+      warnings: found.warnings,
+      summary,
+    },
   };
-
-  return { ok: true, plan };
 }
 
 /** Wallet payloads for a (possibly multi-chain) plan: one batch per chain */

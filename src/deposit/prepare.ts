@@ -7,16 +7,20 @@
  */
 
 import { getAddress } from 'viem';
-import { resolveAmounts, parseDecimal, toAmount } from './amounts.js';
+import { resolveAmounts, parseDecimal, toAmount, type ResolvedAmounts } from './amounts.js';
 import {
   buildExports,
   buildPlan,
   contentHashOf,
   depositModeOf,
+  describeAllocation,
+  plural,
+  type ChainReading,
   type DraftPlan,
 } from './build-plan.js';
 import {
   clientFor,
+  firstLine,
   issueCodeForRevert,
   readChainState,
   readPreviews,
@@ -96,6 +100,19 @@ export function groupByChain(input: PrepareDepositInput): Map<number, number[]> 
   return groups;
 }
 
+/** One chain's total: its entry in `totals`, or `total` when the plan has a single chain */
+function chainTotal(
+  input: PlannedDepositInput,
+  chainId: number,
+  singleChain: boolean
+): PlannedDepositInput['total'] {
+  const perChain = input.totals?.find((t) => t.chainId === chainId);
+  if (!perChain) return singleChain ? input.total : undefined;
+  return perChain.kind === 'amount'
+    ? { kind: 'amount', value: perChain.value }
+    : { kind: 'max', keepForGas: perChain.keepForGas };
+}
+
 /** The part of the request that concerns one chain */
 export function chainRequest(
   input: PlannedDepositInput,
@@ -103,19 +120,11 @@ export function chainRequest(
   indexes: number[],
   singleChain: boolean
 ): PlannedDepositInput {
-  const perChain = input.totals?.find((t) => t.chainId === chainId);
-  const total = perChain
-    ? perChain.kind === 'amount'
-      ? { kind: 'amount' as const, value: perChain.value }
-      : { kind: 'max' as const, keepForGas: perChain.keepForGas }
-    : singleChain
-      ? input.total
-      : undefined;
   return {
     ...input,
     source: { ...input.source, chainId },
     allocations: indexes.map((i) => input.allocations[i]),
-    total,
+    total: chainTotal(input, chainId, singleChain),
     totals: undefined,
   };
 }
@@ -131,13 +140,37 @@ type ChainResult =
     }
   | { ok: false; indexes: number[]; issues: Issue[]; checks: Check[] };
 
-const remap = (issues: Issue[], indexes: number[]): Issue[] =>
+/** A chain's issues point to its own allocations: point them back to the request's */
+const toRequestIndexes = (issues: Issue[], indexes: number[]): Issue[] =>
   issues.map((issue) =>
     issue.allocationIndex === undefined
       ? issue
       : { ...issue, allocationIndex: indexes[issue.allocationIndex] }
   );
 
+/** Share estimates for the deposits that will be sync, read at the plan's block */
+async function withSyncPreviews(
+  client: NonNullable<ReturnType<typeof clientFor>>,
+  request: PlannedDepositInput,
+  reading: ChainReading,
+  resolved: ResolvedAmounts
+): Promise<void> {
+  const previews = await readPreviews(
+    client,
+    reading.blockNumber,
+    reading.vaults.map((vault, i) => {
+      const family = vaultFamily(vault.version);
+      const sync = depositModeOf(vault, request.options?.depositMode) === 'sync';
+      const assets = resolved.amounts[i] ?? 0n;
+      return vault.isLagoon && family !== undefined && sync && assets > 0n
+        ? { vault: vault.address, assets, family }
+        : undefined;
+    })
+  );
+  reading.vaults.forEach((vault, i) => (vault.previewShares = previews[i]));
+}
+
+/** Reads, plans and simulates the part of the request on one chain */
 async function prepareChain(
   input: PlannedDepositInput,
   chainId: number,
@@ -145,18 +178,22 @@ async function prepareChain(
   singleChain: boolean,
   context: { now: Date; planId: string }
 ): Promise<ChainResult> {
-  const unsupported = (message: string, reason: string): ChainResult => ({
+  const failure = (issues: Issue[], checks: Check[] = []): ChainResult => ({
     ok: false,
     indexes,
-    checks: [],
-    issues: indexes.map((i) => ({
-      code: 'UNSUPPORTED_CHAIN' as const,
-      severity: 'error' as const,
-      message,
-      allocationIndex: i,
-      details: { reason },
-    })),
+    issues,
+    checks,
   });
+  const unsupported = (message: string, reason: string): ChainResult =>
+    failure(
+      indexes.map((i) => ({
+        code: 'UNSUPPORTED_CHAIN' as const,
+        severity: 'error' as const,
+        message,
+        allocationIndex: i,
+        details: { reason },
+      }))
+    );
 
   const chain = DEPOSIT_CHAINS[chainId];
   if (!chain) return unsupported(`Chain ${chainId} is not supported for deposits`, 'notConfigured');
@@ -170,77 +207,50 @@ async function prepareChain(
     : 0n;
   const minAllocation = parseDecimal(MIN_ALLOCATION, chain.usdcDecimals) ?? 0n;
 
+  let reading: ChainReading;
+  let built: ReturnType<typeof buildPlan>;
   try {
-    const reading = await readChainState(
+    reading = await readChainState(
       client,
       chain,
       account,
       request.allocations.map((a) => getAddress(a.vault.address))
     );
     const resolved = resolveAmounts(request, reading.balance, chain.usdcDecimals, gasReserve);
-    // Share estimates for the deposits that will be sync, at the same block
-    const previews = await readPreviews(
+    await withSyncPreviews(client, request, reading, resolved);
+    built = buildPlan(request, chain, reading, resolved, { ...context, minAllocation, gasReserve });
+  } catch (error) {
+    return failure([
+      {
+        code: 'STATE_UNAVAILABLE',
+        severity: 'error',
+        message: `Could not read ${chain.name}: ${firstLine(error, 'unknown error')}`,
+      },
+    ]);
+  }
+  if (!built.ok) return failure(toRequestIndexes(built.issues, indexes), built.checks);
+
+  try {
+    const { revertName, ...simulation } = await simulatePlan(
       client,
+      chain.chainId,
       reading.blockNumber,
-      reading.vaults.map((v, i) => {
-        const family = vaultFamily(v.version);
-        return v.isLagoon &&
-          family !== undefined &&
-          depositModeOf(v, request.options?.depositMode) === 'sync' &&
-          (resolved.amounts[i] ?? 0n) > 0n
-          ? { vault: v.address, assets: resolved.amounts[i], family }
-          : undefined;
-      })
+      account,
+      built.plan.steps
     );
-    reading.vaults.forEach((v, i) => (v.previewShares = previews[i]));
-
-    const built = buildPlan(request, chain, reading, resolved, {
-      ...context,
-      minAllocation,
-      gasReserve,
-    });
-    if (!built.ok)
-      return { ok: false, indexes, issues: remap(built.issues, indexes), checks: built.checks };
-
-    let simulated: Awaited<ReturnType<typeof simulatePlan>>;
-    try {
-      simulated = await simulatePlan(
-        client,
-        chain.chainId,
-        reading.blockNumber,
-        account,
-        built.plan.steps
-      );
-    } catch (error) {
-      // The chain was read; it is the simulation that could not run
-      return {
-        ok: false,
-        indexes,
-        checks: built.plan.checks,
-        issues: [
-          {
-            code: 'SIMULATION_FAILED',
-            severity: 'error',
-            message: `Could not simulate the plan on ${chain.name}: ${error instanceof Error ? error.message.split('\n')[0] : 'unknown error'}`,
-          },
-        ],
-      };
-    }
-    const { revertName, ...simulation } = simulated;
     return { ok: true, chain, indexes, plan: built.plan, simulation, revertName };
   } catch (error) {
-    return {
-      ok: false,
-      indexes,
-      checks: [],
-      issues: [
+    // The chain was read; it is the simulation that could not run
+    return failure(
+      [
         {
-          code: 'STATE_UNAVAILABLE',
+          code: 'SIMULATION_FAILED',
           severity: 'error',
-          message: `Could not read ${chain.name}: ${error instanceof Error ? error.message.split('\n')[0] : 'unknown error'}`,
+          message: `Could not simulate the plan on ${chain.name}: ${firstLine(error, 'unknown error')}`,
         },
       ],
-    };
+      built.plan.checks
+    );
   }
 }
 
@@ -312,19 +322,13 @@ export function mergePlans(
 
   const totalsByChain = parts.map((part) => {
     const raw = part.plan.allocations.reduce((sum, a) => sum + BigInt(a.assets.raw), 0n);
-    const list = part.plan.allocations
-      .map(
-        (a) =>
-          `${a.vault.name} ${a.assets.formatted} USDC (${a.mode === 'sync' ? 'immediate' : 'after settlement'})`
-      )
-      .join(', ');
-    return `${toAmount(raw, part.chain.usdcDecimals, 'USDC').formatted} USDC on ${part.chain.name}: ${list}`;
+    const total = toAmount(raw, part.chain.usdcDecimals, 'USDC').formatted;
+    return `${total} USDC on ${part.chain.name}: ${part.plan.allocations.map(describeAllocation).join(', ')}`;
   });
-  const vaultCount = allocations.length;
   const summary =
     `Deposit ${totalsByChain.join('; ')}. ` +
-    `${vaultCount} vault${vaultCount > 1 ? 's' : ''} on ${parts.length} chain${parts.length > 1 ? 's' : ''}, ` +
-    `${steps.length} transaction${steps.length > 1 ? 's' : ''} to sign.`;
+    `${plural(allocations.length, 'vault')} on ${plural(parts.length, 'chain')}, ` +
+    `${plural(steps.length, 'transaction')} to sign.`;
 
   const account = parts[0].plan.account;
   return {
@@ -339,7 +343,7 @@ export function mergePlans(
     steps,
     batches,
     checks: parts.flatMap((p) => [...p.plan.checks, simulatedCheck(p.simulation, p.revertName)]),
-    warnings: parts.flatMap((p) => remap(p.plan.warnings, p.indexes)),
+    warnings: parts.flatMap((p) => toRequestIndexes(p.plan.warnings, p.indexes)),
     summary,
     simulations: parts.map((p) => p.simulation),
   };
@@ -364,33 +368,38 @@ export const isVaultProblem = (issue: Issue): boolean =>
 /** Reads vault state when no wallet is given; never a real account */
 const PROBE_ACCOUNT = '0x000000000000000000000000000000000000dEaD';
 
+/**
+ * No plan without the wallet, but the vaults themselves are still checked:
+ * read with a probe address, keeping only what is wrong with the vaults
+ */
+async function checkVaultsWithoutAccount(
+  input: PrepareDepositInput
+): Promise<PrepareDepositOutput> {
+  const probe = await prepareDeposit({ ...input, account: { address: PROBE_ACCOUNT } });
+  const vaultIssues = probe.ok
+    ? []
+    : probe.issues.filter(
+        (i) => isVaultProblem(i) || i.code === 'UNSUPPORTED_CHAIN' || i.code === 'STATE_UNAVAILABLE'
+      );
+  return {
+    ok: false,
+    issues: [
+      {
+        code: 'ACCOUNT_REQUIRED',
+        severity: 'error',
+        message:
+          'No wallet address given: the plan is checked against the wallet the user connects in the app (signUrl), or call again with account.address',
+      },
+      ...vaultIssues,
+    ],
+    checks: probe.ok ? [] : probe.checks.filter((c) => c.code.startsWith('VAULT_')),
+  };
+}
+
 export async function prepareDeposit(input: PrepareDepositInput): Promise<PrepareDepositOutput> {
   const inputIssues = validateRequest(input);
   if (inputIssues.length > 0) return { ok: false, issues: inputIssues, checks: [] };
-  if (!input.account) {
-    // No plan without the wallet, but the vaults themselves are still checked:
-    // read with a probe address, only the vault problems are kept
-    const probe = await prepareDeposit({ ...input, account: { address: PROBE_ACCOUNT } });
-    const vaultIssues = probe.ok
-      ? []
-      : probe.issues.filter(
-          (i) =>
-            isVaultProblem(i) || i.code === 'UNSUPPORTED_CHAIN' || i.code === 'STATE_UNAVAILABLE'
-        );
-    return {
-      ok: false,
-      issues: [
-        {
-          code: 'ACCOUNT_REQUIRED',
-          severity: 'error',
-          message:
-            'No wallet address given: the plan is checked against the wallet the user connects in the app (signUrl), or call again with account.address',
-        },
-        ...vaultIssues,
-      ],
-      checks: probe.ok ? [] : probe.checks.filter((c) => c.code.startsWith('VAULT_')),
-    };
-  }
+  if (!input.account) return checkVaultsWithoutAccount(input);
   const planned: PlannedDepositInput = { ...input, account: input.account };
 
   const now = new Date();

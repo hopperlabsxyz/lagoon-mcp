@@ -13,7 +13,14 @@ import { isVaultProblem, prepareDeposit } from '../deposit/prepare.js';
 import type { Issue, PrepareDepositOutput } from '../deposit/types.js';
 import { signUrlFor } from '../deposit/config.js';
 import type { PrepareDepositInput } from '../utils/validators.js';
+import { createStructuredResponse } from '../utils/tool-response.js';
 import { ServiceContainer } from '../core/container.js';
+
+interface ListedVault {
+  address: string;
+  isVisible: boolean;
+  chain: { id: string };
+}
 
 const LISTING_QUERY = `
   query DepositVaultListing($where: VaultFilterInput) {
@@ -35,16 +42,17 @@ async function withListingWarnings(
   container: ServiceContainer
 ): Promise<PrepareDepositOutput> {
   const refs = input.allocations.map((a) => a.vault);
-  let items: Array<{ address: string; isVisible: boolean; chain: { id: string } }>;
+  let items: ListedVault[];
   try {
-    const data = await container.graphqlClient.request<{
-      vaults: { items: Array<{ address: string; isVisible: boolean; chain: { id: string } }> };
-    }>(LISTING_QUERY, {
-      where: {
-        address_in: refs.map((r) => getAddress(r.address)),
-        chainId_in: [...new Set(refs.map((r) => r.chainId))],
-      },
-    });
+    const data = await container.graphqlClient.request<{ vaults: { items: ListedVault[] } }>(
+      LISTING_QUERY,
+      {
+        where: {
+          address_in: refs.map((r) => getAddress(r.address)),
+          chainId_in: [...new Set(refs.map((r) => r.chainId))],
+        },
+      }
+    );
     items = data.vaults.items;
   } catch {
     return result;
@@ -80,12 +88,6 @@ export function createExecutePrepareDeposit(
     // user fixes it in the app. Not when a vault itself is the problem.
     const vaultProblem = !result.ok && result.issues.some(isVaultProblem);
     const signUrl = vaultProblem ? undefined : signUrlFor(input);
-    const output = signUrl ? { ...result, signUrl } : result;
-    // The first content item is the bare JSON, so programmatic callers can parse it
-    return {
-      content: [{ type: 'text', text: JSON.stringify(output) }],
-      structuredContent: output as unknown as Record<string, unknown>,
-      isError: false,
-    };
+    return createStructuredResponse(signUrl ? { ...result, signUrl } : result);
   };
 }
