@@ -2,8 +2,10 @@
 
 > Status: **draft** · specVersion `1` · Ticket: LAG-480 · Branch: `feat/deposit-usdc`
 >
-> Grounded in `lagoon-v0-internal` v0.6.0 (`src/v0.6.0/`) and verified against Arc mainnet
-> (chainId 5042). If this spec disagrees with the contracts, the contracts win — fix this file.
+> Grounded in `lagoon-v0-internal` (vault versions v0.1 to v0.6, `src/v0.5.x/`, `src/v0.6.0/` and
+> the `v0.1.0`…`v0.4.0` tags) and the per-version ABIs of `@lagoon-protocol/v0-core`, verified
+> against mainnet vaults on Ethereum, Base, Arbitrum, Avalanche and Arc. If this spec disagrees with
+> the contracts, the contracts win — fix this file.
 
 ## 1. Purpose
 
@@ -25,7 +27,7 @@ intent  ───────────▶   read chain → check → build pl
 |---|----------|-----------|
 | D1 | **All-or-nothing.** Any blocking issue → no plan. Every issue is returned at once, with hints (e.g. `remainingCapacity`). | The agent proposes a new split; the user never signs a partial plan by surprise. |
 | D2 | **Receiver = `account`.** Shares, controller and owner are always the signing account. | Removes a whole class of address-substitution attacks. |
-| D3 | **Vault implementation v0.6.0 only.** Other versions → `UNSUPPORTED_VAULT_VERSION`. Chains come from a supported-chains config (v1: Arc, 5042). | Arc only runs v0.6.0. v0.5.x has different sync/async rules (see §10). |
+| D3 | **Vault versions v0.1 to v0.6**, by family (§3): v0.6, v0.5, and "legacy" v0.1–v0.4 (requests only; v0.1 and v0.2 have no `version()`). An unknown version (v0.7…) → `UNSUPPORTED_VAULT_VERSION`. Chains come from a supported-chains config: Ethereum, Optimism, Polygon, HyperEVM, Arc, Base, Arbitrum, Avalanche, each funded from the wallet on that chain. | Most of the TVL listed in the app is on v0.5. |
 | D4 | **Exact approvals.** Approve exactly the deposit amount; skip the step when the current allowance already covers it. Never `maxUint256`. | No lingering unlimited allowance. |
 | D5 | **Server-side fields.** Origin (in-app chat / external MCP), approval policy, receiver and trusted addresses are not in the input. | The agent (or a prompt injection) cannot change them. |
 | D6 | **No transaction nonce in the plan.** The wallet (or Safe) assigns nonce, gas and fees at signing time. | A preset nonce breaks as soon as the user sends any other transaction. |
@@ -49,8 +51,12 @@ intent  ───────────▶   read chain → check → build pl
 | `requestDeposit` / `syncDeposit` revert `MaxCapReached` above that. | `ERC7540Lib._onlyUnderMaxCap` | Check `UNDER_MAX_CAP`. |
 | `syncDeposit` needs `syncMode ∈ {Both, SyncDeposit}`, `isTotalAssetsValid()`, and state `Open`. | `VaultLib._syncDepositAllowed`, `onlyOpen` | `mode: 'auto'` picks sync only when all hold. Plan expires with the NAV. |
 | `requestDeposit` requires `whenNotPaused` and `isAllowed` for owner, controller and `msg.sender`. | `ERC7540Lib._requestDeposit` | Checks `VAULT_NOT_PAUSED`, `ACCOUNT_ALLOWED`. |
-| A new request reverts `OnlyOneRequestAllowed` if a request from an earlier epoch is still pending. | same | Check `NO_BLOCKING_PENDING_REQUEST`. |
-| `requestDeposit` first auto-claims any claimable deposit of the controller. | same | Effect `autoClaim`, info `AUTO_CLAIM_INCLUDED`. |
+| A new request reverts `OnlyOneRequestAllowed` if a request from an earlier epoch is still pending. | same | Not checked before simulating in v1: warning `PENDING_DEPOSIT_EXISTS` when a request is pending, and the simulation reports the revert (`PENDING_REQUEST_EXISTS`). `NO_BLOCKING_PENDING_REQUEST` is reserved. |
+| `requestDeposit` first auto-claims any claimable deposit of the controller. | same | Not reported in v1: the `autoClaim` effect and `AUTO_CLAIM_INCLUDED` are reserved. |
+| The vault state (`Open`, `Closing`, `Closed`) has no getter. It is the first field of the ERC-7201 namespace `hopper.storage.vault`, slot `0x0e6b…1400`, in **every** version v0.1 to v0.6. v0.6 still takes deposit requests while closing, and they can never be settled. | `VaultStorage` in each version | Read with `eth_getStorageAt` at the plan's block; anything but `Open` → `VAULT_NOT_OPEN` (check `VAULT_OPEN`). |
+| The NAV expiry (`totalAssetsExpiration`, v0.5 and v0.6) has no getter: low 128 bits of `hopper.storage.ERC7540` + 10. | `ERC7540Storage` | `validUntil` of a plan with a sync deposit is at most the NAV expiry; precondition `navValid`. |
+| **v0.5**: no `syncMode`. A valid NAV allows **only** `syncDeposit` (`requestDeposit` reverts `OnlySyncDepositAllowed`); an invalid NAV only requests. `isWhitelisted` instead of `isAllowed`, no cap, no entry fee; `syncDeposit` mints `convertToShares(assets)`. | `src/v0.5.x/Vault.sol` (`onlySyncDeposit`, `onlyAsyncDeposit`) | Mode follows the NAV; `depositMode: 'async'` on a vault with a valid NAV gives a sync deposit and warning `SYNC_ONLY_VAULT`. |
+| **v0.1 to v0.4**: requests only, `isWhitelisted`, no cap, no entry fee. | `v0.1.0`…`v0.4.0` tags | Always async. |
 | `pendingDepositRequest(requestId, c)` / `claimableDepositRequest(requestId, c)` accept a specific request id (`0` = latest). | `ERC7540Lib` | `deposit_status` can follow one specific request (§8). |
 | Access: whitelist / blacklist mode + external sanctions list, via `isAllowed(account)`. | `Accessable.sol` | One check, `ACCOUNT_ALLOWED`. |
 | v0.6 entry fee `entryRate` (bps, capped 200 = 2 %). | `docs/agent-notes.md` gotcha #1 | Shown per allocation (`entryRateBps`). |
@@ -108,8 +114,10 @@ type Allocation =
 Validation rules (all reported together, D1):
 - `allocations.length ≥ 1`, no duplicate vault.
 - Sum of bps ≤ 10 000. bps without `total` → `BPS_SUM_INVALID`.
-- Mixing `amount` and `bps`: amounts are taken first, bps apply to `total`. The sum must not exceed `total`.
-- Every `vault.chainId` must equal `source.chainId`, else `CROSS_CHAIN_NOT_SUPPORTED`.
+- Mixing `amount` and `bps`: each bps is a share of `total` (not of what the amounts leave). Fixed amounts plus shares must not exceed `total`, else `BPS_SUM_INVALID` — also with fixed amounts only.
+- Allocations may span several chains: each chain is funded from the wallet on that chain, with its own entry in `totals` (`{ chainId, kind, value }`). `total` is for a single chain; with several chains → `INVALID_INPUT`.
+- When `source.chainId` is set, every `vault.chainId` must equal it, else `CROSS_CHAIN_NOT_SUPPORTED`.
+- `account` is optional: without it the vaults are still checked (vault problems are reported) but there is no plan, only `ACCOUNT_REQUIRED` and a `signUrl` (§7).
 - `account.type = 'smartAccount'` → `UNSUPPORTED_ACCOUNT_TYPE`.
 
 ## 5. Runtime and trust rules
@@ -130,16 +138,25 @@ never cached. Static data (vault name, curator) may come from the cached indexer
 **R4 — Trusted addresses come from config**, never from the indexer or the input: USDC per chain,
 factory per chain (`@lagoon-protocol/v0-core` addresses).
 
-**R5 — A vault is accepted only if** `factory.isInstance(vault) == true` **and**
-`vault.version() == "v0.6.0"` **and** `vault.asset() == USDC(chainId)`. The indexer is used for
-names and discovery, never as proof.
+**R5 — A vault is accepted only if** `factory.isInstance(vault) == true` on one of the chain's
+production factories (`@lagoon-protocol/v0-core`; dev factories are excluded) or it is a listed
+legacy vault, **and** its version is v0.1 to v0.6, **and** `vault.asset() == USDC(chainId)`, **and**
+its state is `Open`. The indexer is used for names, discovery and the "hidden from the app" warning
+(`UNLISTED_VAULT`), never as proof. A factory is permissionless: it proves Lagoon code, not a
+trustworthy curator.
 
 **R6 — Errors from infrastructure** (RPC down, timeout) return `{ ok: false }` with
-`STATE_UNAVAILABLE`, never a partial plan.
+`STATE_UNAVAILABLE` when the chain cannot be read, or `SIMULATION_FAILED` ("Could not simulate…")
+when only the simulation cannot run; never a partial plan. Nodes without `eth_simulateV1` (every
+Avalanche node today) are simulated with `eth_call`, step by step at the plan's block, the earlier
+approvals written into the token's allowance storage (its slot found on chain); each call then
+sees those approvals but not the other effects of earlier steps, and has no gas figure
+(`simulations[].method = "eth_call"`).
 
-**R7 — Output transport.** The tool returns the JSON object as text content (like every other tool,
-with the standard disclaimer) **and** as `structuredContent` with a declared `outputSchema`
-(MCP SDK ≥ 1.25), so typed clients (backend, deposit card) don't parse prose.
+**R7 — Output transport.** The tool returns the JSON object as text content **and** as
+`structuredContent`. v1 deviates on two points: no standard disclaimer (the first content item is
+the bare JSON, so programmatic callers parse it directly) and no declared `outputSchema` (the tool
+registry does not declare output schemas yet); typed clients use the types in `src/deposit/types.ts`.
 
 ## 6. Algorithms
 
@@ -249,13 +266,13 @@ type Precondition =
   | { kind: 'navValid'; vault: ChainRef; until: string } // sync steps only
   | { kind: 'capacity'; vault: ChainRef; atLeast: Amount }
   /** requestDeposit only: no pending request from an earlier epoch (else OnlyOneRequestAllowed). */
-  | { kind: 'noBlockingPendingRequest'; vault: ChainRef; controller: Address; depositEpochId: string };
+  | { kind: 'noBlockingPendingRequest'; vault: ChainRef; controller: Address; depositEpochId: string }; // reserved, not emitted in v1
 
 type Effect =
   | { kind: 'balanceDelta'; token: ChainRef; holder: Address; delta: Amount; sign: '-' | '+' }
   | { kind: 'allowance'; token: ChainRef; owner: Address; spender: Address; amount: Amount }
   | { kind: 'pendingDeposit'; vault: ChainRef; controller: Address; assets: Amount }
-  | { kind: 'autoClaim'; vault: ChainRef; controller: Address; assets: Amount };
+  | { kind: 'autoClaim'; vault: ChainRef; controller: Address; assets: Amount }; // reserved, not emitted in v1
 ```
 
 ### Checks and issues
@@ -266,21 +283,22 @@ interface Check {
   target?: ChainRef;
   passed: boolean;
   observed: Record<string, string>; // e.g. { maxCap, totalAssets, pendingSilo }
-  source: 'onchain' | 'indexer';
+  source: 'onchain' | 'indexer' | 'simulation';
 }
 
 type CheckCode =
-  | 'VAULT_FROM_LAGOON_FACTORY' // R5: factory.isInstance
-  | 'VAULT_VERSION_SUPPORTED' // R5: version() == "v0.6.0"
+  | 'VAULT_FROM_LAGOON_FACTORY' // R5: factory.isInstance, or a listed legacy vault
+  | 'VAULT_VERSION_SUPPORTED' // R5: version v0.1 to v0.6 (none: v0.1 / v0.2)
   | 'VAULT_ASSET_IS_USDC' // R5: asset() == config USDC
-  | 'VAULT_OPEN'
+  | 'VAULT_OPEN' // R5: stored state is Open (§3)
   | 'VAULT_NOT_PAUSED'
-  | 'ACCOUNT_ALLOWED'
-  | 'UNDER_MAX_CAP'
-  | 'NO_BLOCKING_PENDING_REQUEST'
+  | 'ACCOUNT_ALLOWED' // isAllowed (v0.6) or isWhitelisted (v0.1–v0.5)
+  | 'UNDER_MAX_CAP' // v0.6 only; excludes the pending silo, the simulation has the final word
+  | 'NO_BLOCKING_PENDING_REQUEST' // reserved, not emitted in v1 (§3)
   | 'SYNC_ALLOWED'
   | 'BALANCE_SUFFICIENT'
-  | 'GAS_RESERVE';
+  | 'GAS_RESERVE'
+  | 'PLAN_SIMULATED';
 
 interface Issue {
   code: IssueCode;
@@ -293,20 +311,35 @@ interface Issue {
 type IssueCode =
   // input
   | 'INVALID_INPUT' | 'DUPLICATE_VAULT' | 'BPS_SUM_INVALID' | 'AMOUNT_TOO_SMALL'
+  | 'ACCOUNT_REQUIRED' // no account: vaults checked, no plan, signUrl given
   // v1 scope limits (become features later)
   | 'UNSUPPORTED_CHAIN' | 'UNSUPPORTED_VAULT_VERSION' | 'UNSUPPORTED_ACCOUNT_TYPE'
   | 'CROSS_CHAIN_NOT_SUPPORTED'
   // vault / account state
   | 'VAULT_NOT_FOUND' | 'NOT_A_LAGOON_VAULT' | 'ASSET_MISMATCH' | 'VAULT_NOT_OPEN' | 'VAULT_PAUSED'
   | 'ACCESS_DENIED' | 'MAX_CAP_REACHED' | 'PENDING_REQUEST_EXISTS' | 'INSUFFICIENT_BALANCE'
-  // infrastructure
-  | 'STATE_UNAVAILABLE'
+  // infrastructure, simulation
+  | 'STATE_UNAVAILABLE' | 'SIMULATION_FAILED'
   // warnings / info
-  | 'ASYNC_DEPOSIT' | 'SYNC_FALLBACK_TO_ASYNC' | 'AUTO_CLAIM_INCLUDED' | 'LOW_GAS_RESERVE'
-  | 'EXISTING_ALLOWANCE_USED';
+  | 'ASYNC_DEPOSIT' | 'LOW_GAS_RESERVE' | 'EXISTING_ALLOWANCE_USED'
+  | 'PENDING_DEPOSIT_EXISTS' // a request of the account is still pending in the vault
+  | 'SYNC_ONLY_VAULT' // async asked, but a v0.5 vault with a valid NAV only takes sync deposits
+  | 'UNLISTED_VAULT' // hidden from the Lagoon app per the indexer (test or private vault)
+  // reserved, not emitted in v1
+  | 'SYNC_FALLBACK_TO_ASYNC' | 'AUTO_CLAIM_INCLUDED' | 'VAULT_NOT_FOUND';
 ```
 
 Issue codes are a **stable public contract**: never rename or reuse one; only add.
+
+**`signUrl`.** When `LAGOON_APP_URL` is set, the output carries `signUrl`
+(`<app>/allocate?intent=<base64url request>`), which opens the request in the app to review and
+sign; the app prepares the plan again. It is given when the request can be fixed there (no
+account, balance, amounts), and **not** when a vault itself cannot take the deposit:
+`NOT_A_LAGOON_VAULT`, `ASSET_MISMATCH`, `UNSUPPORTED_VAULT_VERSION`, `VAULT_NOT_OPEN`, or a chain
+deposits do not support (`UNSUPPORTED_CHAIN` with `reason: "notConfigured"`; a chain this server
+has no RPC for keeps the link).
+
+**Hints.** `details.remainingCapacity` is a plain decimal (`"120000"`), usable as an amount.
 
 ### Exports
 
@@ -338,7 +371,7 @@ interface DepositStatusOutput {
     txHash?: Hex;
     requestId?: string; // epoch id from the DepositRequest event; absent for sync deposits
     /** 'requested' counts as completed for grant reporting (D12). */
-    status: 'notFound' | 'failed' | 'requested' | 'claimable' | 'claimed' | 'synced';
+    status: 'notFound' | 'failed' | 'requested' | 'claimable' | 'claimed' | 'canceled' | 'synced';
     assets: Amount;
     pending: Amount; // pendingDepositRequest(requestId, account)
     claimable: Amount; // claimableDepositRequest(requestId, account)
@@ -352,6 +385,12 @@ interface DepositStatusOutput {
 - `claimable`: settled; shares can be claimed (or are auto-claimed by the next request).
 - `claimed`: request id settled and nothing left claimable for it.
 - `failed`: transaction reverted. `notFound`: unknown hash or no deposit event.
+- `canceled`: a `DepositRequestCanceled` event for that request (the USDC went back to the wallet).
+  A canceled and a claimed request both read 0 pending / 0 claimable: the cancel events tell them
+  apart, read in chunks when the provider caps log ranges; when they cannot be read, the status
+  stays `claimed` and `next.description` says it may be canceled.
+- Only deposit events emitted by a Lagoon vault (R5 factory check) count: any contract can emit an
+  event with the same shape.
 
 ## 9. Worked example
 
@@ -405,12 +444,13 @@ Failure cases (each returns `ok: false` with all issues):
 ## 10. Non-goals (v1) and notes for later
 
 Non-goals: automatic vault selection (the agent uses `search_vaults` / `analyze_risk`, the user
-confirms) · bridge and unwind · fork simulation · plan storage and `/plan/<id>` · withdraw and claim
-tools · vault versions other than v0.6.0 · deposits on behalf of another address · smart accounts.
+confirms) · bridge and unwind · fork simulation · plan storage and `/plan/<id>` · withdraw, claim and
+cancel tools · deposits on behalf of another address · smart accounts.
 
 Later:
-- **v0.5.x adapter:** sync and async are mutually exclusive there (`onlySyncDeposit` /
-  `onlyAsyncDeposit` depend on `isTotalAssetsValid()`), and access is a plain whitelist.
+- **Blocking pending requests** (`NO_BLOCKING_PENDING_REQUEST`, `noBlockingPendingRequest`) and
+  **auto-claim** reporting (`autoClaim`, `AUTO_CLAIM_INCLUDED`): reserved; v1 relies on the
+  `PENDING_DEPOSIT_EXISTS` warning and the simulation.
 - **Router contract** (optional, needs audit): executes a plan atomically with `nonce`, `deadline`,
   `minShares` — closes D7 and the missing slippage guard on `syncDeposit`.
 - **Dependency:** lagoon-mcp pins `@lagoon-protocol/v0-core` 0.9.0, which has neither Arc nor the

@@ -1,6 +1,6 @@
 # Lagoon MCP
 
-A **stdio** Model Context Protocol server exposing 16 tools for Lagoon DeFi vault analytics over a
+A **stdio** Model Context Protocol server exposing 26 tools for Lagoon DeFi vault analytics and USDC deposits over a
 GraphQL backend. TypeScript + ESM. See [README.md](README.md) for the tool catalog and quick start,
 and @docs/agent-notes.md for the full developer reference.
 

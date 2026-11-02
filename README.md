@@ -172,6 +172,9 @@ Complete tool documentation in [docs/tools/](./docs/tools/).
 | **get_curator** | Single curator lookup by id | — |
 | **get_asset** | ERC20 asset metadata + current USD price | — |
 | **get_historical_state** | Vault state at a specific Unix timestamp (price-per-share, fees, totalAssets, roles, guardrails) | — |
+| **list_deposit_vaults** | Open Lagoon vaults (v0.1 to v0.6) a USDC deposit can go into, on 8 chains; listed in the app by default | [→ Spec](./docs/specs/deposit.md) |
+| **prepare_deposit** | Checks vaults on chain, builds and simulates the approve + deposit transactions for the user to sign; never signs | [→ Spec](./docs/specs/deposit.md) |
+| **deposit_status** | Follows a deposit until its shares are received (requested, claimable, claimed, canceled, synced) | [→ Spec](./docs/specs/deposit.md) |
 
 **See also**: [Tool Selection Guide](./docs/tools/README.md#tool-selection-guide) | [Common Workflows](./docs/tools/README.md#common-workflows)
 
