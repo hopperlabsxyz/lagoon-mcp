@@ -39,7 +39,7 @@ intent  ───────────▶   read chain → check → build pl
 | D12 | **A deposit counts as "completed" for grant reporting when the request transaction is mined** (`DepositRequest` or `DepositSync` event). `deposit_status` still reports settlement and claim. | Product decision. |
 | D13 | **Defaults:** plan TTL 30 min · gas reserve for `max` 1 USDC (Arc only, where USDC pays gas) · no minimum per allocation beyond zero · steps ordered vault by vault. | See §6. |
 
-## 3. Contract and chain facts (v0.6.0, Arc)
+## 3. Contract and chain facts
 
 | Fact | Where | Consequence |
 |------|-------|-------------|
@@ -461,3 +461,20 @@ Later:
 - **Attribution without referral (D10).** In-app chat deposits are attributable through the backend.
   Deposits prepared by an external MCP client (Claude, Cursor) leave no trace with Lagoon and are not
   counted in the grant report. Out of scope for now; revisit with telemetry or a referral address.
+
+## 12. Code map
+
+| File | What it does |
+|------|--------------|
+| `src/deposit/config.ts` | Trusted per-chain config (USDC, factories, legacy vaults), version families, limits, RPC and sign-link URLs |
+| `src/deposit/abi.ts` | The few vault, ERC-20 and factory functions used, across versions |
+| `src/deposit/amounts.ts` | Request amounts → exact base units (§6) |
+| `src/deposit/chain.ts` | Reads at one block (`readChainState`), share previews, simulation (`eth_simulateV1`, or `eth_call` where missing), revert decoding |
+| `src/deposit/build-plan.ts` | Pure: checks → steps → plan, for one chain |
+| `src/deposit/prepare.ts` | `prepare_deposit`: per-chain read → plan → simulate, then the merged plan |
+| `src/deposit/status.ts` | `deposit_status` |
+| `src/deposit/types.ts` | Output types (§7, §8) |
+| `src/tools/{prepare-deposit,deposit-status,list-deposit-vaults}.ts` | MCP tools: inputs in `src/utils/validators.ts`, the sign link, the unlisted-vault warning |
+
+Tests live in `tests/deposit/`; `tests/helpers/deposit-chain.ts` runs `prepareDeposit` against a faked chain.
+
