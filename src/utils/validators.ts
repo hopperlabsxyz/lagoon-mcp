@@ -567,7 +567,9 @@ export const listDepositVaultsInputSchema = z.object({
   includeUnlisted: z
     .boolean()
     .optional()
-    .describe('Include vaults hidden from the app (default true)'),
+    .describe(
+      'Include vaults hidden from the app (test or private vaults). Default: false, except on Arc, which only has test vaults'
+    ),
   limit: z.number().int().positive().max(50).optional(),
 });
 

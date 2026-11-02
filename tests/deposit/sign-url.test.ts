@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { signUrlFor } from '../../src/deposit/config';
 
 const intent = {
@@ -28,10 +28,51 @@ describe('signUrlFor', () => {
 });
 
 describe('prepareDeposit without an account', () => {
-  it('returns ACCOUNT_REQUIRED without reading the chain', async () => {
+  afterEach(() => vi.doUnmock('../../src/deposit/chain'));
+
+  // The chain as read with the probe address: one vault, open or closed
+  const withVaultState = async (state: number) => {
+    vi.resetModules();
+    vi.doMock('../../src/deposit/chain', async (original) => ({
+      ...(await original<typeof import('../../src/deposit/chain')>()),
+      clientFor: () => ({}),
+      readChainState: () =>
+        Promise.resolve({
+          chainId: 5042,
+          blockNumber: 1n,
+          timestamp: 1n,
+          balance: 0n,
+          vaults: [
+            {
+              address: intent.allocations[0].vault.address,
+              isLagoon: true,
+              name: 'TestUSDC',
+              decimals: 18,
+              version: 'v0.6.0',
+              asset: '0x3600000000000000000000000000000000000000',
+              paused: false,
+              isAllowed: true,
+              state,
+              allowance: 0n,
+            },
+          ],
+        }),
+      readPreviews: () => Promise.resolve([]),
+    }));
     const { prepareDeposit } = await import('../../src/deposit/prepare');
-    const result = await prepareDeposit({ ...intent, account: undefined } as never);
-    expect(result.ok).toBe(false);
+    return prepareDeposit({ ...intent, account: undefined } as never);
+  };
+
+  it('returns ACCOUNT_REQUIRED alone when the vaults can take the deposit', async () => {
+    const result = await withVaultState(0);
     expect(!result.ok && result.issues.map((i) => i.code)).toEqual(['ACCOUNT_REQUIRED']);
+  });
+
+  it('still reports a vault that cannot take it (seen live: closed vaults)', async () => {
+    const result = await withVaultState(2);
+    expect(!result.ok && result.issues.map((i) => i.code)).toEqual([
+      'ACCOUNT_REQUIRED',
+      'VAULT_NOT_OPEN',
+    ]);
   });
 });

@@ -382,32 +382,35 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
   {
     name: 'list_deposit_vaults',
     description:
-      'The vaults a USDC deposit can go into: open Lagoon v0.6.0 vaults whose asset is Circle USDC, on ' +
-      'Ethereum, Optimism, Polygon, HyperEVM, Arc, Base, Arbitrum and Avalanche, including vaults hidden ' +
-      'from the app (`listed: false`). Filter by `chainId` and `search` (name, ticker or curator). Returns ' +
-      'chainId, address, name, ticker, curators and TVL, listed first then by TVL. Use it to pick vaults ' +
-      'for `prepare_deposit`; never invent an address.',
+      'The vaults a USDC deposit can go into: open Lagoon vaults (versions v0.1 to v0.6) whose asset is ' +
+      'Circle USDC, on Ethereum, Optimism, Polygon, HyperEVM, Arc, Base, Arbitrum and Avalanche. By default ' +
+      'only vaults listed in the Lagoon app; `includeUnlisted: true` adds hidden ones (`listed: false`, test or ' +
+      'private vaults), which Arc (testnet) lists by default as it only has test vaults. Filter by `chainId` ' +
+      'and `search` (name, ticker or curator). Returns chainId, address, name, ticker, curators and TVL, ' +
+      'listed first then by TVL. Use it to pick vaults for `prepare_deposit`; never invent an address.',
     schema: listDepositVaultsInputSchema,
     executorFactory: createExecuteListDepositVaults,
   },
   {
     name: 'prepare_deposit',
     description:
-      'Prepare a USDC deposit into one or more Lagoon vaults for the user to sign in their own wallet. ' +
-      'Never signs or sends anything. Input: the user wallet address (optional), the chain holding their ' +
-      'USDC, and allocations per vault as an amount ("200000") or a share of `total` in basis points ' +
-      '(2000 = 20%). Take vault addresses from `search_vaults` or `list_deposit_vaults`, never invent them. ' +
-      'Reads the chain, checks each vault (created by Lagoon, open, user allowed, capacity, balance), builds ' +
-      'the exact approve + deposit transactions and simulates them. Returns `{ ok: true, plan }` (show ' +
-      '`plan.summary`, warnings, and that the user signs `plan.steps` in order) or `{ ok: false, issues }` ' +
-      '(explain each issue and propose a fix, e.g. a smaller amount when `details.remainingCapacity` is set). ' +
-      'Always call it once the user has named an amount and vaults, and always give the `signUrl` from the ' +
-      'output: it opens the request in the Lagoon app, where the user reviews it, can change any vault, ' +
-      'and signs. Do not ask for the wallet address: call it without `account` (the output then has issue ' +
-      'ACCOUNT_REQUIRED and no plan, but still a `signUrl`; the app checks the wallet the user connects). ' +
-      'Do not stop to ask when a name matches several vaults: pick the most likely one (its name contains ' +
-      "the user's words, then the largest TVL), call it, then say which vault you picked and list the " +
-      'other matches so the user can switch here or in the app. Nothing is signed without the user.',
+      'Prepare a USDC deposit into one or more Lagoon vaults (v0.1 to v0.6) for the user to sign in their ' +
+      'own wallet. Never signs or sends anything. Input: the user wallet address (optional), and allocations ' +
+      'per vault as an amount ("200000") or a share of the total in basis points (2000 = 20% of `total`, or of ' +
+      "that chain's entry in `totals` on a multi-chain plan); each chain is funded from the wallet on that " +
+      'chain. Take vault addresses from `list_deposit_vaults`, never invent them. Reads the chain, checks each ' +
+      'vault (created by a Lagoon factory, open, supported version, USDC, not paused, user allowed, capacity, ' +
+      'balance), builds the exact approve + deposit transactions and simulates them. Returns ' +
+      '`{ ok: true, plan }` (show `plan.summary`, the warnings, and that the user signs `plan.steps` in ' +
+      'order) or `{ ok: false, issues }` (explain each issue and propose a fix, e.g. a smaller amount when ' +
+      '`details.remainingCapacity` is set). When the output has a `signUrl`, give it: it opens the request ' +
+      'in the Lagoon app, where the user reviews it and signs. There is none when a vault itself cannot take ' +
+      'the deposit (not a Lagoon vault, not USDC, unsupported version, not open): propose another vault. ' +
+      'If you do not know the wallet address, call it without `account`: the vaults are still checked, the ' +
+      'output has issue ACCOUNT_REQUIRED and a `signUrl`, and the app checks the wallet the user connects. ' +
+      'A Lagoon factory proves Lagoon code, not a trustworthy curator: prefer vaults listed in the app, and ' +
+      'when a name matches several vaults or a vault is unlisted (warning UNLISTED_VAULT), say which one you ' +
+      'used and list the others.',
     schema: prepareDepositInputSchema,
     executorFactory: createExecutePrepareDeposit,
   },

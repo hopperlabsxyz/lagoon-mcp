@@ -1,9 +1,10 @@
 /**
  * list_deposit_vaults Tool
  *
- * The vaults `prepare_deposit` accepts: open Lagoon v0.6.0 vaults whose asset
- * is Circle USDC, on the chains deposit plans support. Includes vaults hidden
- * from the app's list (`listed: false`). Use it to pick vaults for a deposit.
+ * The vaults `prepare_deposit` accepts: open Lagoon vaults (v0.1 to v0.6)
+ * whose asset is Circle USDC, on the chains deposit plans support. Vaults
+ * hidden from the app (`listed: false`) only on request, except on Arc
+ * (testnet), which only has test vaults. Use it to pick vaults for a deposit.
  */
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -11,9 +12,13 @@ import { DEPOSIT_CHAINS, vaultFamily } from '../deposit/config.js';
 import type { ListDepositVaultsInput } from '../utils/validators.js';
 import { ServiceContainer } from '../core/container.js';
 
+const PAGE = 1000;
+/** A bound on the pages read, far above today's ~1,100 open vaults */
+const MAX_VAULTS = 20_000;
+
 const QUERY = `
-  query ListDepositVaults($first: Int!, $where: VaultFilterInput) {
-    vaults(first: $first, where: $where) {
+  query ListDepositVaults($first: Int!, $skip: Int!, $where: VaultFilterInput) {
+    vaults(first: $first, skip: $skip, where: $where) {
       items {
         address
         name
@@ -52,6 +57,12 @@ export interface DepositVault {
 }
 
 /** Keeps the vaults prepare_deposit accepts, matching the optional filters (pure) */
+/** Networks whose hidden vaults are listed by default: Arc only has test vaults */
+const UNLISTED_BY_DEFAULT = new Set([5042]);
+
+const includeUnlisted = (input: ListDepositVaultsInput, chainId: number): boolean =>
+  input.includeUnlisted ?? UNLISTED_BY_DEFAULT.has(chainId);
+
 export function selectDepositVaults(
   items: VaultItem[],
   input: ListDepositVaultsInput
@@ -66,7 +77,7 @@ export function selectDepositVaults(
         v.asset.address.toLowerCase() === chain.usdc.toLowerCase()
       );
     })
-    .filter((v) => input.includeUnlisted !== false || v.isVisible)
+    .filter((v) => v.isVisible || includeUnlisted(input, Number(v.chain.id)))
     .map((v) => ({
       chainId: Number(v.chain.id),
       chain: DEPOSIT_CHAINS[Number(v.chain.id)].name,
@@ -91,11 +102,21 @@ export function createExecuteListDepositVaults(
   return async (input) => {
     const chainIds =
       input.chainId !== undefined ? [input.chainId] : Object.keys(DEPOSIT_CHAINS).map(Number);
-    const data = await container.graphqlClient.request<{ vaults: { items: VaultItem[] } }>(QUERY, {
-      first: 1000,
-      where: { chainId_in: chainIds, state_in: ['Open'] },
-    });
-    const vaults = selectDepositVaults(data.vaults.items, input);
+    // Every page: there are more than 1000 open vaults across the chains
+    const items: VaultItem[] = [];
+    for (let skip = 0; ; skip += PAGE) {
+      const data = await container.graphqlClient.request<{ vaults: { items: VaultItem[] } }>(
+        QUERY,
+        {
+          first: PAGE,
+          skip,
+          where: { chainId_in: chainIds, state_in: ['Open'] },
+        }
+      );
+      items.push(...data.vaults.items);
+      if (data.vaults.items.length < PAGE || skip >= MAX_VAULTS) break;
+    }
+    const vaults = selectDepositVaults(items, input);
     const output = { count: vaults.length, vaults };
     return {
       content: [{ type: 'text', text: JSON.stringify(output) }],
