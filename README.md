@@ -94,6 +94,8 @@ For client-specific config snippets see [Manual configuration](#manual-configura
 | `NODE_ENV` | No | `development` | `development` / `production` / `test` |
 | `CACHE_TTL` | No | `600` | Default cache TTL (seconds) |
 | `CACHE_MAX_KEYS` | No | `1000` | Maximum cache entries |
+| `LAGOON_RPC_URLS` | For deposits | — | RPC URL per chain, as JSON: `{"8453":"https://…","5042":"https://…"}`. The deposit tools (`list_deposit_vaults`, `prepare_deposit`, `deposit_status`) skip any chain without a URL. Supported chains: 1, 10, 137, 999, 5042 (Arc), 8453, 42161, 43114 |
+| `LAGOON_APP_URL` | For deposits | — | Lagoon app address (e.g. `https://app.lagoon.finance`). `prepare_deposit` returns a `signUrl` to its `/allocate` page only when set |
 
 ### Usage
 
