@@ -32,6 +32,9 @@ import { createExecuteListCurators } from './list-curators.js';
 import { createExecuteGetCurator } from './get-curator.js';
 import { createExecuteGetAsset } from './get-asset.js';
 import { createExecuteGetHistoricalState } from './get-historical-state.js';
+import { createExecutePrepareDeposit } from './prepare-deposit.js';
+import { createExecuteDepositStatus } from './deposit-status.js';
+import { createExecuteListDepositVaults } from './list-deposit-vaults.js';
 
 // Service container
 import { ServiceContainer } from '../core/container.js';
@@ -59,6 +62,9 @@ import {
   getCuratorInputSchema,
   getAssetInputSchema,
   getHistoricalStateInputSchema,
+  prepareDepositInputSchema,
+  depositStatusInputSchema,
+  listDepositVaultsInputSchema,
 } from '../utils/validators.js';
 
 // Tool utilities
@@ -372,6 +378,50 @@ export const TOOL_REGISTRY: ToolDefinition<any>[] = [
       'Performance: ~300-500 tokens. Cache: 60 minutes (historical state is immutable once past).',
     schema: getHistoricalStateInputSchema,
     executorFactory: createExecuteGetHistoricalState,
+  },
+  {
+    name: 'list_deposit_vaults',
+    description:
+      'The vaults a USDC deposit can go into: open Lagoon vaults (versions v0.1 to v0.6) whose asset is ' +
+      'Circle USDC, on Ethereum, Optimism, Polygon, HyperEVM, Arc, Base, Arbitrum and Avalanche. By default ' +
+      'only vaults listed in the Lagoon app; `includeUnlisted: true` adds hidden ones (`listed: false`, test or ' +
+      'private vaults), which Arc (testnet) lists by default as it only has test vaults. Filter by `chainId` ' +
+      'and `search` (name, ticker or curator). Returns chainId, address, name, ticker, curators and TVL, ' +
+      'listed first then by TVL. Use it to pick vaults for `prepare_deposit`; never invent an address.',
+    schema: listDepositVaultsInputSchema,
+    executorFactory: createExecuteListDepositVaults,
+  },
+  {
+    name: 'prepare_deposit',
+    description:
+      'Prepare a USDC deposit into one or more Lagoon vaults (v0.1 to v0.6) for the user to sign in their ' +
+      'own wallet. Never signs or sends anything. Input: the user wallet address (optional), and allocations ' +
+      'per vault as an amount ("200000") or a share of the total in basis points (2000 = 20% of `total`, or of ' +
+      "that chain's entry in `totals` on a multi-chain plan); each chain is funded from the wallet on that " +
+      'chain. Take vault addresses from `list_deposit_vaults`, never invent them. Reads the chain, checks each ' +
+      'vault (created by a Lagoon factory, open, supported version, USDC, not paused, user allowed, capacity, ' +
+      'balance), builds the exact approve + deposit transactions and simulates them. Returns ' +
+      '`{ ok: true, plan }` (show `plan.summary`, the warnings, and that the user signs `plan.steps` in ' +
+      'order) or `{ ok: false, issues }` (explain each issue and propose a fix, e.g. a smaller amount when ' +
+      '`details.remainingCapacity` is set). When the output has a `signUrl`, give it: it opens the request ' +
+      'in the Lagoon app, where the user reviews it and signs. There is none when a vault itself cannot take ' +
+      'the deposit (not a Lagoon vault, not USDC, unsupported version, not open): propose another vault. ' +
+      'If you do not know the wallet address, call it without `account`: the vaults are still checked, the ' +
+      'output has issue ACCOUNT_REQUIRED and a `signUrl`, and the app checks the wallet the user connects. ' +
+      'A Lagoon factory proves Lagoon code, not a trustworthy curator: prefer vaults listed in the app, and ' +
+      'when a name matches several vaults or a vault is unlisted (warning UNLISTED_VAULT), say which one you ' +
+      'used and list the others.',
+    schema: prepareDepositInputSchema,
+    executorFactory: createExecutePrepareDeposit,
+  },
+  {
+    name: 'deposit_status',
+    description:
+      'Where a deposit stands: requested (waiting for the curator settlement), claimable, claimed, or synced ' +
+      '(shares received immediately). Pass the transaction hashes of the deposits (preferred), or vaults to ' +
+      'get the latest request of the account. Read-only.',
+    schema: depositStatusInputSchema,
+    executorFactory: createExecuteDepositStatus,
   },
 ];
 

@@ -94,6 +94,8 @@ For client-specific config snippets see [Manual configuration](#manual-configura
 | `NODE_ENV` | No | `development` | `development` / `production` / `test` |
 | `CACHE_TTL` | No | `600` | Default cache TTL (seconds) |
 | `CACHE_MAX_KEYS` | No | `1000` | Maximum cache entries |
+| `LAGOON_RPC_URLS` | For deposits | — | RPC URL per chain, as JSON: `{"8453":"https://…","5042":"https://…"}`. The deposit tools (`list_deposit_vaults`, `prepare_deposit`, `deposit_status`) skip any chain without a URL. Supported chains: 1, 10, 137, 999, 5042 (Arc), 8453, 42161, 43114 |
+| `LAGOON_APP_URL` | For deposits | — | Lagoon app address (e.g. `https://app.lagoon.finance`). `prepare_deposit` returns a `signUrl` to its `/allocate` page only when set |
 
 ### Usage
 
@@ -172,6 +174,9 @@ Complete tool documentation in [docs/tools/](./docs/tools/).
 | **get_curator** | Single curator lookup by id | — |
 | **get_asset** | ERC20 asset metadata + current USD price | — |
 | **get_historical_state** | Vault state at a specific Unix timestamp (price-per-share, fees, totalAssets, roles, guardrails) | — |
+| **list_deposit_vaults** | Open Lagoon vaults (v0.1 to v0.6) a USDC deposit can go into, on 8 chains; listed in the app by default | [→ Spec](./docs/specs/deposit.md) |
+| **prepare_deposit** | Checks vaults on chain, builds and simulates the approve + deposit transactions for the user to sign; never signs | [→ Spec](./docs/specs/deposit.md) |
+| **deposit_status** | Follows a deposit until its shares are received (requested, claimable, claimed, canceled, synced) | [→ Spec](./docs/specs/deposit.md) |
 
 **See also**: [Tool Selection Guide](./docs/tools/README.md#tool-selection-guide) | [Common Workflows](./docs/tools/README.md#common-workflows)
 

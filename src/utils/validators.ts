@@ -480,3 +480,103 @@ export type ListCuratorsInput = z.infer<typeof listCuratorsInputSchema>;
 export type GetCuratorInput = z.infer<typeof getCuratorInputSchema>;
 export type GetAssetInput = z.infer<typeof getAssetInputSchema>;
 export type GetHistoricalStateInput = z.infer<typeof getHistoricalStateInputSchema>;
+
+// ============================================================================
+// Deposit plans (docs/specs/deposit.md)
+// ============================================================================
+
+// Human decimal amount ("200000", "0.5"): parsed to base units with the token's decimals
+const decimalAmountSchema = z
+  .string()
+  .regex(/^\d+(\.\d+)?$/, 'Amount must be a positive decimal number written as a string');
+
+const chainRefSchema = z.object({
+  chainId: chainIdSchema,
+  address: ethereumAddressSchema,
+});
+
+const totalSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('amount'), value: decimalAmountSchema }),
+  z.object({ kind: z.literal('max'), keepForGas: decimalAmountSchema.optional() }),
+]);
+
+const allocationSchema = z.discriminatedUnion('kind', [
+  z.object({ vault: chainRefSchema, kind: z.literal('amount'), value: decimalAmountSchema }),
+  z.object({
+    vault: chainRefSchema,
+    kind: z.literal('bps'),
+    value: z.number().int().positive().max(10_000),
+  }),
+]);
+
+export const prepareDepositInputSchema = z.object({
+  specVersion: z.literal('1').optional(),
+  // Omitted when the user's address is unknown: no plan, but the sign link
+  // still opens the request in the app, which uses the connected wallet
+  account: z
+    .object({
+      address: ethereumAddressSchema,
+      type: z.enum(['eoa', 'safe', 'smartAccount']).optional(),
+    })
+    .optional(),
+  // Each vault is funded from the wallet on its own chain (no bridging).
+  // chainId, when set, restricts the plan to that chain.
+  source: z.object({
+    kind: z.literal('wallet'),
+    chainId: chainIdSchema.optional(),
+    asset: z.literal('USDC'),
+  }),
+  // Total to deploy on a single-chain plan; bps allocations are shares of it
+  total: totalSchema.optional(),
+  // Total per chain, for bps allocations on a multi-chain plan
+  totals: z
+    .array(z.intersection(z.object({ chainId: chainIdSchema }), totalSchema))
+    .max(20)
+    .optional(),
+  allocations: z.array(allocationSchema).min(1).max(30),
+  options: z
+    .object({
+      depositMode: z.enum(['auto', 'async']).optional(),
+      remainder: z.enum(['last', 'largest']).optional(),
+      exports: z.array(z.enum(['eip5792', 'safeTxBuilder'])).optional(),
+    })
+    .optional(),
+});
+
+export const depositStatusInputSchema = z.object({
+  account: ethereumAddressSchema,
+  txHashes: z
+    .array(
+      z.object({
+        chainId: chainIdSchema,
+        hash: z.string().regex(/^0x[a-fA-F0-9]{64}$/, 'Invalid transaction hash'),
+      })
+    )
+    .max(20)
+    .optional(),
+  vaults: z.array(chainRefSchema).max(10).optional(),
+});
+
+export const listDepositVaultsInputSchema = z.object({
+  chainId: chainIdSchema.optional(),
+  search: z
+    .string()
+    .max(100)
+    .optional()
+    .describe('Words to match in the vault name, ticker or curator'),
+  includeUnlisted: z
+    .boolean()
+    .optional()
+    .describe(
+      'Include vaults hidden from the app (test or private vaults). Default: false, except on Arc, which only has test vaults'
+    ),
+  limit: z.number().int().positive().max(50).optional(),
+});
+
+export type ListDepositVaultsInput = z.infer<typeof listDepositVaultsInputSchema>;
+export type PrepareDepositInput = z.infer<typeof prepareDepositInputSchema>;
+/** A request with a known account: what plans are built from */
+export type PlannedDepositInput = PrepareDepositInput & {
+  account: NonNullable<PrepareDepositInput['account']>;
+};
+export type DepositStatusInput = z.infer<typeof depositStatusInputSchema>;
