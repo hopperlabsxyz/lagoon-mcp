@@ -29,7 +29,7 @@ import type { IssueCode, PlanSimulation } from './types.js';
 
 /**
  * Storage the vaults expose no getter for (ERC-7201 namespaces, the same in
- * every version from v0.1 to v0.6, see lagoon-v0-internal):
+ * every version from v0.1 to v0.6):
  * - `hopper.storage.vault`: first field `State state` (0 Open, 1 Closing,
  *   2 Closed). v0.6 accepts deposit requests while closing, but they can
  *   never be settled, so only Open vaults take deposits.

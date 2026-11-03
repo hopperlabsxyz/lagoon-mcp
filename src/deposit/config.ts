@@ -155,8 +155,8 @@ export const DEPOSIT_CHAINS: Record<number, DepositChainConfig> = {
 };
 
 /**
- * How a vault takes deposits, by version (checked against the contracts in
- * lagoon-v0-internal and the per-version ABIs of @lagoon-protocol/v0-core):
+ * How a vault takes deposits, by version (checked against the contracts and
+ * the per-version ABIs of @lagoon-protocol/v0-core):
  * - v0.6: sync deposit when `syncMode` allows it and the NAV is valid,
  *   `previewSyncDeposit` (entry fee included), `isAllowed`, `maxCap`.
  * - v0.5: sync deposit while the NAV is valid, `convertToShares` (no entry

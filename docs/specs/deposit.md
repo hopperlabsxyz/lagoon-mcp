@@ -1,11 +1,10 @@
 # Spec — `prepare_deposit` and `deposit_status`
 
-> Status: **draft** · specVersion `1` · Ticket: LAG-480 · Branch: `feat/deposit-usdc`
+> Status: **draft** · specVersion `1`
 >
-> Grounded in `lagoon-v0-internal` (vault versions v0.1 to v0.6, `src/v0.5.x/`, `src/v0.6.0/` and
-> the `v0.1.0`…`v0.4.0` tags) and the per-version ABIs of `@lagoon-protocol/v0-core`, verified
-> against mainnet vaults on Ethereum, Base, Arbitrum, Avalanche and Arc. If this spec disagrees with
-> the contracts, the contracts win — fix this file.
+> Grounded in the Lagoon v0 vault contracts (versions v0.1 to v0.6) and the per-version ABIs of
+> `@lagoon-protocol/v0-core`, verified against mainnet vaults on Ethereum, Base, Arbitrum, Avalanche
+> and Arc. If this spec disagrees with the contracts, the contracts win — fix this file.
 
 ## 1. Purpose
 
@@ -125,9 +124,8 @@ Validation rules (all reported together, D1):
 **R1 — RPC.** The MCP reads chains through viem with one RPC URL per chain, from an environment
 variable (`LAGOON_RPC_URLS`, JSON map `{ "5042": "https://…" }`). There is no public fallback: **a
 chain is supported only if its RPC URL is configured.** Otherwise every vault on it returns
-`UNSUPPORTED_CHAIN` (`details.reason = "rpcNotConfigured"`). In the backend the variable is filled
-with Lagoon's private provider. People running the MCP themselves must provide their own (e.g. an
-Alchemy URL with their API key) — Arc has no public RPC.
+`UNSUPPORTED_CHAIN` (`details.reason = "rpcNotConfigured"`). People running the MCP must provide
+their own (e.g. an Alchemy URL with their API key) — Arc has no public RPC.
 
 **R2 — One block.** All state for a plan is read at a single block number (`stateAt`), batched
 through Multicall3. Never mix reads from different blocks.
